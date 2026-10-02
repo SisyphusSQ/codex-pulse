@@ -29,7 +29,7 @@ describe('server records and explicit project relationship',()=>{
   });
   render(<QueryClientProvider client={createQueryClient()}><Sessions /></QueryClientProvider>);
   await screen.findByRole('button',{name:'第一页会话'});
-  expect(screen.getByText('9,007,199,254,740,993')).toBeInTheDocument();
+  expect(screen.getByText('90071992.5亿')).toBeInTheDocument();
   const user=userEvent.setup();await user.click(screen.getByTitle('Next Page'));
   await screen.findByRole('button',{name:unsafe});
   expect(fetcher.mock.calls.some(([p])=>new URL(String(p),'http://localhost').searchParams.get('page')==='2')).toBe(true);

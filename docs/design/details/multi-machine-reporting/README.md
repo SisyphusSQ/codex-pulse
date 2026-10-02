@@ -213,7 +213,7 @@ Tailscale HTTP 有节点间隧道加密；普通局域网 HTTP 会明文传输�
 
 ## Web 页面与配置
 
-Web 采用 React + TypeScript + Vite、Ant Design 和 ECharts。AntD 负责页面框架、配置、筛选和表格，ECharts 负责趋势、热力图与节奏；业务计算仍在 Go。参考掘金公开 Dashboard 的卡片与趋势组织、Pulse 现有中文和可信语义，以及 family-system 等自有 React/AntD 项目的工程与交互，不照搬原生 macOS 视觉机制。
+Web 采用 React + TypeScript + Vite、Ant Design 和 ECharts。AntD 负责页面框架、配置、筛选和表格，ECharts 负责趋势、分布与节奏，年度热力图用 DOM 方格准确对齐月份和星期；业务计算仍在 Go。汇总布局参考 Pulse Mac 客户端，热力图几何与配色对齐掘金，保留 Pulse 的中文、万/亿单位、两位金额及可信语义，不引入原生 macOS 视觉机制。具体实现见 [Web 重构](web-redesign.md)。
 
 | 页面 | 内容 |
 | --- | --- |

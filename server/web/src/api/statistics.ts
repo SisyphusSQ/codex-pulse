@@ -18,11 +18,17 @@ export interface ReportingRange { start_at_ms: number; end_at_ms: number; time_z
 export interface Slice { key: string; name: string; totals: Totals }
 export interface Day { date: string; start_at_ms: number; totals: Totals }
 export interface Hour { weekday: number; hour: number; tokens: Decimal; sessions: number }
+export interface AnnualActivity {
+  total_tokens: Decimal; peak_daily_tokens: Decimal; active_days: Decimal;
+  current_streak_days: Decimal; longest_streak_days: Decimal;
+  observed_days: number; unknown_days: number;
+}
 export interface Summary {
   cost_basis: string; trend_cost_rounding_delta_micro_usd: Decimal;
   range: ReportingRange; scope: string; totals: Totals; coverage: Coverage;
   providers: Slice[]; models: Slice[]; devices: Slice[]; trend: Day[];
   heatmap: Day[]; heatmap_range: ReportingRange; heatmap_coverage: Coverage;
+  heatmap_activity: AnnualActivity;
   weekday_hours: Hour[]; tools: Slice[]; skills: Slice[];
 }
 export interface Device {
@@ -40,7 +46,7 @@ export async function getSummary(filter: StatsFilter, signal?: AbortSignal): Pro
   const value = await api.get<unknown>('/api/v1/statistics/summary', statsParams(filter), signal);
   if (!value || typeof value !== 'object') throw new ApiError(502);
   const s = value as Partial<Summary>;
-  if (!s.range || !s.totals || !s.coverage || !s.heatmap_range || !s.heatmap_coverage || ![s.providers,s.models,s.devices,s.trend,s.heatmap,s.weekday_hours,s.tools,s.skills].every(Array.isArray)) throw new ApiError(502);
+  if (!s.range || !s.totals || !s.coverage || !s.heatmap_range || !s.heatmap_coverage || !s.heatmap_activity || ![s.providers,s.models,s.devices,s.trend,s.heatmap,s.weekday_hours,s.tools,s.skills].every(Array.isArray)) throw new ApiError(502);
   return s as Summary;
 }
 export async function getDevices(signal?: AbortSignal): Promise<Device[]> {

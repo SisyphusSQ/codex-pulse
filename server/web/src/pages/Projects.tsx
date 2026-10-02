@@ -6,7 +6,7 @@ import { CoverageNotice } from '../components/CoverageNotice';
 import { initialListFilter, ListFilters } from '../components/ListFilters';
 import { ErrorState, LoadingState } from '../components/QueryState';
 import { RecordTrend, SessionPanel, SessionTable, TotalsLine } from '../components/RecordViews';
-import { dateTime, dollars, integer } from '../format';
+import { dateTime, dollars, integer, tokens } from '../format';
 
 function ProjectPanel({id,filter,onClose}:{id:string;filter:ListFilter;onClose():void}){
  const [page,setPage]=useState({page:1,limit:25}),[session,setSession]=useState<string>();
@@ -16,7 +16,7 @@ function ProjectPanel({id,filter,onClose}:{id:string;filter:ListFilter;onClose()
   <Tabs items={[
    {key:'sessions',label:'会话贡献',children:<><Typography.Paragraph type="secondary">会话与项目采用各自历史舍入口径，金额可能有微美元差异。</Typography.Paragraph><SessionTable rows={query.data.sessions.items} page={query.data.sessions.page} loading={query.isFetching} zone={filter.time_zone} onPage={(page,limit)=>setPage({page,limit})} onOpen={setSession} /><CoverageNotice coverage={query.data.sessions.coverage} zone={filter.time_zone} /></>},
    {key:'trend',label:'用量趋势',children:<RecordTrend rows={query.data.trend} />},
-   {key:'models',label:'模型贡献',children:<Table rowKey="key" size="small" dataSource={query.data.models} pagination={{pageSize:10,showSizeChanger:false}} columns={[{title:'模型',dataIndex:'name'},{title:'Token',align:'right',render:(_,r)=>integer(r.totals.total_tokens)},{title:'API 等价成本',align:'right',render:(_,r)=>dollars(r.totals.cost_micro_usd)}]} />},
+   {key:'models',label:'模型贡献',children:<Table rowKey="key" size="small" dataSource={query.data.models} pagination={{pageSize:10,showSizeChanger:false}} columns={[{title:'模型',dataIndex:'name'},{title:'Token',align:'right',render:(_,r)=>tokens(r.totals.total_tokens)},{title:'API 等价成本',align:'right',render:(_,r)=>dollars(r.totals.cost_micro_usd)}]} />},
   ]} />
   {session&&<SessionPanel key={session} id={session} filter={filter} onClose={()=>setSession(undefined)} />}
  </>}</Drawer>;
@@ -33,7 +33,7 @@ export default function Projects(){
  <div className="association-bar"><span>已选 {selected.length} 个项目组 / {ids.length} 个成员</span><Button disabled={selected.length<2||ids.length>100} onClick={()=>open('link')}>关联所选项目</Button><Button disabled={!ids.length||ids.length>100} onClick={()=>open('unlink')}>解除所选关联</Button>{ids.length>100&&<span role="status">一次最多选择 100 个项目成员</span>}</div>
  {query.isPending?<LoadingState />:query.error?<ErrorState error={query.error} retry={()=>void query.refetch()} />:query.data&&<><TotalsLine totals={query.data.totals} /><Card className="table-card" title="项目记录"><Table<ProjectRecord> size="middle" rowKey="id" dataSource={query.data.items} loading={query.isFetching} rowSelection={{selectedRowKeys:selected.map(r=>r.id),preserveSelectedRowKeys:true,getCheckboxProps:r=>({'aria-label':`选择项目 ${r.name} ${r.id.slice(0,12)}`}),getTitleCheckboxProps:()=>({'aria-label':'选择本页项目'}),onChange:keys=>{const known=new Map([...selected,...query.data.items].map(r=>[r.id,r]));setSelected(keys.map(key=>known.get(String(key))).filter((r):r is ProjectRecord=>r!==undefined));}}} scroll={{x:900}} pagination={{current:query.data.page.page,pageSize:query.data.page.limit,total:query.data.page.total,showSizeChanger:true,pageSizeOptions:[10,25,50,100],onChange:(page,limit)=>change({...filter,page,limit}),showTotal:total=>`共 ${integer(total)} 条`}} columns={[
   {title:'项目',render:(_,r)=><div><Button type="link" className="record-link" onClick={()=>setDetail(r.id)}>{r.name||'未命名项目'}</Button><div className="record-id">{r.id.slice(0,12)} · {r.members.length} 个成员</div></div>},
-  {title:'Token',align:'right',render:(_,r)=>integer(r.totals.total_tokens)},{title:'API 等价成本',align:'right',render:(_,r)=><span>{dollars(r.totals.cost_micro_usd)}{r.totals.cost_status==='partial'?'（小计）':''}</span>},{title:'会话',align:'right',render:(_,r)=>integer(r.totals.sessions)},{title:'最近活动',render:(_,r)=>dateTime(r.last_active_at_ms,filter.time_zone)},{title:'状态',render:(_,r)=>r.conflict?<Tag color="red">来源冲突</Tag>:<Tag>已收到事实</Tag>},
+  {title:'Token',align:'right',render:(_,r)=>tokens(r.totals.total_tokens)},{title:'API 等价成本',align:'right',render:(_,r)=><span>{dollars(r.totals.cost_micro_usd)}{r.totals.cost_status==='partial'?'（小计）':''}</span>},{title:'会话',align:'right',render:(_,r)=>integer(r.totals.sessions)},{title:'最近活动',render:(_,r)=>dateTime(r.last_active_at_ms,filter.time_zone)},{title:'状态',render:(_,r)=>r.conflict?<Tag color="red">来源冲突</Tag>:<Tag>已收到事实</Tag>},
  ]} /></Card><CoverageNotice coverage={query.data.coverage} zone={filter.time_zone} /></>}
  {detail&&<ProjectPanel key={detail} id={detail} filter={filter} onClose={()=>setDetail(undefined)} />}
  <Modal title={operation==='link'?'确认跨机器项目关联':'确认解除项目关联'} open={!!operation} onCancel={()=>!mutation.isPending&&setOperation(undefined)} onOk={()=>mutation.mutate()} confirmLoading={mutation.isPending} okButtonProps={{disabled:operation==='link'&&!target}} okText="确认执行" cancelText="取消" closable={{'aria-label':'关闭项目关联确认'}}>

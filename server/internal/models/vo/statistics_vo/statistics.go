@@ -50,6 +50,17 @@ type StatisticsHour struct {
 	Tokens   *string `json:"tokens"`
 	Sessions int64   `json:"sessions"`
 }
+
+// StatisticsActivity 只概括已收到的年度事实；未知日期不补零，连续天数无法确认时保留 NULL。
+type StatisticsActivity struct {
+	TotalTokens       *string `json:"total_tokens"`
+	PeakDailyTokens   *string `json:"peak_daily_tokens"`
+	ActiveDays        *string `json:"active_days"`
+	CurrentStreakDays *string `json:"current_streak_days"`
+	LongestStreakDays *string `json:"longest_streak_days"`
+	ObservedDays      int     `json:"observed_days"`
+	UnknownDays       int     `json:"unknown_days"`
+}
 type StatisticsSummary struct {
 	CostBasis                      string             `json:"cost_basis"`
 	TrendCostRoundingDeltaMicroUSD *string            `json:"trend_cost_rounding_delta_micro_usd"`
@@ -66,6 +77,7 @@ type StatisticsSummary struct {
 	Heatmap                        []StatisticsDay    `json:"heatmap"`
 	HeatmapRange                   StatisticsRange    `json:"heatmap_range"`
 	HeatmapCoverage                StatisticsCoverage `json:"heatmap_coverage"`
+	HeatmapActivity                StatisticsActivity `json:"heatmap_activity"`
 	WeekdayHours                   []StatisticsHour   `json:"weekday_hours"`
 }
 type StatisticsPage struct {

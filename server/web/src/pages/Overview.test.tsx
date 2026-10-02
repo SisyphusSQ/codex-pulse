@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { createQueryClient } from '../App';
 import { api } from '../api/client';
 import { summaryFixture } from '../test/statisticsFixture';
@@ -14,18 +15,18 @@ const success=(data:unknown)=>new Response(JSON.stringify({code:200,data}));
 beforeEach(()=>{api.setSession({client_id:'synthetic-browser',name:'测试浏览器',purpose:'admin',csrf:'synthetic-csrf',expires_at_ms:null});fetcher.mockReset();vi.stubGlobal('fetch',fetcher);});
 afterEach(()=>vi.unstubAllGlobals());
 describe('overview facts',()=>{
-  it('formats exact integers, signed micro dollars, and unknown separately from zero',()=>{
+  it('keeps exact generic counts and displays USD with two decimal places',()=>{
     expect(integer('9007199254740993')).toBe('9,007,199,254,740,993');
     expect(integer(null)).toBe('未知');expect(integer('0')).toBe('0');
-    expect(dollars('1')).toBe('$0.000001');expect(dollars('-1')).toBe('-$0.000001');
-    expect(dollars('123456789')).toBe('$123.456789');expect(dollars(null)).toBe('未知');
+    expect(dollars('1')).toBe('$0.00');expect(dollars('-1')).toBe('$0.00');
+    expect(dollars('123456789')).toBe('$123.46');expect(dollars(null)).toBe('未知');
   });
   it('uses Server totals and separate annual coverage, sends date/provider filters, and retains cached data on refresh failure',async()=>{
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):success(summaryFixture()));
-    render(<QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider>);
-    expect((await screen.findAllByText('9,007,199,254,740,993')).length).toBeGreaterThan(0);
+    render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
+    expect((await screen.findAllByText('90071992.5亿')).length).toBeGreaterThan(0);
     expect(screen.getByText('已知金额小计，含未定价记录 · 不是实际账单')).toBeInTheDocument();
-    expect(screen.getByText('采集证据陈旧')).toBeInTheDocument();expect(await screen.findByText('有近期采集证据')).toBeInTheDocument();
+    expect(screen.getByText('采集证据陈旧')).toBeInTheDocument();expect(await screen.findByText('年度覆盖未确认 · 近期采集')).toBeInTheDocument();
     const user=userEvent.setup();await user.click(screen.getByRole('combobox',{name:'Provider'}));
     await user.click(await screen.findByText('Cursor',{selector:'.ant-select-item-option-content'}));
     await waitFor(()=>expect(fetcher.mock.calls.some(([path])=>new URL(String(path),'http://localhost').searchParams.get('provider')==='cursor')).toBe(true));
@@ -33,11 +34,25 @@ describe('overview facts',()=>{
     expect(url.searchParams.get('start_date')).toMatch(/^\d{4}-\d{2}-\d{2}$/);expect(url.searchParams.get('time_zone')).toBe('Asia/Shanghai');expect(url.searchParams.has('start_at_ms')).toBe(false);
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):new Response('',{status:503}));
     await user.click(screen.getByRole('button',{name:'刷新'}));
-    await screen.findByText('刷新失败，以下保留上次读取的数据');expect(screen.getAllByText('$123.456789').length).toBeGreaterThan(0);
+    await screen.findByText('刷新失败，以下保留上次读取的数据');expect(screen.getAllByText('$123.46').length).toBeGreaterThan(0);
   });
   it('does not turn a failed initial query into an empty range',async()=>{
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):new Response('',{status:503}));
-    render(<QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider>);
-    await screen.findByText('数据未能读取');expect(screen.queryByText('已收到 Token')).not.toBeInTheDocument();
+    render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
+    await screen.findByText('数据未能读取');expect(screen.queryByText('Token 总量')).not.toBeInTheDocument();
+  });
+  it('places annual activity before trend and uses independent Server annual metrics',async()=>{
+    const fixture=summaryFixture();
+    fixture.heatmap_activity={total_tokens:'999999999999999999',peak_daily_tokens:'100000',active_days:'15',current_streak_days:null,longest_streak_days:'4',observed_days:22,unknown_days:343};
+    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):success(fixture));
+    render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
+    await userEvent.setup().click(await screen.findByRole('button',{name:/年度活动统计/}));
+    expect(await screen.findByText('10000000000亿',{selector:'strong'})).toBeInTheDocument();
+    expect(screen.getByText('当前连续天数').parentElement).toHaveTextContent('未知');
+    expect(screen.getByRole('link',{name:'查看账号额度与节奏'})).toHaveAttribute('href','/quota');
+    await screen.findByRole('img',{name:'按自然日的用量趋势'});
+    const activity=screen.getByText('Token 活动').closest('.ant-card')!;
+    const trend=screen.getByText('用量趋势').closest('.ant-card')!;
+    expect(activity.compareDocumentPosition(trend)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

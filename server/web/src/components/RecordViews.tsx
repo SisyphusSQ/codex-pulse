@@ -4,17 +4,17 @@ import { useQuery } from '@tanstack/react-query';
 import type { EChartsCoreOption } from 'echarts/core';
 import { getSession, type Page, type SessionRecord } from '../api/records';
 import type { Day, StatsFilter, Totals } from '../api/statistics';
-import { coordinate, dateTime, dollars, integer, providerNames } from '../format';
+import { coordinate, dateTime, dollars, integer, tokenAxis, tokens, providerNames } from '../format';
 import { CoverageNotice } from './CoverageNotice';
 import { ErrorState, LoadingState } from './QueryState';
 import { ThroughputCell, ThroughputPanel } from './Throughput';
 import { CacheHitRateCell, CacheHitRateDetail } from './CacheHitRate';
 
 const Chart=lazy(()=>import('./Chart'));
-export function TotalsLine({ totals }: { totals:Totals }) {return <div className="totals-line"><span>当前筛选范围 · 已收到 Token <strong>{integer(totals.total_tokens)}</strong></span><span>API 等价成本 <strong>{dollars(totals.cost_micro_usd)}</strong>{totals.cost_status==='partial'?'（已知小计）':''}</span><span>会话 {integer(totals.sessions)}</span></div>;}
+export function TotalsLine({ totals }: { totals:Totals }) {return <div className="totals-line"><span>当前筛选范围 · 已收到 Token <strong>{tokens(totals.total_tokens)}</strong></span><span>API 等价成本 <strong>{dollars(totals.cost_micro_usd)}</strong>{totals.cost_status==='partial'?'（已知小计）':''}</span><span>会话 {integer(totals.sessions)}</span></div>;}
 export function RecordTrend({ rows }: { rows:Day[] }){
  const {token}=theme.useToken();
- const option=useMemo<EChartsCoreOption>(()=>({tooltip:{renderMode:'richText',confine:true,trigger:'axis',formatter:(params:unknown)=>{const p=(params as {dataIndex:number}[])[0],r=rows[p?.dataIndex];return r?`${r.date}\nToken：${integer(r.totals.total_tokens)}`:'';}},grid:{left:12,right:18,top:24,bottom:24,containLabel:true},xAxis:{type:'category',data:rows.map(r=>r.date)},yAxis:{type:'value',name:'Token'},series:[{type:'bar',data:rows.map(r=>coordinate(r.totals.total_tokens)),itemStyle:{color:token.colorPrimary}}]}),[rows,token.colorPrimary]);
+ const option=useMemo<EChartsCoreOption>(()=>({tooltip:{renderMode:'richText',confine:true,trigger:'axis',formatter:(params:unknown)=>{const p=(params as {dataIndex:number}[])[0],r=rows[p?.dataIndex];return r?`${r.date}\nToken：${tokens(r.totals.total_tokens)}`:'';}},grid:{left:12,right:18,top:24,bottom:24,containLabel:true},xAxis:{type:'category',data:rows.map(r=>r.date)},yAxis:{type:'value',name:'Token',axisLabel:{formatter:tokenAxis}},series:[{type:'bar',data:rows.map(r=>coordinate(r.totals.total_tokens)),itemStyle:{color:token.colorPrimary}}]}),[rows,token.colorPrimary]);
  return <Suspense fallback={<LoadingState label="正在加载趋势…" />}><Chart option={option} label="所选记录的自然日 Token 趋势" height={240} /></Suspense>;
 }
 export function SessionTable({ rows,page,loading,zone,onPage,onOpen }: { rows:SessionRecord[];page:Page;loading:boolean;zone:string;onPage(page:number,limit:number):void;onOpen(id:string):void }){
@@ -22,7 +22,7 @@ export function SessionTable({ rows,page,loading,zone,onPage,onOpen }: { rows:Se
   {title:'会话 / 原始 Session ID',key:'title',width:280,render:(_,r)=><div><Button type="link" className="record-link" onClick={()=>onOpen(r.id)}>{r.title||'未命名会话'}</Button><div className="record-id">{r.session_id??'未关联会话的用量'}</div></div>},
   {title:'Provider',dataIndex:'provider',render:(p:string)=>providerNames[p]??p},
   {title:'项目',dataIndex:'project_name'},
-  {title:'Token',align:'right',render:(_,r)=>integer(r.totals.total_tokens)},
+  {title:'Token',align:'right',render:(_,r)=>tokens(r.totals.total_tokens)},
   {title:'缓存命中率',align:'right',render:(_,r)=><CacheHitRateCell value={r.cache_hit_rate} />},
   {title:'平均 TPS',align:'right',render:(_,r)=><ThroughputCell value={r.throughput} />},
   {title:'API 等价成本',align:'right',render:(_,r)=><span>{dollars(r.totals.cost_micro_usd)}{r.totals.cost_status==='partial'?'（小计）':''}</span>},

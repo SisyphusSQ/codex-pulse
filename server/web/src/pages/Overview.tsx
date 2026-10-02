@@ -1,89 +1,128 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { Alert, Card, Collapse, Segmented, Statistic, Table, Tabs, Tag, Typography, theme } from 'antd';
+import { Alert, Card, Collapse, Segmented, Statistic, Table, Tabs, Tooltip, Typography, theme } from 'antd';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import type { EChartsCoreOption } from 'echarts/core';
 import { getSummary, type Decimal, type Slice } from '../api/statistics';
+import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { CoverageNotice } from '../components/CoverageNotice';
 import { initialFilter, StatsFilters } from '../components/StatsFilters';
 import { EmptyState, ErrorState, LoadingState } from '../components/QueryState';
-import { coordinate, dayjs, dollars, integer, providerNames } from '../format';
+import { dayjs, dollarAxis, dollars, integer, tokenAxis, tokens, providerNames } from '../format';
 
-const Chart=lazy(()=>import('../components/Chart'));
-type Metric='tokens'|'cost';
-const metricValue=(row:Slice,metric:Metric):Decimal=>metric==='tokens'?row.totals.total_tokens:row.totals.cost_micro_usd;
-const metricLabel=(value:Decimal,metric:Metric)=>metric==='tokens'?integer(value):dollars(value);
-const metricCoordinate=(value:Decimal,metric:Metric)=>value===null?null:Number(value)/(metric==='cost'?1_000_000:1);
-const tooltip={renderMode:'richText' as const,confine:true};
+const Chart = lazy(() => import('../components/Chart'));
+type Metric = 'tokens' | 'cost';
+const metricOptions = [{ label: 'Token', value: 'tokens' }, { label: '费用', value: 'cost' }];
+const metricValue = (row: Slice, metric: Metric): Decimal => metric === 'tokens' ? row.totals.total_tokens : row.totals.cost_micro_usd;
+const metricLabel = (value: Decimal, metric: Metric) => metric === 'tokens' ? tokens(value) : dollars(value);
+const metricCoordinate = (value: Decimal, metric: Metric) => value === null ? null : Number(value) / (metric === 'cost' ? 1_000_000 : 1);
+const tooltip = { renderMode: 'richText' as const, confine: true };
+const palette = ['#007aff', '#00a99a', '#ff9500', '#af52de', '#ff3b30', '#32ade6', '#ff2d55', '#5856d6'];
+const providerColors: Record<string, string> = { codex: '#007aff', cursor: '#ff9500', grok: '#af52de' };
 
-function Composition({ rows, title, metric }: { rows:Slice[];title:string;metric:Metric }) {
-  const {token}=theme.useToken();
-  const option=useMemo<EChartsCoreOption>(()=>({
-    tooltip:{...tooltip,trigger:'item',formatter:(params:unknown)=>{const p=params as {dataIndex:number};const row=rows.slice(0,12)[p.dataIndex];return row?`${providerNames[row.name]??row.name}\n${metricLabel(metricValue(row,metric),metric)}`:'';}},
-    grid:{left:12,right:32,top:8,bottom:20,containLabel:true},
-    xAxis:{type:'value',name:metric==='cost'?'USD':'Token'},yAxis:{type:'category',inverse:true,data:rows.slice(0,12).map(r=>providerNames[r.name]??r.name),axisLabel:{width:150,overflow:'truncate'}},
-    series:[{type:'bar',data:rows.slice(0,12).map(r=>metricCoordinate(metricValue(r,metric),metric)),itemStyle:{color:token.colorPrimary,borderRadius:[0,3,3,0]}}],
-  }),[rows,metric,token.colorPrimary]);
-  return <div>
-    {rows.length>12&&<Tag>图表显示前 12 项</Tag>}
-    {rows.length?<><Chart option={option} label={`${title}，${metric==='tokens'?'Token':'API 等价成本'}`} height={Math.max(160,Math.min(rows.length,12)*28+40)} />
-      <Collapse ghost size="small" items={[{key:'details',label:`全部明细 (${rows.length})`,children:<Table< Slice> size="small" rowKey="key" dataSource={rows} pagination={rows.length>12?{pageSize:12,showSizeChanger:false}:false} scroll={{x:560}} columns={[
-        {title:'名称',dataIndex:'name',render:(name:string)=>providerNames[name]??name},
-        {title:'Token',align:'right',render:(_,r)=>integer(r.totals.total_tokens)},
-        {title:'API 等价成本',align:'right',render:(_,r)=><span>{dollars(r.totals.cost_micro_usd)}{r.totals.cost_status==='partial'&&'（已知小计）'}</span>},
-       ]} />}]} /></>:<EmptyState />}
-  </div>;
+function SliceTable({ rows }: { rows: Slice[] }) {
+  return <Table<Slice> size="small" rowKey="key" dataSource={rows} pagination={rows.length > 8 ? { pageSize: 8, showSizeChanger: false } : false} scroll={{ x: 420 }} columns={[
+    { title: '名称', dataIndex: 'name', render: (name: string) => providerNames[name] ?? name },
+    { title: 'Token', align: 'right', render: (_, row) => tokens(row.totals.total_tokens) },
+    { title: 'API 等价成本', align: 'right', render: (_, row) => <div><span className="numeric">{dollars(row.totals.cost_micro_usd)}</span>{row.totals.cost_status === 'partial' && <div className="metric-note">已知小计</div>}</div> },
+  ]} />;
+}
+
+function Distribution({ rows, title }: { rows: Slice[]; title: string }) {
+  const { token } = theme.useToken();
+  const [metric, setMetric] = useState<Metric>('tokens');
+  // 环图仅用已知正值绘制面积；未知、真零及有符号舍入差额均保留在全部明细。
+  const slices = useMemo(() => rows.filter(row => {
+    const value = metricValue(row, metric);
+    return value !== null && BigInt(value) > 0n;
+  }), [rows, metric]);
+  const color = (row: Slice, index: number) => providerColors[row.key] ?? palette[index % palette.length];
+  const option = useMemo<EChartsCoreOption>(() => ({
+    tooltip: { ...tooltip, trigger: 'item', formatter: (params: unknown) => {
+      const row = slices[(params as { dataIndex: number }).dataIndex];
+      return row ? `${providerNames[row.name] ?? row.name}\n${metricLabel(metricValue(row, metric), metric)}` : '';
+    } },
+    series: [{ type: 'pie', radius: ['60%', '82%'], center: ['50%', '50%'], padAngle: 1.4, minAngle: 0,
+      label: { show: false }, labelLine: { show: false }, itemStyle: { borderRadius: 3 },
+      data: slices.map((row, index) => ({ name: providerNames[row.name] ?? row.name, value: metricCoordinate(metricValue(row, metric), metric), itemStyle: { color: color(row, index) } })) }],
+  }), [slices, metric]);
+  return <Card title={title} className="overview-distribution" extra={<Segmented aria-label={`${title}指标`} size="small" options={metricOptions} value={metric} onChange={value => setMetric(value as Metric)} />}>
+    <div className="metric-note">{metric === 'tokens' ? '按已收到的 Token 查看构成' : '按 API 等价成本查看构成'} · 仅已知正值进入环图</div>
+    {slices.length ? <div className="distribution-layout">
+      <div className="distribution-chart"><Chart option={option} label={`${title}环图`} height={228} /><span className="donut-caption" style={{ color: token.colorTextSecondary }}>{metric === 'tokens' ? 'Token' : 'API 等价成本'}</span></div>
+      <div className="distribution-legend">{slices.slice(0, 8).map((row, index) => <div className="distribution-legend-row" key={row.key}>
+        <span className="distribution-dot" style={{ background: color(row, index) }} />
+        <Tooltip title={providerNames[row.name] ?? row.name}><span className="distribution-name">{providerNames[row.name] ?? row.name}</span></Tooltip>
+        <span className="numeric">{metricLabel(metricValue(row, metric), metric)}</span>
+      </div>)}{slices.length > 8 && <div className="metric-note">另有 {slices.length - 8} 项，环图已包含；见全部明细</div>}</div>
+    </div> : <EmptyState />}
+    <Collapse ghost size="small" items={[{ key: 'details', label: `全部明细 (${rows.length})`, children: <SliceTable rows={rows} /> }]} />
+  </Card>;
 }
 
 export default function Overview() {
-  const {token}=theme.useToken();
-  const [filter,setFilter]=useState(initialFilter);
-  const [metric,setMetric]=useState<Metric>('tokens');
-  const [trendType,setTrendType]=useState<'bar'|'line'>('bar');
-  const query=useQuery({queryKey:['statistics','summary',filter],queryFn:({signal})=>getSummary(filter,signal)});
-  const data=query.data;
-  const trend=useMemo<EChartsCoreOption>(()=>({
-    tooltip:{...tooltip,trigger:'axis',formatter:(params:unknown)=>{const p=(params as {dataIndex:number}[])[0];const row=data?.trend[p?.dataIndex];return row?`${row.date}\n${metricLabel(metric==='tokens'?row.totals.total_tokens:row.totals.cost_micro_usd,metric)}`:'';}},
-    grid:{left:12,right:18,top:32,bottom:28,containLabel:true},xAxis:{type:'category',data:data?.trend.map(r=>r.date)??[]},yAxis:{type:'value',name:metric==='cost'?'USD':'Token'},
-    series:[{type:trendType,name:metric==='tokens'?'Token':'USD',data:data?.trend.map(r=>metricCoordinate(metric==='tokens'?r.totals.total_tokens:r.totals.cost_micro_usd,metric))??[],itemStyle:{color:token.colorPrimary},connectNulls:false}],
-  }),[data,metric,trendType,token.colorPrimary]);
-  const heatmap=useMemo<EChartsCoreOption>(()=>{
-    if(!data?.heatmap.length) return {};
-    const rows=data.heatmap,values=rows.map(r=>coordinate(r.totals.total_tokens));
-    return {tooltip:{...tooltip,formatter:(params:unknown)=>{const p=params as {dataIndex:number};const r=rows[p.dataIndex];return r?`${r.date}\n已收到 Token：${integer(r.totals.total_tokens)}`:'';}},
-      calendar:{top:38,left:36,right:12,bottom:12,cellSize:['auto',16],range:[rows[0].date,rows.at(-1)!.date],yearLabel:{show:false},dayLabel:{firstDay:1,nameMap:'ZH'},monthLabel:{nameMap:'ZH'},itemStyle:{color:token.colorFillSecondary,borderColor:token.colorBgContainer,borderWidth:3}},
-      visualMap:{min:0,max:Math.max(1,...values.filter((n):n is number=>n!==null)),show:false,inRange:{color:[token.colorPrimaryBg,token.colorPrimaryBorder,token.colorPrimary,token.colorPrimaryTextActive]}},
-      series:[{type:'heatmap',coordinateSystem:'calendar',data:rows.map((r,i)=>({value:[r.date,values[i]??0],itemStyle:values[i]===null?{color:token.colorFillSecondary}:undefined}))}],
-    };
-  },[data,token.colorFillSecondary,token.colorBgContainer,token.colorPrimaryBg,token.colorPrimaryBorder,token.colorPrimary,token.colorPrimaryTextActive]);
-  return <section>
-    <div className="page-heading"><div><Typography.Title level={3}>用量总览</Typography.Title><Typography.Paragraph type="secondary">查看已收到的用量、成本与活动分布。</Typography.Paragraph></div><Segmented aria-label="图表指标" value={metric} options={[{label:'Token',value:'tokens'},{label:'API 等价成本',value:'cost'}]} onChange={v=>setMetric(v as Metric)} /></div>
-    <StatsFilters value={filter} onChange={setFilter} refresh={()=>void query.refetch()} busy={query.isFetching} />
-    {query.isPending?<LoadingState />:query.error&&!data?<ErrorState error={query.error} retry={()=>void query.refetch()} />:data&&<>
-      {query.error&&<Alert type="warning" showIcon title="刷新失败，以下保留上次读取的数据" description={query.error.message} className="form-alert" />}
-      <Card className="kpi-panel"><div className="metric-grid">
-        <div><Statistic title="已收到 Token" value={data.totals.total_tokens??'未知'} formatter={()=>integer(data.totals.total_tokens)} /><div className="metric-note">输入 {integer(data.totals.input_tokens)} · 输出 {integer(data.totals.output_tokens)}</div></div>
-        <div><Statistic title="API 等价成本" value={data.totals.cost_micro_usd??'未知'} formatter={()=>dollars(data.totals.cost_micro_usd)} /><div className="metric-note">{data.totals.cost_status==='partial'?'已知金额小计，含未定价记录':'按历史价格估算'} · 不是实际账单</div></div>
-        <div><Statistic title="已收到会话" value={data.totals.sessions} formatter={()=>integer(data.totals.sessions)} /><div className="metric-note">调用 {integer(data.totals.invocations)} · 执行设备归因未知</div></div>
-      </div></Card>
+  const [filter, setFilter] = useState(initialFilter);
+  const [metric, setMetric] = useState<Metric>('tokens');
+  const [trendType, setTrendType] = useState<'bar' | 'line'>('bar');
+  const query = useQuery({ queryKey: ['statistics', 'summary', filter], queryFn: ({ signal }) => getSummary(filter, signal) });
+  const data = query.data;
+  const trend = useMemo<EChartsCoreOption>(() => ({
+    tooltip: { ...tooltip, trigger: 'axis', formatter: (params: unknown) => {
+      const point = (params as { dataIndex: number }[])[0];
+      const row = data?.trend[point?.dataIndex];
+      return row ? `${row.date}\n${metricLabel(metric === 'tokens' ? row.totals.total_tokens : row.totals.cost_micro_usd, metric)}` : '';
+    } },
+    grid: { left: 8, right: 12, top: 28, bottom: 24, containLabel: true },
+    xAxis: { type: 'category', data: data?.trend.map(row => row.date) ?? [], axisLine: { show: false }, axisTick: { show: false }, axisLabel: { formatter: (value: string) => value.slice(5) } },
+    yAxis: { type: 'value', name: metric === 'cost' ? 'USD' : 'Token', axisLabel: { formatter: metric === 'cost' ? dollarAxis : tokenAxis }, splitLine: { lineStyle: { color: '#eeeeef' } } },
+    series: [{ type: trendType, name: metric === 'tokens' ? 'Token' : 'USD', barMaxWidth: 32,
+      data: data?.trend.map(row => metricCoordinate(metric === 'tokens' ? row.totals.total_tokens : row.totals.cost_micro_usd, metric)) ?? [],
+      itemStyle: { color: '#007aff', borderRadius: [3, 3, 0, 0] }, connectNulls: false }],
+  }), [data, metric, trendType]);
+  return <section className="overview-page">
+    <div className="page-heading"><div><Typography.Title level={3}>汇总</Typography.Title><Typography.Paragraph type="secondary">跨 Codex、Cursor 和 Grok 查看 Token、成本与活动</Typography.Paragraph></div><Link to="/quota">查看账号额度与节奏</Link></div>
+    <StatsFilters value={filter} onChange={setFilter} refresh={() => void query.refetch()} busy={query.isFetching} />
+    {query.isPending ? <LoadingState /> : query.error && !data ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : data && <>
+      {query.error && <Alert type="warning" showIcon title="刷新失败，以下保留上次读取的数据" description={query.error.message} className="form-alert" />}
+      <div className="metric-grid overview-kpis">
+        <Card><Statistic title="Token 总量" value={data.totals.total_tokens ?? '未知'} formatter={() => tokens(data.totals.total_tokens)} /><div className="metric-note">输入 {tokens(data.totals.input_tokens)} · 输出 {tokens(data.totals.output_tokens)}</div></Card>
+        <Card><Statistic title="API 等价成本" value={data.totals.cost_micro_usd ?? '未知'} formatter={() => dollars(data.totals.cost_micro_usd)} /><div className="metric-note">{data.totals.cost_status === 'partial' ? '已知金额小计，含未定价记录' : '按历史价格估算'} · 不是实际账单</div></Card>
+        <Card><Statistic title="已收到会话" value={data.totals.sessions} formatter={() => integer(data.totals.sessions)} /><div className="metric-note">调用 {integer(data.totals.invocations)} · 执行设备归因未知</div></Card>
+      </div>
       <CoverageNotice coverage={data.coverage} zone={filter.time_zone} />
+      <Card className="section-card overview-activity" title="Token 活动" extra={<span className="metric-note">过去 365 天</span>}>
+        {data.heatmap.length ? <ActivityHeatmap days={data.heatmap} /> : <EmptyState description="年度活动暂时不可用" />}
+        <div className="activity-scope"><span>{dayjs(data.heatmap_range.start_at_ms).tz(filter.time_zone).format('YYYY-MM-DD')} 至 {dayjs(data.heatmap_range.end_at_ms).tz(filter.time_zone).subtract(1, 'day').format('YYYY-MM-DD')}</span><span>{filter.time_zone}</span><span>{filter.provider ? providerNames[filter.provider] : '全部客户端'}</span></div>
+        <Collapse ghost size="small" className="annual-statistics" items={[{key:'annual',label:'年度活动统计',extra:<span className="metric-note">{data.heatmap_coverage.state==='unknown'?'年度用量未知':'年度覆盖未确认'} · {data.heatmap_coverage.stale?'采集陈旧':'近期采集'}</span>,children:<>
+        <div className="activity-metrics">{[
+          ['近 365 天已收到 Token', data.heatmap_activity.total_tokens],
+          ['已观测峰值日 Token', data.heatmap_activity.peak_daily_tokens],
+          ['已观测活跃天数', data.heatmap_activity.active_days],
+          ['当前连续天数', data.heatmap_activity.current_streak_days],
+          ['已观测最长连续天数', data.heatmap_activity.longest_streak_days],
+        ].map(([title, value], index) => <div key={title!}><strong>{index<2?tokens(value):integer(value)}</strong><span>{title}</span></div>)}</div>
+        <div className="metric-note">年度范围独立于上方统计日期；未知日期不补零，活跃天数与最长连续天数仅计已观测事实。</div>
+        <CoverageNotice coverage={data.heatmap_coverage} zone={filter.time_zone} />
+        </>}]} />
+      </Card>
       <Suspense fallback={<LoadingState label="正在加载图表…" />}>
-        <div className="dashboard-main"><Card title="用量趋势" extra={<Segmented aria-label="趋势图形式" options={[{label:'柱状',value:'bar'},{label:'折线',value:'line'}]} value={trendType} onChange={v=>setTrendType(v as 'bar'|'line')} />}>
-          <Chart option={trend} label="按自然日的用量趋势" />
-          {metric==='cost'&&data.trend_cost_rounding_delta_micro_usd!=='0'&&<Typography.Text type="secondary">趋势与范围的舍入差额：{dollars(data.trend_cost_rounding_delta_micro_usd)}</Typography.Text>}
+        <Card className="section-card overview-trend" title="用量趋势" extra={<div className="overview-chart-controls">
+          <Segmented aria-label="图表指标" size="small" options={metricOptions} value={metric} onChange={value => setMetric(value as Metric)} />
+          <Segmented aria-label="趋势图形式" size="small" options={[{ label: '柱状', value: 'bar' }, { label: '折线', value: 'line' }]} value={trendType} onChange={value => setTrendType(value as 'bar' | 'line')} />
+        </div>}>
+          <Chart option={trend} label="按自然日的用量趋势" height={248} />
+          {metric === 'cost' && data.trend_cost_rounding_delta_micro_usd !== '0' && <Typography.Text type="secondary">趋势与范围的舍入差额：{data.trend_cost_rounding_delta_micro_usd!==null&&BigInt(data.trend_cost_rounding_delta_micro_usd)>-10_000n&&BigInt(data.trend_cost_rounding_delta_micro_usd)<10_000n?'不足 $0.01':dollars(data.trend_cost_rounding_delta_micro_usd)}</Typography.Text>}
         </Card>
-        <Card title="用量构成"><Tabs items={[
-          {key:'providers',label:'Provider',children:<Composition rows={data.providers} title="Provider 构成" metric={metric} />},
-          {key:'models',label:'模型',children:<Composition rows={data.models} title="模型构成" metric={metric} />},
-          {key:'tools',label:'工具与技能',children:<><Typography.Paragraph type="secondary">仅展示名称与次数，无调用参数或结果正文。</Typography.Paragraph><Table size="small" rowKey="key" dataSource={[...data.tools.map(r=>({...r,key:`tool:${r.key}`,kind:'工具'})),...data.skills.map(r=>({...r,key:`skill:${r.key}`,kind:'技能'}))]} pagination={{pageSize:10,showSizeChanger:false}} columns={[{title:'类型',dataIndex:'kind'},{title:'名称',dataIndex:'name'},{title:'调用次数',align:'right',render:(_,r)=>integer(r.totals.invocations)}]} /></>},
-        ]} /></Card></div>
-        <Card className="section-card" title="过去一年 · 活动热力图" extra={<Tag>365 个自然日</Tag>}>
-          <div className="heatmap-scroll"><div className="heatmap-inner"><Chart option={heatmap} label="过去一年已收到的每日 Token 热力图" height={200} /></div></div>
-          <Typography.Paragraph type="secondary">{dayjs(data.heatmap_range.start_at_ms).tz(filter.time_zone).format('YYYY-MM-DD')} 至 {dayjs(data.heatmap_range.end_at_ms).tz(filter.time_zone).subtract(1,'day').format('YYYY-MM-DD')} · 灰色表示未知，浅蓝包含已观测的零；年度范围独立于上方日期筛选。</Typography.Paragraph>
-          <CoverageNotice coverage={data.heatmap_coverage} zone={filter.time_zone} />
-        </Card>
-
+        <div className="overview-breakdowns">
+          <Card title="客户端与模型用量"><Tabs items={[
+            { key: 'providers', label: '客户端', children: <SliceTable rows={data.providers} /> },
+            { key: 'models', label: '模型', children: <SliceTable rows={data.models} /> },
+          ]} /></Card>
+          <Distribution rows={data.providers} title="客户端分布" />
+          <Distribution rows={data.models} title="模型分布" />
+          <Card title="工具与技能"><Typography.Paragraph type="secondary">已收到的调用次数</Typography.Paragraph><Table size="small" rowKey="key" dataSource={[...data.tools.map(row => ({ ...row, key: `tool:${row.key}`, kind: '工具' })), ...data.skills.map(row => ({ ...row, key: `skill:${row.key}`, kind: '技能' }))]} pagination={{ pageSize: 8, showSizeChanger: false }} scroll={{ x: 340 }} columns={[{ title: '类型', dataIndex: 'kind' }, { title: '名称', dataIndex: 'name' }, { title: '调用次数', align: 'right', render: (_, row) => integer(row.totals.invocations) }]} /></Card>
+        </div>
       </Suspense>
-
     </>}
   </section>;
 }

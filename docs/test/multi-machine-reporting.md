@@ -132,3 +132,15 @@ Pass：按 AntD 6.6.5 CLI info/demo 与官网 Layout/Table/Tabs 示例重构侧�
 自查修正：TPS 请求变化导致标签重置、窄列单位拥挤、主导航滚动位置保留、构成前 12 项提示。运行中在 Vite build 替换 assets 后旧目录句柄仍绑定旧 inode，重启隔离预览 Server 恢复；部署文档明确使用新版本目录与重启，不在运行目录原地构建。最后的前 12 项提示为收尾自查恢复，收尾按约定不重复运行测试或 lint。
 
 安全自查：沿用管理员 Cookie/内存 CSRF、后端授权和统计白名单；React 文本转义、ECharts 文本 tooltip、有限原因、NULL/零和 stale/partial 保留。没有本地存储凭证、新增匿名接口、正文或秘密上报。真实 MySQL、三机正式上报、生产 HTTPS/CI/部署/签名/发布 Not Run，Master 仍待相应环境验收。
+
+## 汇总、掘金热力图与 Mac 单位对齐（TOO-510，2026-10-02）
+
+Pass：布局对照 Mac DashboardSummaryView，热力图对照掘金实际 Dashboard 与官方组件。年度格子采用整数像素、3px 间距、日到六标签、同列月标、实心蓝色正值阶梯和底部图例；未知为实心浅灰，真零最浅蓝，不按参考实现补零或裁掉历史。客户端/模型独立环图含全部已知正值，全部明细保留 NULL、零和有符号差额；年度指标收进展开项，陈旧/覆盖提示可见。
+
+Go 聚焦通过 TestStatisticsActivityObservedFacts、TestStatisticsActivityUnknownAndZero、TestStatisticsGlobalDedupAndActualCollectorScope：任意精度年度峰值/总量、未知与真实零、今天为零截至昨天、未知日期不声明精确当前连续天数、三份副本去重及独立年度范围。新增只读 heatmap_activity，无 DDL、上传字段或本机 runtime 变更。
+
+Web 6 个受影响测试文件共 17 场景通过；点选触发修复后再次聚焦运行 ActivityHeatmap 的 3 场景通过。覆盖 Sunday/跨月/DST 对齐、50/75/90 视觉分位的大整数、未知/零、键盘移动与单次点选提示、服务端独立年度指标、失败保留数据、列表/详情/关联、缓存/TPS，以及中文 Mac 万/亿单位、一位小数、单位晋升、half-even 与微美元两位显示舍入。typecheck、AntD lint、Go/生产 Web 构建通过；Foundation 格式器小样本读回 1.25→1.2、1.35→1.4、5792.5841→5792.6。未运行原生 App 或读取真实 Home。
+
+真实环回 HTTP + 原隔离 SQLite 合成事实：底层总量仍为 57,925,841 Token / 18 会话，页面为 5792.6万 / $24.01；趋势轴万/亿、环图和明细采用同一显示格式。390px documentWidth=390，格子14px、星期固定左侧、横向可访问全年；单次点选提示 2026-09-12 / 509.6万。1280px 为14px正方格，365个日期齐全。视口已恢复。最终截图仅在忽略目录 .artifacts/multi-machine/web/aligned-overview-top.jpg、aligned-overview-desktop.jpg、aligned-heatmap-mobile.jpg。
+
+自查：业务事实由 Go 查询快照计算，Web 只格式化与绘制；NULL、已知小计与观测缺口保留，未知边界不冒充连续天数。复用管理员权限、白名单及 React/文本图表转义，无新匿名路由、外部请求或秘密记录。MySQL/三机/生产验收与 CI Not Run；提交推送收尾不重复测试。

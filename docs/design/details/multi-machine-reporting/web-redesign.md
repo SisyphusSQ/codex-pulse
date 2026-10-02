@@ -24,6 +24,16 @@ Implementation Scope：server/web/src 公共壳/主题/样式、全部 pages、f
 
 ## 已落实
 
-所有业务页面及登录均已结构重构，未增加框架或升级依赖。总览的趋势/构成并列、构成明细与数据质量展开；项目与会话使用嵌套抽屉和标签；额度使用账号窗口列表、所选状态/实际 reset、历史节奏与来源证据标签，Credits 独立；设备签发码抽屉和授权/上报状态标签保持完整权限确认。
+所有业务页面及登录均已结构重构，未增加框架或升级依赖。总览按下述 Mac 汇总布局组织年度活动、趋势及独立构成，明细与数据质量可展开；项目与会话使用嵌套抽屉和标签；额度使用账号窗口列表、所选状态/实际 reset、历史节奏与来源证据标签，Credits 独立；设备签发码抽屉和授权/上报状态标签保持完整权限确认。
 
 Desktop 采用左侧 Menu，390px 使用导航 Drawer；路由变化回到顶部，TPS 轮次数量更新保留当前标签，窄列用单位标签避免数值重叠。重构只改变呈现与交互，不改变统计、账号、权限或配额算法。验证证据见多机 runbook；MySQL 与三机真实验收留 Master。
+
+## 汇总与热力图对齐（2026-10-02）
+
+汇总布局参考本项目 `app/macos/Sources/CodexPulseApp/DashboardSummaryView.swift`：三个范围指标、年度 Token 活动、全宽趋势、客户端与模型用量、分别独立的客户端/模型环图。额度入口保留，中心不把多账号窗口压成单一客户端百分比。
+
+用户随后要求热力图直接对齐掘金。已读取实际 Dashboard 与官方 [ActivityHeatmap](https://github.com/juejin-cn/juejin-usage/blob/00f1f2f99159e81d896c596590c760d8a29171d2/packages/dashboard/src/components/ActivityHeatmap.tsx)、activity-heatmap.ts 和 index.css：整数像素方格（最小 14px）、3px 间距、3px 圆角、Sunday 起始的七行标签、同列月标、50/75/90 正值分位与实心蓝色色阶，图例在底部。中心继续展示完整 365 日，窄屏横向查看而不删除旧周，星期固定；未观测日为实心浅灰，真实零为最浅蓝。仅借鉴几何与配色，不复制掘金的缺失补零、来源比例推算或过滤业务。年度指标收进展开项，年度覆盖/陈旧提示保持可见。
+
+Go 在现有一致只读统计快照内返回 heatmap_activity，不新增数据库表。年度总量、峰值与活跃/连续天数由 Server 计算；unknown 不充作 zero，当前连续段边界未知则保持 NULL，已观测活跃/最长连续天数是现有事实概括，不声明完整历史。页面只计算日历位置与视觉分位色阶。
+
+Token 展示与中文 Mac 的 TokenQuantityFormatter.compactString 对齐：万/亿、最多一位小数、单位进位、NumberFormatter 的 half-even 显示舍入；API 等价成本保留两位小数。适用于总览、列表、详情、缓存/TPS 输出计数、环图图例/提示与坐标轴。会话/天数/轮次保持普通计数；API 和数据库继续保存完整十进制值，前端不以展示舍入值重算统计。

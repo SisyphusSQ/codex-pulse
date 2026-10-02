@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { init, use, type EChartsCoreOption } from 'echarts/core';
-import { BarChart, LineChart, HeatmapChart } from 'echarts/charts';
+import { BarChart, LineChart, HeatmapChart, PieChart } from 'echarts/charts';
 import { GridComponent, TooltipComponent, CalendarComponent, VisualMapComponent, LegendComponent } from 'echarts/components';
 import { SVGRenderer } from 'echarts/renderers';
 
-use([BarChart,LineChart,HeatmapChart,GridComponent,TooltipComponent,CalendarComponent,VisualMapComponent,LegendComponent,SVGRenderer]);
+use([BarChart,LineChart,HeatmapChart,PieChart,GridComponent,TooltipComponent,CalendarComponent,VisualMapComponent,LegendComponent,SVGRenderer]);
 
 export default function Chart({ option, label, height=280 }: { option: EChartsCoreOption; label: string; height?: number }) {
   const element=useRef<HTMLDivElement>(null);
