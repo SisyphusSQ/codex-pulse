@@ -46,3 +46,25 @@ func cacheHitRateView(chosen reportingv1.SessionSnapshot, owner, provider string
 	}
 	return v
 }
+
+// rangeCacheHitRate 仅用全部已接受日桶的已知输入计数，不拿已知小计补缺失分母。
+func rangeCacheHitRate(group *statisticsAggregate, provider string) *statistics_vo.CacheHitRateView {
+	v := &statistics_vo.CacheHitRateView{Unit: "basis_points", Basis: "range_cached_input", Status: "unavailable", Reason: "unavailable", InputTokens: group.input.text(false), CachedInputTokens: group.cached.text(false)}
+	if provider != "codex" {
+		v.Reason = "unsupported_provider"
+		if provider == "" {
+			v.Reason = "mixed_providers"
+		}
+		return v
+	}
+	input, cached := group.input.exact(), group.cached.exact()
+	v.BasisPoints = throughputDecimal(cachehitrate.BasisPointsBig(input, cached))
+	if v.BasisPoints == nil {
+		if input != nil && cached != nil && input.Sign() == 0 && cached.Sign() == 0 {
+			v.Reason = "not_applicable"
+		}
+		return v
+	}
+	v.Status, v.Reason = "complete", ""
+	return v
+}

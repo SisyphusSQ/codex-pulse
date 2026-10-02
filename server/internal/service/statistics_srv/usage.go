@@ -25,11 +25,16 @@ func (s *Statistics) Usage(ctx context.Context, p access_dto.Principal, q statis
 		known := len(read.providerSeen) > 0
 		totals, _ := read.total.finish(known)
 		out = statistics_vo.UsageResponse{Range: statisticsRange(q), Scope: read.scope(), Totals: totals, Coverage: read.coverage(s.now()), Models: []statistics_vo.UsageModel{}, ModelDays: []statistics_vo.UsageModelDay{}, Trend: read.trend(), Providers: statisticsSlices(read.providers, known), CursorPools: statisticsSlices(read.cursorPools, known)}
+		cacheProvider := q.Provider
+		if cacheProvider == "" && len(read.providerSeen) == 1 && read.providerSeen["codex"] {
+			cacheProvider = "codex"
+		}
+		out.CacheHitRate = rangeCacheHitRate(read.total, cacheProvider)
 		sum := new(big.Int)
 		for key, group := range read.modelTotals {
 			parts := strings.Split(key, "\x00")
 			t, _ := group.finish(false)
-			out.Models = append(out.Models, statistics_vo.UsageModel{Provider: parts[0], Model: parts[1], Totals: t})
+			out.Models = append(out.Models, statistics_vo.UsageModel{Provider: parts[0], Model: parts[1], Totals: t, CacheHitRate: rangeCacheHitRate(group, parts[0])})
 			if t.CostMicroUSD != nil {
 				v, _ := new(big.Int).SetString(*t.CostMicroUSD, 10)
 				sum.Add(sum, v)

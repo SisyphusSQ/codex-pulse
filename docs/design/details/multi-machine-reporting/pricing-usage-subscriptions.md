@@ -31,3 +31,9 @@
 - 用量真实 API、模型日趋势与成本分类、未知与已知小计、价目跳转可操作；账号节奏主信息在明细之前，桌面和 390px 窄屏可用。
 - 聚焦 Go/HTTP/Web 行为验证、类型检查、AntD lint、构建；本地 loopback 独立 SQLite 浏览器读回。原始证据位于忽略的 `.artifacts/multi-machine/catalog-usage/`。
 - 同步 Server API、SQL、Web README、设计索引和 runbook。正式 MySQL/三机/生产验收由 TOO-477 等既有 Master 承接，本执行不将它们报为通过。
+
+## 已批准设计中的模型缓存指标（2026-10-03）
+
+正式模型分析增加统计范围和各模型的 `cache_hit_rate`，由 `statistics/usage` 返回 `basis=range_cached_input`，与会话的 `lifetime_cached_input` 明确区分。Codex 的全部已接受日桶都具有已知输入/缓存计数时，使用相同的缓存输入÷全部输入、basis points四舍五入口径；任一计数缺失、缓存大于输入或输入为零时不拿已知小计生成比率。跨会话累计使用大整数，不受int64或浏览器整数精度限制。当前其他平台及混合平台保持未知原因，不套用Codex的输入语义。
+
+这只是只读查询的附加字段，不改变上报、表结构、历史成本、原生会话缓存指标或认证权限。旧中心缺少字段时Web保持未知，不在浏览器计算比率。

@@ -7,6 +7,7 @@ import type {UsageModel} from '../api/usage';
 import type {Totals} from '../api/statistics';
 import {tokens,dollars,integer,providerNames} from '../format';
 import {initialFilter,StatsFilters} from '../components/StatsFilters';
+import {CacheHitRateCell} from '../components/CacheHitRate';
 import {CoverageNotice} from '../components/CoverageNotice';
 import {EmptyState,ErrorState,LoadingState} from '../components/QueryState';
 import {usageChartOption} from '../components/ModelTrend';
@@ -25,7 +26,7 @@ export default function Usage(){
  const selection=chosen?.filter(v=>available.some(r=>key(r)===v))??available.slice(0,12).map(key);
  const option=useMemo(()=>data?usageChartOption(data,metric,selection):{},[data,metric,selection.join('\x00')]);
  return <section className="usage-page">
- <StatsFilters value={filter} onChange={v=>{setFilter({...v,model:v.model??''});setChosen(null);}} refresh={()=>void query.refetch()} busy={query.isFetching} extra={<div className="filter-control"><label>模型</label><Select aria-label="用量模型" value={filter.model} showSearch={{optionFilterProp:'label'}} onChange={model=>{setFilter({...filter,model});setChosen(null);}} options={[{value:'',label:'全部模型'},...[...new Set(available.map(r=>r.model))].map(value=>({value,label:value==='unknown'?'模型未归因':value}))]} /></div>} />
+ <StatsFilters value={filter} onChange={v=>{setFilter({...v,model:v.model??''});setChosen(null);}} refresh={()=>void query.refetch()} busy={query.isFetching} extra={<Select className="model-filter" aria-label="用量模型" value={filter.model} showSearch={{optionFilterProp:'label'}} onChange={model=>{setFilter({...filter,model});setChosen(null);}} options={[{value:'',label:'全部模型'},...[...new Set(available.map(r=>r.model))].map(value=>({value,label:value==='unknown'?'模型未归因':value}))]} />} />
  {query.isPending?<LoadingState />:query.error&&!data?<ErrorState error={query.error} retry={()=>void query.refetch()} />:data&&<>
  {query.error&&<Alert showIcon type="warning" title="更新失败，保留上次用量与原时间" description={query.error.message} className="form-alert" />}
  <Card className="summary-band"><div className="metric-grid usage-kpis"><div><Statistic title="Token 总量" value={data.totals.total_tokens??'未知'} formatter={()=>tokens(data.totals.total_tokens)} /><div className="metric-note">输入 {tokens(data.totals.input_tokens)} · 输出 {tokens(data.totals.output_tokens)}</div></div>
@@ -39,11 +40,11 @@ export default function Usage(){
  {available.length&&selection.length?<Suspense fallback={<LoadingState label="正在加载模型趋势…" />}><Chart option={option} height={300} label="按模型的真实用量折线" /></Suspense>:<EmptyState description="当前筛选范围暂无模型用量。" />}
  <div className="metric-note">最多12个模型 · 实际日桶 · 未知日期留空</div>
  </Card>
- <Card size="small" className="section-card"><Descriptions size="small" column={{xs:1,md:3}} items={totalDetails(data.totals).slice(0,5)} /></Card>
+ <Card size="small" className="section-card"><Descriptions size="small" column={{xs:1,md:3}} items={[...totalDetails(data.totals).slice(0,5),{key:'cache-rate',label:'范围缓存命中率',children:<CacheHitRateCell value={data.cache_hit_rate} />}]} /></Card>
  {data.cursor_pools.length>0&&<Card title="Cursor 用量池" className="section-card"><Table size="small" rowKey="key" pagination={false} dataSource={data.cursor_pools} columns={[{title:'用量池',render:(_,r)=>r.key==='cursor.models'?'Cursor Models':r.key==='cursor.other_models'?'Other Models':'未归类'},{title:'Token',render:(_,r)=>tokens(r.totals.total_tokens)},{title:'Dashboard 上报费用',render:(_,r)=>dollars(r.totals.reported_charge_micro_usd)},{title:'文档价目估算',render:(_,r)=>dollars(r.totals.cost_micro_usd)}]} /><Typography.Text type="secondary">上报费用已经包含适用的Cursor Token Rate，不再次相加；缺少归类证据保留未归类。</Typography.Text></Card>}
  <Card title="模型用量与成本" className="section-card"><Table<UsageModel> rowKey={key} size="small" dataSource={available} pagination={{pageSize:15,showSizeChanger:true}} scroll={{x:1080}} expandable={{expandedRowRender:r=><><Descriptions size="small" column={{xs:1,md:2}} items={totalDetails(r.totals)} /><div className="catalog-toolbar">{r.totals.pricing_versions.map(v=><Link key={v} to={`/pricing?provider=${r.provider}&model=${encodeURIComponent(r.model)}&version=${encodeURIComponent(v)}`}>查看 {v}</Link>)}</div></>}} columns={[
  {title:'模型',width:230,render:(_,r)=><><Typography.Text strong>{r.model==='unknown'?'模型未归因':r.model}</Typography.Text><div className="metric-note">{providerNames[r.provider]??r.provider}</div></>},
- {title:'输入',align:'right',render:(_,r)=>tokens(r.totals.input_tokens)},{title:'缓存读取',align:'right',render:(_,r)=>tokens(r.totals.cached_tokens)},
+ {title:'输入',align:'right',render:(_,r)=>tokens(r.totals.input_tokens)},{title:'缓存读取',align:'right',render:(_,r)=>tokens(r.totals.cached_tokens)},{title:'缓存命中率',align:'right',render:(_,r)=><CacheHitRateCell value={r.cache_hit_rate} />},
  {title:'输出',align:'right',render:(_,r)=>tokens(r.totals.output_tokens)},{title:'总 Token',align:'right',render:(_,r)=>tokens(r.totals.total_tokens)},
  {title:'估算成本',align:'right',render:(_,r)=><>{dollars(r.totals.cost_micro_usd)}{r.totals.cost_status==='partial'&&<div className="metric-note">已知小计</div>}</>},
  {title:'上报费用',align:'right',render:(_,r)=>dollars(r.totals.reported_charge_micro_usd)},

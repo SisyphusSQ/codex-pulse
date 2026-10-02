@@ -1,9 +1,10 @@
 package statistics_vo
 
 type UsageModel struct {
-	Provider string           `json:"provider"`
-	Model    string           `json:"model"`
-	Totals   StatisticsTotals `json:"totals"`
+	CacheHitRate *CacheHitRateView `json:"cache_hit_rate"`
+	Provider     string            `json:"provider"`
+	Model        string            `json:"model"`
+	Totals       StatisticsTotals  `json:"totals"`
 }
 type UsageModelDay struct {
 	Provider string           `json:"provider"`
@@ -12,6 +13,7 @@ type UsageModelDay struct {
 	Totals   StatisticsTotals `json:"totals"`
 }
 type UsageResponse struct {
+	CacheHitRate                   *CacheHitRateView  `json:"cache_hit_rate"`
 	Range                          StatisticsRange    `json:"range"`
 	Scope                          string             `json:"scope"`
 	Totals                         StatisticsTotals   `json:"totals"`

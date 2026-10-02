@@ -2,7 +2,7 @@ import { Descriptions, Tag, Tooltip, Typography } from 'antd';
 import type { CacheHitRateStats } from '../api/records';
 import { tokens } from '../format';
 
-const reasons:Record<string,string>={not_reported:'客户端尚未上报',unsupported_provider:'此 Provider 暂不支持',not_applicable:'没有输入 Token',unavailable:'输入计数不可用',rollup_missing:'尚未建立会话统计',rollup_ambiguous:'会话统计不明确',history_filtered:'上报历史范围未包含整个会话',source_conflict:'来源存在冲突'};
+const reasons:Record<string,string>={mixed_providers:'跨平台缓存口径不同，请选择Codex查看',not_reported:'客户端尚未上报',unsupported_provider:'此 Provider 暂不支持',not_applicable:'没有输入 Token',unavailable:'输入计数不可用',rollup_missing:'尚未建立会话统计',rollup_ambiguous:'会话统计不明确',history_filtered:'上报历史范围未包含整个会话',source_conflict:'来源存在冲突'};
 export function cacheHitRate(value?:CacheHitRateStats|null){
  if(value?.unit!=='basis_points'||value.basis_points===null||value.basis_points===undefined||!/^\d+$/.test(value.basis_points))return '—';
  const basis=BigInt(value.basis_points);if(basis>10_000n)return '—';
@@ -10,7 +10,7 @@ export function cacheHitRate(value?:CacheHitRateStats|null){
 }
 export function CacheHitRateCell({value}:{value?:CacheHitRateStats|null}){
  const label=cacheHitRate(value),reason=reasons[value?.reason??'']??'客户端尚未上报';
- return <Tooltip title={label==='—'?reason:`生命周期缓存输入 / 全部输入${value?.status==='partial'?' · 部分索引或来源证据':''}`}><span className="numeric" aria-label={`缓存命中率 ${label}${label==='—'?`，${reason}`:''}`}>{label}</span></Tooltip>;
+ return <Tooltip title={label==='—'?reason:`${value?.basis==='range_cached_input'?'统计范围内已收到的缓存输入':'生命周期缓存输入'} / 全部输入${value?.status==='partial'?' · 部分索引或来源证据':''}`}><span className="numeric" aria-label={`缓存命中率 ${label}${label==='—'?`，${reason}`:''}`}>{label}</span></Tooltip>;
 }
 export function CacheHitRateDetail({value}:{value?:CacheHitRateStats|null}){return <div className="cache-hit-detail">
  <Descriptions size="small" layout="vertical" column={{xs:1,sm:3}} items={[
