@@ -64,6 +64,7 @@ body { margin: 0; min-width: 320px; }
 .overview-support .ant-tabs-tab { padding: 0 0 8px; }
 .overview-support .ant-card-body { padding-top: 8px; padding-bottom: 8px; }
 .overview-trend .ant-card-body { padding: 12px 18px; }
+.overview-activity { margin-bottom: 16px; }
 .overview-activity .ant-card-head { min-height: 40px; }
 .overview-activity .ant-card-body { padding: 6px 18px 10px; }
 .overview-analysis { margin-top: 8px; }
@@ -93,7 +94,7 @@ body { margin: 0; min-width: 320px; }
 .activity-legend .activity-cell { display: inline-block; width: 12px; height: 12px; border-radius: 2px; flex: none; }
 .legend-gap { width: 8px; }
 .activity-calendar-scroll { overflow-x: auto; padding: 3px; margin: -3px; }
-.activity-calendar { display: grid; grid-template-columns: 18px repeat(var(--activity-weeks), var(--activity-cell-size)); grid-template-rows: 18px repeat(7,var(--activity-cell-size)); gap: 3px; width: max-content; }
+.activity-calendar { display: grid; grid-template-columns: 18px repeat(var(--activity-weeks), minmax(14px, 1fr)); grid-template-rows: 18px repeat(7, auto); gap: 3px; width: 100%; min-width: calc(18px + var(--activity-weeks) * 17px); }
 .activity-month,.activity-weekday { font-size: 10px; color: var(--ant-color-text-secondary); }
 .activity-month { white-space: nowrap; align-self: start; overflow: visible; }
 .activity-weekday { align-self: center; text-align: left; line-height: 1; position: sticky; left: 0; z-index: 1; background: var(--ant-color-bg-container); box-shadow: 4px 0 var(--ant-color-bg-container); }

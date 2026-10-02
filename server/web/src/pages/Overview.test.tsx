@@ -52,7 +52,7 @@ describe('overview facts',()=>{
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
     await screen.findByText('数据未能读取');expect(screen.queryByText('Token 总量')).not.toBeInTheDocument();
   });
-  it('places current trend before compact annual activity and uses independent Server annual metrics',async()=>{
+  it('places annual activity above summary and trend while keeping independent Server annual metrics',async()=>{
     const fixture=summaryFixture();
     fixture.heatmap_activity={total_tokens:'999999999999999999',peak_daily_tokens:'100000',active_days:'15',current_streak_days:null,longest_streak_days:'4',observed_days:22,unknown_days:343};
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):success(fixture));
@@ -64,6 +64,8 @@ describe('overview facts',()=>{
     await screen.findByRole('img',{name:'按自然日的用量趋势'});
     const activity=screen.getByText('全年活动').closest('.ant-card')!;
     const trend=screen.getByText('每日用量趋势').closest('.ant-card')!;
-    expect(trend.compareDocumentPosition(activity)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const summary=screen.getByText('Token 总量').closest('.summary-band')!;
+    expect(activity.compareDocumentPosition(summary)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(activity.compareDocumentPosition(trend)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

@@ -33,13 +33,12 @@ export function ActivityHeatmap({ days }: { days: Day[] }) {
   const calendar = useMemo(() => activityCalendar(days), [days]);
   const [selected, setSelected] = useState<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null);
-  const cellSize = 14;
   const buttons = useRef(new Map<string, HTMLButtonElement>());
   const lastDate = days.at(-1)?.date;
   useEffect(() => {
     const element = scroll.current;
     if (element) element.scrollLeft = element.scrollWidth - element.clientWidth;
-  }, [lastDate, cellSize]);
+  }, [lastDate]);
   const focused = selected && buttons.current.has(selected) ? selected : lastDate;
   function move(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const offsets: Record<string,number> = { ArrowLeft: -7, ArrowRight: 7, ArrowUp: -1, ArrowDown: 1, Home: -index, End: days.length - 1 - index };
@@ -50,8 +49,8 @@ export function ActivityHeatmap({ days }: { days: Day[] }) {
   }
   return <div className="activity-heatmap">
     <div className="activity-calendar-scroll" ref={scroll}>
-      <div className="activity-calendar" role="group" aria-label="过去一年已收到的每日 Token 热力图，方向键选择日期" style={{ '--activity-weeks': calendar.weeks, '--activity-cell-size': `${cellSize}px` } as CSSProperties}>
-        {calendar.months.map(month => <span className="activity-month" key={month.key} style={{gridColumn:month.column,gridRow:1}}>{month.title}</span>)}
+      <div className="activity-calendar" role="group" aria-label="过去一年已收到的每日 Token 热力图，方向键选择日期" style={{ '--activity-weeks': calendar.weeks } as CSSProperties}>
+        {calendar.months.map(month => <span className="activity-month" key={month.key} style={{gridColumn:month.column,gridRow:1,justifySelf:month.column===calendar.weeks+1?'end':undefined}}>{month.title}</span>)}
         {['日','一','二','三','四','五','六'].map((label,row) => <span className="activity-weekday" key={row} style={{gridColumn:1,gridRow:row+2}}>{label}</span>)}
         {calendar.cells.map(({day,column,row,intensity},index) => {
           const detail = `${day.date} · 已收到 Token：${tokens(day.totals.total_tokens)}`;

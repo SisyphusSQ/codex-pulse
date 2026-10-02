@@ -1,3 +1,23 @@
+# TOO-516 热力图置顶与自适应补充（2026-10-02）
+
+最新用户要求为本轮视觉依据：热力图在筛选下方、指标和趋势上方；拉宽时正方格同步增大并铺满内容区。该要求覆盖下方方案1历史记录的底部位置与固定14px上限；旧原图不再作为这两项的验收依据。
+
+- 实现：等宽 Grid 列随容器增长，最小14px、3px间距、七行与完整365日期保持；末列月份右对齐，避免标签产生额外横向溢出。
+- 1280×914 Chrome：方格14.828×14.828px，日历963px，滚动容器 clientWidth/scrollWidth 均969px，无额外横向滚动。热力图、摘要、趋势依次可见。
+- 默认1971×914 Chrome：方格24.469×24.469px，日历1474px，容器 clientWidth/scrollWidth 均1480px。活动/摘要/趋势顶部约122/431/562px；完整365格，横向填满。
+- 390×844 Chrome：方格14×14px，365格保留，容器315px、内容925px；仅日历局部滚动，documentWidth375px（15px滚动条），无页面横向溢出。End键访问最新日期2026-10-02，星期固定左侧；方向键和未知/零语义有原聚焦行为证据。
+- 年度范围仍独立于上方统计日期，年度指标来自Server；摘要5792.6万/$24.01/18保持。捕获console error为空。
+
+截图在ignored `.artifacts/multi-machine/heatmap-top-20261002/`：`overview-wide-final.png`、`overview-1280-final.png`、`overview-mobile-final.png`、`heatmap-mobile-end.png`。默认视口已恢复，预览托管最终构建并复用原合成SQLite和浏览器授权。
+
+开发检查：Overview/ActivityHeatmap两个文件9场景通过；末月边缘修正后ActivityHeatmap的4场景再次通过；最终类型/生产构建与AntD lint通过（0问题）。仅Web几何与显示顺序调整，未改认证/DTO/Go/数据库/本机采集；安全自查确认React文本转义和既有权限边界保持。没有新增待修P0/P1/P2；真实MySQL/三机/生产仍待Master，提交推送收尾不重复测试。
+
+final result: passed
+
+---
+
+以下为27b2f4e阶段的历史视觉记录；底部位置和固定14px选择已由上方用户修正覆盖。
+
 # TOO-516 方案 1 视觉验收（本机合成预览）
 
 - source visual truth path: `.artifacts/multi-machine/design-review-20261002/candidate-1.png`

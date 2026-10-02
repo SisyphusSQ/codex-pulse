@@ -88,6 +88,20 @@ export default function Overview() {
     <StatsFilters value={filter} onChange={setFilter} refresh={() => void query.refetch()} busy={query.isFetching} />
     {query.isPending ? <LoadingState /> : query.error && !data ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : data && <>
       {query.error && <Alert type="warning" showIcon title="刷新失败，以下保留上次读取的数据" description={query.error.message} className="form-alert" />}
+      <Card className="overview-activity" title="全年活动" extra={<div className="annual-actions"><span className="metric-note">{data.heatmap_coverage.state==='unknown'?'年度用量未知':'年度覆盖未确认'} · {data.heatmap_coverage.stale?'采集陈旧':'近期采集'}</span><Popover trigger="click" placement="bottomRight" content={<div className="evidence-popover">
+        <div className="activity-metrics">{[
+          ['近 365 天已收到 Token', data.heatmap_activity.total_tokens],
+          ['已观测峰值日 Token', data.heatmap_activity.peak_daily_tokens],
+          ['已观测活跃天数', data.heatmap_activity.active_days],
+          ['当前连续天数', data.heatmap_activity.current_streak_days],
+          ['已观测最长连续天数', data.heatmap_activity.longest_streak_days],
+        ].map(([title, value], index) => <div key={title!}><strong>{index<2?tokens(value):integer(value)}</strong><span>{title}</span></div>)}</div>
+        <div className="metric-note">年度范围独立于上方统计日期；未知日期不补零，活跃天数与最长连续天数仅计已观测事实。</div>
+        <CoverageNotice coverage={data.heatmap_coverage} zone={filter.time_zone} />
+        </div>}><Button type="text" size="small">年度活动统计</Button></Popover></div>}>
+        {data.heatmap.length ? <ActivityHeatmap days={data.heatmap} /> : <EmptyState description="年度活动暂时不可用" />}
+        <div className="activity-scope"><span>{dayjs(data.heatmap_range.start_at_ms).tz(filter.time_zone).format('YYYY-MM-DD')} 至 {dayjs(data.heatmap_range.end_at_ms).tz(filter.time_zone).subtract(1, 'day').format('YYYY-MM-DD')}</span><span>{filter.time_zone}</span><span>{filter.provider ? providerNames[filter.provider] : '全部客户端'}</span></div>
+      </Card>
       <Card className="summary-band"><div className="metric-grid overview-kpis">
         <div><Statistic title="Token 总量" value={data.totals.total_tokens ?? '未知'} formatter={() => tokens(data.totals.total_tokens)} /><div className="metric-note">输入 {tokens(data.totals.input_tokens)} · 输出 {tokens(data.totals.output_tokens)}</div></div>
         <div><Statistic title="API 等价成本" value={data.totals.cost_micro_usd ?? '未知'} formatter={() => dollars(data.totals.cost_micro_usd)} /><div className="metric-note">{data.totals.cost_status === 'partial' ? '已知金额小计，含未定价记录' : '按历史价格估算'} · 不是实际账单</div></div>
@@ -112,20 +126,6 @@ export default function Overview() {
             </>}
           </Card>
         </div>
-      <Card className="section-card overview-activity" title="全年活动" extra={<div className="annual-actions"><span className="metric-note">{data.heatmap_coverage.state==='unknown'?'年度用量未知':'年度覆盖未确认'} · {data.heatmap_coverage.stale?'采集陈旧':'近期采集'}</span><Popover trigger="click" placement="bottomRight" content={<div className="evidence-popover">
-        <div className="activity-metrics">{[
-          ['近 365 天已收到 Token', data.heatmap_activity.total_tokens],
-          ['已观测峰值日 Token', data.heatmap_activity.peak_daily_tokens],
-          ['已观测活跃天数', data.heatmap_activity.active_days],
-          ['当前连续天数', data.heatmap_activity.current_streak_days],
-          ['已观测最长连续天数', data.heatmap_activity.longest_streak_days],
-        ].map(([title, value], index) => <div key={title!}><strong>{index<2?tokens(value):integer(value)}</strong><span>{title}</span></div>)}</div>
-        <div className="metric-note">年度范围独立于上方统计日期；未知日期不补零，活跃天数与最长连续天数仅计已观测事实。</div>
-        <CoverageNotice coverage={data.heatmap_coverage} zone={filter.time_zone} />
-        </div>}><Button type="text" size="small">年度活动统计</Button></Popover></div>}>
-        {data.heatmap.length ? <ActivityHeatmap days={data.heatmap} /> : <EmptyState description="年度活动暂时不可用" />}
-        <div className="activity-scope"><span>{dayjs(data.heatmap_range.start_at_ms).tz(filter.time_zone).format('YYYY-MM-DD')} 至 {dayjs(data.heatmap_range.end_at_ms).tz(filter.time_zone).subtract(1, 'day').format('YYYY-MM-DD')}</span><span>{filter.time_zone}</span><span>{filter.provider ? providerNames[filter.provider] : '全部客户端'}</span></div>
-      </Card>
         <Collapse ghost className="overview-analysis" items={[{key:'analysis',label:'构成、工具与技能',children:<div className="overview-breakdowns">
           <Distribution rows={data.providers} title="平台分布" />
           <Distribution rows={data.models} title="模型分布" />
