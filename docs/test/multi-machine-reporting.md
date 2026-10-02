@@ -143,4 +143,14 @@ Web 6 个受影响测试文件共 17 场景通过；点选触发修复后再次�
 
 真实环回 HTTP + 原隔离 SQLite 合成事实：底层总量仍为 57,925,841 Token / 18 会话，页面为 5792.6万 / $24.01；趋势轴万/亿、环图和明细采用同一显示格式。390px documentWidth=390，格子14px、星期固定左侧、横向可访问全年；单次点选提示 2026-09-12 / 509.6万。1280px 为14px正方格，365个日期齐全。视口已恢复。最终截图仅在忽略目录 .artifacts/multi-machine/web/aligned-overview-top.jpg、aligned-overview-desktop.jpg、aligned-heatmap-mobile.jpg。
 
+## 账号归属与左右分屏开发证据（TOO-510，2026-10-02）
+
+Pass：Quota/Records 两个受影响 Web 测试文件共 11 个行为场景通过。包括同邮箱的不同账号不串额度或 Credits、只有 Credits 的账号、待关联记录、真实零/未知、陈旧过期无倒计时、刷新失败保留事实、账号/来源筛选；桌面列表与详情同时可见，无详情 Drawer/Modal，分页保留详情而范围变化清空；项目内会话原位切换与返回恢复页码/页签；跨页关联、全选入口、CSRF、标题文本转义及 TPS 标签/生命周期缓存比例。最终 Web 类型检查/生产构建和 AntD lint 通过。JSDOM 的 pseudo-element getComputedStyle 提示不代表真实浏览器视觉结论，布局另行检查。
+
+实际 loopback HTTP Server 直接托管最终 Web，复用原独立 SQLite 合成库：同邮箱的两个原始账号分别显示 70%/30%、库存 3，以及 45%/55%、库存 2；陈旧库存可用数量保持未知，实际 reset 与到期分开。待关联 Cursor 观测独立列出，不归入确认账号。总筛选范围仍为 5792.6万 / $24.01 / 18 会话。
+
+1280px 项目/会话两侧同时可见、无详情抽屉；实际拖动分隔线使左侧宽度由约 340px 改为 400px。项目内会话在右侧原位显示，实际可见会话点击前项目滚动位置为 330px，返回后恢复 330px。会话分屏读回生命周期 TPS 1.84、61 轮次和来源，缓存详情读回 90.0% 与输入 1,000/缓存 900。390px 会话与项目逐级进入/返回可用，详情模式保留列表 DOM；额度、项目、会话均无页面横向溢出。临时视口覆盖已恢复。
+
+截图、测试/构建输出仅在忽略目录 `.artifacts/multi-machine/web/account-split-*`，包含 `account-split-projects.jpg`、`account-split-sessions.jpg`、`account-split-quota.jpg`、`account-split-session-mobile.jpg`。本轮仅 Web 呈现与状态调整，复用现有账号键、Server 查询与仲裁；没有 DDL、上报协议、Agent 凭据、原始内容或本机采集变更。真实 Home、三机、MySQL、生产/CI未运行，不作为本轮验收结论。提交推送收尾不重复测试。
+
 自查：业务事实由 Go 查询快照计算，Web 只格式化与绘制；NULL、已知小计与观测缺口保留，未知边界不冒充连续天数。复用管理员权限、白名单及 React/文本图表转义，无新匿名路由、外部请求或秘密记录。MySQL/三机/生产验收与 CI Not Run；提交推送收尾不重复测试。

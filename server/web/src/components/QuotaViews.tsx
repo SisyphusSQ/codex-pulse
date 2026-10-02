@@ -23,12 +23,12 @@ export function QuotaStatus({state,conflict}:{state:string;conflict:boolean}){re
 export function AccountIdentity({account,provider}:{account?:QuotaAccount;provider:string}){
  return <div className="account-identity"><Tag>{providerNames[provider]??provider}</Tag><strong>{account?.email??(account?'邮箱未提供':'账号待关联')}</strong><div className="record-id">原始账号 ID：{account?.raw_id??'尚未确认'}</div><div className="metric-note">套餐：{account?.plan??'未知'}{account?` · 资料采集：${dateTime(account.collected_at_ms)}`:''}</div></div>;
 }
-export function QuotaWindowCard({window,account,devices,onSelect}:{window:QuotaWindow;account?:QuotaAccount;devices:Device[];onSelect():void}){
+export function QuotaWindowCard({window,account,devices,onSelect,showAccount=true}:{window:QuotaWindow;account?:QuotaAccount;devices:Device[];onSelect():void;showAccount?:boolean}){
  const c=window.current;
  const {token}=theme.useToken();
  const source=devices.find(d=>d.id===c.selected_client_id)?.name??window.observations.find(o=>o.client_id===c.selected_client_id)?.client_name??'暂无可信采集来源';
  return <Card title={`${window.limit_id} · ${window.window_kind==='primary'?'主窗口':window.window_kind==='secondary'?'次窗口':window.window_kind}`} extra={<QuotaStatus state={c.freshness} conflict={c.conflict} />} className="quota-card">
- <AccountIdentity account={account} provider={window.provider} />
+ {showAccount&&<AccountIdentity account={account} provider={window.provider} />}
  <div className="quota-numbers"><div><div className="metric-label">已用</div><strong>{percent(c.used_percent)}</strong>{c.used_percent!=null&&<Progress percent={c.used_percent} showInfo={false} strokeColor={c.freshness==='fresh'&&!c.conflict?token.colorPrimary:token.colorWarning} />}</div><div><div className="metric-label">剩余</div><strong>{percent(c.remaining_percent)}</strong></div></div>
  <Typography.Paragraph type="secondary">{quotaReasons[c.reason]??'当前状态由中心确认'} · 窗口 {window.window_minutes==null?'未知':`${integer(window.window_minutes)} 分钟`}</Typography.Paragraph>
  <Descriptions size="small" column={{xs:1,sm:2}} items={[
@@ -79,9 +79,9 @@ export function QuotaEvidence({window}:{window:QuotaWindow}){
  <Table size="small" rowKey="id" dataSource={window.observations} pagination={{pageSize:10,showSizeChanger:false}} scroll={{x:1180}} columns={[{title:'采集设备',dataIndex:'client_name'},{title:'原观测时间',render:(_,r)=>dateTime(r.observed_at_ms)},{title:'中心接收',render:(_,r)=>dateTime(r.received_at_ms)},{title:'已用',render:(_,r)=>percent(r.used_percent)},{title:'实际 reset',render:(_,r)=>dateTime(r.resets_at_ms)},{title:'规范 reset',render:(_,r)=>dateTime(r.canonical_reset_at_ms)},{title:'来源',dataIndex:'source'},{title:'历史归属',render:(_,r)=>historyOrigin[r.history_origin]??'已记录历史'},{title:'仲裁',render:(_,r)=>`${disposition[r.disposition]??'未选中'}${r.reason?` · ${quotaReasons[r.reason]??'证据不满足当前规则'}`:''}`}]} />
  </Card>;
 }
-export function CreditsCard({credits,account,devices}:{credits:QuotaCredits;account?:QuotaAccount;devices:Device[]}){
+export function CreditsCard({credits,account,devices,showAccount=true}:{credits:QuotaCredits;account?:QuotaAccount;devices:Device[];showAccount?:boolean}){
  const statuses:Record<string,string>={complete:'详情完整',partial:'详情部分已知',unknown:'详情未知',unavailable:'详情未取得',failed:'详情读取失败'};
- return <Card title="Reset Credits" extra={<QuotaStatus state={credits.freshness} conflict={credits.conflict} />} className="section-card"><AccountIdentity account={account} provider={credits.provider} />
+ return <Card title="Reset Credits" extra={<QuotaStatus state={credits.freshness} conflict={credits.conflict} />} className="section-card">{showAccount&&<AccountIdentity account={account} provider={credits.provider} />}
  <div className="metric-grid"><div><div className="metric-label">原观测库存</div><div className="metric-value">{integer(credits.observed_inventory)}</div></div><div><div className="metric-label">中心确认可用库存</div><div className="metric-value">{integer(credits.available_inventory)}</div></div><div><div className="metric-label">详情状态</div><div className="metric-value">{statuses[credits.details_status]??'详情未知'}</div></div></div>
  <dl className="metadata-list"><dt>原观测时间</dt><dd>{dateTime(credits.observed_at_ms)}</dd><dt>采集来源</dt><dd>{devices.find(d=>d.id===credits.client_id)?.name??'来源设备'}<div className="record-id">{credits.client_id}</div></dd><dt>下一次到期</dt><dd>{credits.next_expires_at_ms==null?'未知':dateTime(credits.next_expires_at_ms)}</dd><dt>下一次 reset</dt><dd>{credits.next_reset_at_ms==null?'未知':dateTime(credits.next_reset_at_ms)}</dd></dl>
  <Typography.Paragraph type="secondary">到期与 reset 是不同事件。库存不按设备相加；只有新鲜、无冲突且详情完整时，中心提供扣除已知到期后的可用数量。</Typography.Paragraph>

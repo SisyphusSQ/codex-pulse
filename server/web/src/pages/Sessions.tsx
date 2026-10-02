@@ -1,17 +1,24 @@
 import { useState } from 'react';
-import { Card, Typography } from 'antd';
+import { Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { getSessions, type ListFilter } from '../api/records';
 import { CoverageNotice } from '../components/CoverageNotice';
-import { initialListFilter, ListFilters } from '../components/ListFilters';
-import { ErrorState, LoadingState } from '../components/QueryState';
+import { initialListFilter, ListFilters, sameRecordScope } from '../components/ListFilters';
+import { EmptyState, ErrorState, LoadingState } from '../components/QueryState';
 import { SessionPanel, SessionTable, TotalsLine } from '../components/RecordViews';
+import { RecordWorkspace } from '../components/RecordWorkspace';
+import { integer } from '../format';
 
 export default function Sessions(){
  const [filter,setFilter]=useState(initialListFilter),[selected,setSelected]=useState<string>();
  const query=useQuery({queryKey:['sessions','list',filter],queryFn:({signal})=>getSessions(filter,signal)});
- function change(v:ListFilter){setFilter(v);setSelected(undefined);}
+ const detailFilter={...filter,page:1,limit:25};
+ function change(v:ListFilter){setFilter(v);if(!sameRecordScope(v,filter))setSelected(undefined);}
  return <section><div className="page-heading"><div><Typography.Title level={3}>会话</Typography.Title><Typography.Paragraph type="secondary">查询标题、原始 Session ID 与生命周期指标。</Typography.Paragraph></div></div><ListFilters value={filter} onChange={change} refresh={()=>void query.refetch()} busy={query.isFetching} />
- {query.isPending?<LoadingState />:query.error?<ErrorState error={query.error} retry={()=>void query.refetch()} />:query.data&&<><TotalsLine totals={query.data.totals} /><Card className="table-card" title="会话记录"><SessionTable rows={query.data.items} page={query.data.page} loading={query.isFetching} zone={filter.time_zone} onPage={(page,limit)=>change({...filter,page,limit})} onOpen={setSelected} /></Card><CoverageNotice coverage={query.data.coverage} zone={filter.time_zone} /></>}
- {selected&&<SessionPanel id={selected} filter={filter} onClose={()=>setSelected(undefined)} />}</section>;
+ {query.data&&<TotalsLine totals={query.data.totals} />}
+ <RecordWorkspace selectedId={selected} listLabel="会话列表" detailLabel="会话详情" list={<>
+  <div className="record-list-heading">会话记录{query.data?` · 共 ${integer(query.data.page.total)} 条`:''}</div>
+  {query.isPending?<LoadingState />:query.error?<ErrorState error={query.error} retry={()=>void query.refetch()} />:query.data&&<><SessionTable compact selectedId={selected} rows={query.data.items} page={query.data.page} loading={query.isFetching} zone={filter.time_zone} onPage={(page,limit)=>change({...filter,page,limit})} onOpen={setSelected} /><CoverageNotice coverage={query.data.coverage} zone={filter.time_zone} /></>}
+ </>} detail={selected?<SessionPanel key={selected} id={selected} filter={detailFilter} onClose={()=>setSelected(undefined)} />:<EmptyState description="选择一个会话，查看用量、缓存和活动详情。" />} />
+ </section>;
 }

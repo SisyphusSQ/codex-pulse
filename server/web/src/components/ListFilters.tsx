@@ -4,6 +4,9 @@ import type { ListFilter } from '../api/records';
 import { initialFilter, StatsFilters } from './StatsFilters';
 
 export function initialListFilter():ListFilter{return {...initialFilter(),search:'',model:'',sort:'activity',direction:'desc',page:1,limit:25};}
+export function sameRecordScope(a:ListFilter,b:ListFilter):boolean {
+ return a.search===b.search&&a.model===b.model&&a.provider===b.provider&&a.client_id===b.client_id&&a.start_date===b.start_date&&a.end_date_exclusive===b.end_date_exclusive&&a.time_zone===b.time_zone;
+}
 export function ListFilters({value,onChange,refresh,busy}:{value:ListFilter;onChange(v:ListFilter):void;refresh():void;busy:boolean}){
  const [search,setSearch]=useState(value.search),[model,setModel]=useState(value.model);
  const change=(v:ListFilter)=>onChange({...v,page:1});
