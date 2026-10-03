@@ -177,11 +177,6 @@ func exportReportingCodex(db *gorm.DB, source ReportingSource, after string, pag
 		} else {
 			s.Complete = false
 		}
-		if row.ActiveTokenGeneration > 0 {
-			if err := exportReportingInvocations(db, "codex", row.SessionID, row.ActiveTokenGeneration, source.StartAtMS, &s); err != nil {
-				return err
-			}
-		}
 		assignReportingIDs(&s)
 		if err := exportReportingThroughput(db, source, &s); err != nil {
 			return err
@@ -305,9 +300,6 @@ func exportReportingAgent(db *gorm.DB, provider string, source ReportingSource, 
 		}
 		if len(s.Contributions) > reportingv1.MaxSnapshotFacts {
 			return ErrReportingBudget
-		}
-		if err := exportReportingInvocations(db, provider, id, 0, source.StartAtMS, &s); err != nil {
-			return err
 		}
 		assignReportingIDs(&s)
 		s.Contributions = reportingRange(s.Contributions, source.StartAtMS)
@@ -435,40 +427,6 @@ func (r *Repository) ReportingPartition(ctx context.Context, provider string) (k
 		return nil
 	})
 	return
-}
-
-func exportReportingInvocations(db *gorm.DB, provider, sessionID string, generation, start int64, s *reportingv1.SessionSnapshot) error {
-	var rows []struct {
-		ObservedAtMS        int64
-		Kind, Name, Outcome string
-		DurationMS          *int64
-	}
-	var query *gorm.DB
-	if provider == "codex" {
-		query = db.Table("light_invocation_events").Select("observed_at_ms,kind,name,outcome,duration_ms").Where("session_id = ? AND generation = ?", sessionID, generation).Order("source_offset,event_ordinal")
-	} else {
-		query = db.Table(provider+"_tool_events").Select("occurred_at_ms AS observed_at_ms,'tool' AS kind,tool_name AS name,outcome").Where("external_session_id = ?", sessionID).Order("occurred_at_ms,event_id")
-	}
-	if err := query.Limit(reportingv1.MaxSnapshotFacts + 1).Find(&rows).Error; err != nil {
-		return err
-	}
-	if len(rows) > reportingv1.MaxSnapshotFacts {
-		return ErrReportingBudget
-	}
-	ordinal := make(map[string]int64)
-	for _, r := range rows {
-		i := reportingv1.Invocation{ObservedAtMS: r.ObservedAtMS, Kind: r.Kind, Name: r.Name, Outcome: r.Outcome, DurationMS: r.DurationMS}
-		key := reportingv1.InvocationID(provider, sessionID, i, 0)
-		i.ID = reportingv1.InvocationID(provider, sessionID, i, ordinal[key])
-		ordinal[key]++
-		if i.ObservedAtMS >= start {
-			s.Invocations = append(s.Invocations, i)
-		}
-	}
-	if len(s.Contributions)+len(s.Invocations) > reportingv1.MaxSnapshotFacts {
-		return ErrReportingBudget
-	}
-	return nil
 }
 
 // ReportingStatus reads coverage independently of online/pairing state.

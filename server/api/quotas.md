@@ -4,7 +4,7 @@
 
 响应为标准 envelope 的 `data`：`evaluated_at_ms`、规则版本、账号资料、`windows`、`credits` 和 `coverage=observed_only`。没有数据时数组为空，不造 0 或完整历史。
 
-- 账号是 Provider + 原始 ID；邮箱不唯一。窗口按账号/Provider/limit/window_kind/实际分钟数分组。未关联 scope 则按自己的 collector 分开，`identity_state=unassigned`，不提供可信倒计时。
+- 账号是 Provider + 原始 ID；邮箱不唯一。窗口按账号/Provider/limit/window_kind/实际分钟数分组。未关联历史保留在库中，普通 SQL 查询在分组前排除，不返回账号分组。
 - `current` 保留选中 used/remaining、原观测时间、来源设备、reset、freshness、冲突及有限原因。仅 confirmed/fresh/无冲突且 reset 未过时提供 `reset_remaining_ms`。过去 reset 保留绝对时间和最后可信值，状态 `expired_unknown`。
 - 同一种来源的多机观测按原采集时间更新，合法 used 下降保留；不同来源沿用本机 arbiter 的冲突规则，不加百分比。同一时刻相同周期存在不同设备数值时显式 conflict，不提供倒计时；选中来源和全部证据均返回。
 - `observations` 包含来源、原观测/接收时间、历史来源、有效性、仲裁 disposition/reason 及中央 canonical reset/cycle ID。只保留 metadata 和统计，不含原响应、本地 generation、路径、认证或 raw credit ID。
@@ -39,3 +39,7 @@ Web 按原始账号键筛选，不使用邮箱作唯一键；quota/pace 分别�
 `window_key=<64位十六进制>` 限定一个窗口，仍受到已验证管理员身份和 provider/account/client 筛选约束。`view=evidence` 必须提供 window_key；page 为 1..100000，limit 为 1..100（默认 20），返回 observation_count/page/limit 与分页观测，不携带完整周期 ID 列表。没有可识别周期时仅加载最近 100 条证据；有周期时保留四周期及有限最近异常证据。后端在选中窗口内完成仲裁后分页，不能宣称任意规模历史都下推到 SQL。
 
 Pace 接受 window_key，当前与历史每周期最多 512 个真实显示点，预测使用原有完整当前周期证据。四周期是当前/最后有效周期与之前三个已观测周期，不推断缺失周期。结束周期连续同状态保留首末，当前周期保持完整；`server.quotaMaintenance` 显式启用后台精简。无法可靠归入周期的异常事实保留，退役事实摘要保证原样补传不复活。详见[设计](../../docs/design/details/multi-machine-reporting/center-query-performance.md)。
+
+## TOO-524 用户查询收窄
+
+普通 windows/Credits 查询在 SQL 分组/排名前排除 `account_key IS NULL`。Codex 仅通用 limit：Pro/prolite/pro5x/pro20x 为10080分钟，Plus为300/10080分钟；其他窗口保留但不进入 summary/pace/evidence。维护专用 RawHistory 不能由HTTP指定。Web保留节奏与历史，移除来源证据标签和请求；后台evidence接口保留，支持direction=asc/desc，默认观测时间倒序，先仲裁/排序再分页。

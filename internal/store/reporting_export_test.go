@@ -40,7 +40,7 @@ func TestReportingExportKeepsReasoningPricingAndExcludesLocalPaths(t *testing.T)
 		t.Fatal("session missing")
 	}
 	s := page.Sessions[0]
-	if s.ProjectName != "workspace" || s.CreatedAtMS == nil || s.CollectedAtMS != at+1 || len(s.Invocations) != 1 || len(s.Contributions) != 2 {
+	if s.ProjectName != "workspace" || s.CreatedAtMS == nil || s.CollectedAtMS != at+1 || len(s.Invocations) != 0 || len(s.Contributions) != 2 {
 		t.Fatalf("snapshot: %+v", s)
 	}
 	if *s.Contributions[0].TotalTokens != 15 || s.Contributions[0].Rates == nil || s.Contributions[0].PricingMode != "codex_model_sum" || *s.Contributions[1].CachedTokens != 5 || *s.Contributions[1].InputTokens != 0 {

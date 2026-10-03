@@ -1,3 +1,4 @@
+import {decimalSorter} from './sorting';
 import { Alert, Card, Select, Statistic, Table, Tag, Tooltip, Typography } from 'antd';
 import type { ThroughputStats, ThroughputTurns } from '../api/records';
 import { dateTime, integer, tokens } from '../format';
@@ -15,6 +16,6 @@ export function ThroughputPanel({value,turns,zone,sourceName,onLimit}:{value?:Th
  {value?.status==='unavailable'&&<Alert type="info" showIcon title={throughputReasons[value.reason]??'TPS 暂不可用'} />}
  <div className="page-heading section-card"><Typography.Title level={4}>最近轮次</Typography.Title><Select aria-label="最近 TPS 轮次条数" value={turns?.limit??20} onChange={onLimit} options={[10,20,50].map(n=>({value:n,label:`最近 ${n} 条`}))} /></div>
  <Typography.Paragraph type="secondary">全部轮次 {integer(turns?.total)} · {turns?.total==null?'尚无已知轮次覆盖':turns.truncated?'当前只显示最近子集，整体平均使用完整指标':'已返回当前可读轮次，覆盖见上方状态'} · 未结束轮次不以当前时间补时长。</Typography.Paragraph>
- <Table size="small" rowKey="key" dataSource={turns?.items??[]} pagination={false} scroll={{x:660}} columns={[{title:'开始',render:(_,r)=>dateTime(r.started_at_ms,zone)},{title:'结束',render:(_,r)=>dateTime(r.ended_at_ms,zone)},{title:'输出 Token',align:'right',render:(_,r)=>tokens(r.throughput.output_tokens)},{title:'活跃时长',render:(_,r)=>activeDuration(r.throughput.active_duration_ms)},{title:'TPS',render:(_,r)=><ThroughputCell value={r.throughput} />}]} />
+ <Table size="small" rowKey="key" dataSource={turns?.items??[]} pagination={false} scroll={{x:660}} columns={[{title:'开始',...decimalSorter<{started_at_ms:number|null}>(r=>r.started_at_ms,true),render:(_,r)=>dateTime(r.started_at_ms,zone)},{title:'结束',...decimalSorter<{ended_at_ms:number|null}>(r=>r.ended_at_ms),render:(_,r)=>dateTime(r.ended_at_ms,zone)},{title:'输出 Token',align:'right',...decimalSorter<{throughput:ThroughputStats}>(r=>r.throughput.output_tokens),render:(_,r)=>tokens(r.throughput.output_tokens)},{title:'活跃时长',...decimalSorter<{throughput:ThroughputStats}>(r=>r.throughput.active_duration_ms),render:(_,r)=>activeDuration(r.throughput.active_duration_ms)},{title:'TPS',...decimalSorter<{throughput:ThroughputStats}>(r=>r.throughput.average_output_milli_tps),render:(_,r)=><ThroughputCell value={r.throughput} />}]} />
  </Card>;
 }

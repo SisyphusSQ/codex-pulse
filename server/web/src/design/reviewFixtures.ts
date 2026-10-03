@@ -12,7 +12,7 @@ import publicModels from '../../../internal/service/catalog_srv/models-20261002.
 import publicPlans from '../../../internal/service/catalog_srv/plans-20261002.json';
 import releases from '../../../internal/service/catalog_srv/releases-20261003.json';
 
-export type ReviewScenario='current'|'expired'|'conflict'|'unknown';
+export type ReviewScenario='current'|'expired'|'conflict'|'unknown'|'empty'|'error';
 export const reviewNow=Date.UTC(2026,9,3,1);
 const key=(model:string)=>model.toLowerCase().replace(/\s+/g,'-');
 const releaseByModel=new Map(releases.flatMap(r=>r.models.map(model=>[key(model),{released_at_ms:Date.parse(`${r.released_on}T00:00:00Z`),release_source_url:r.source_url}] as const)));
@@ -28,8 +28,8 @@ function sum(rows:Totals[]):Totals {
 // 仅在生成合成 API 样本时汇总；业务页面继续使用 Server 返回值。
 export function reviewUsage(filter:StatsFilter):Usage {
  const selected=definitions.filter(m=>!filter.provider||m.provider===filter.provider).filter(m=>!filter.model||m.model===filter.model);
- const dates=modelSeries[0].points.map((_,i)=>dayjs.utc('2026-07-06').add(i,'day').format('YYYY-MM-DD')).filter(d=>d>=filter.start_date&&d<filter.end_date_exclusive);
- const modelDays=selected.flatMap(m=>dates.map(date=>{const series=modelSeries[definitions.indexOf(m)],i=dayjs.utc(date).diff(dayjs.utc('2026-07-06'),'day');return {provider:m.provider,model:m.model,date,totals:totals(series.points[i]===null?null:String(series.points[i]),series.costs[i]===null?null:String(series.costs[i]))};}));
+ const dates=Array.from({length:dayjs(filter.end_date_exclusive).diff(dayjs(filter.start_date),'day')},(_,i)=>dayjs(filter.start_date).add(i,'day').format('YYYY-MM-DD'));
+ const modelDays=selected.flatMap(m=>dates.map(date=>{const series=modelSeries[definitions.indexOf(m)],i=dates.indexOf(date)%series.points.length;return {provider:m.provider,model:m.model,date,totals:totals(series.points[i]===null?null:String(series.points[i]),series.costs[i]===null?null:String(series.costs[i]))};}));
  const byModel=selected.map(m=>({provider:m.provider,model:m.model,totals:sum(modelDays.filter(r=>r.model===m.model).map(r=>r.totals))}));
  const trend=dates.map(date=>({date,start_at_ms:dayjs.utc(date).valueOf(),totals:sum(modelDays.filter(r=>r.date===date).map(r=>r.totals))}));
  return {range:{start_at_ms:dayjs.tz(filter.start_date,filter.time_zone).valueOf(),end_at_ms:dayjs.tz(filter.end_date_exclusive,filter.time_zone).valueOf(),time_zone:filter.time_zone},scope:'synthetic-design-fixture',totals:sum(byModel.map(r=>r.totals)),coverage:{...summaryFixture().coverage,collected_at_ms:reviewNow,stale:false},models:byModel,model_days:modelDays,trend,providers:[...new Set(selected.map(m=>m.provider))].map(provider=>({key:provider,name:provider,totals:sum(byModel.filter(m=>m.provider===provider).map(r=>r.totals))})),cursor_pools:[],model_cost_rounding_delta_micro_usd:'0',trend_cost_rounding_delta_micro_usd:'0'};
@@ -38,16 +38,23 @@ export function reviewSummary(filter:StatsFilter):Summary {
  const usage=reviewUsage(filter);
  const annual:Day[]=heatmapDays.map((d,i)=>({...d,totals:totals(d.totals.total_tokens,d.totals.total_tokens===null?null:d.totals.total_tokens==='0'?'0':String(110_000+(i*1234)%60_000))}));
  const annualTotals=sum(annual.map(d=>d.totals));
- return {...summaryFixture(),range:usage.range,scope:usage.scope,totals:usage.totals,coverage:usage.coverage,providers:usage.providers,models:usage.models.map(m=>({key:`${m.provider}:${m.model}`,name:m.model,totals:m.totals})),trend:usage.trend,heatmap:annual,heatmap_totals:annualTotals,heatmap_range:{start_at_ms:Date.UTC(2025,9,4),end_at_ms:Date.UTC(2026,9,4),time_zone:filter.time_zone},heatmap_activity:{total_tokens:annualTotals.total_tokens,peak_daily_tokens:'2420000',active_days:'235',current_streak_days:'5',longest_streak_days:'5',observed_days:330,unknown_days:35},devices:[{key:'machine-one',name:'合成采集机',totals:usage.totals}],tools:[{key:'exec',name:'exec_command',totals:usage.totals}],skills:[{key:'antd',name:'antd',totals:usage.totals}]};
+ const hourly=usage.trend.length===1;
+ const start=dayjs.tz(filter.start_date,filter.time_zone),end=dayjs.tz(filter.end_date_exclusive,filter.time_zone);
+ const count=Math.round(end.diff(start,'hour'));
+ const weights=[5,10,7,2,6,14,18,16,10,12];
+ const activity=hourly?Array.from({length:count},(_,hour)=>({start_at_ms:start.add(hour,'hour').valueOf(),end_at_ms:start.add(hour+1,'hour').valueOf(),tokens:hour<9||hour>18?null:usage.totals.total_tokens===null?null:(BigInt(usage.totals.total_tokens)*BigInt(weights[hour-9])/100n).toString(),sessions:hour<9||hour>18?null:'2'})):usage.trend.map(d=>({start_at_ms:dayjs.tz(d.date,filter.time_zone).valueOf(),end_at_ms:dayjs.tz(d.date,filter.time_zone).add(1,'day').valueOf(),tokens:d.totals.total_tokens,sessions:d.totals.total_tokens===null?null:String(d.totals.sessions)}));
+ const top=reviewSessions.filter(r=>!filter.provider||r.provider===filter.provider).filter(r=>!filter.client_id||r.sources.some(s=>s.client_id===filter.client_id)).sort((a,b)=>Number(BigInt(b.totals.total_tokens??'0')-BigInt(a.totals.total_tokens??'0'))).slice(0,5).map((r,i)=>({...r,totals:{...r.totals,total_tokens:usage.totals.total_tokens===null?null:(BigInt(usage.totals.total_tokens)*BigInt([30,20,10,8,5][i])/100n).toString()}}));
+ return {...summaryFixture(),activity_granularity:hourly?'hour':'day',activity_timeline:activity,top_sessions:top,weekday_hours:Array.from({length:168},(_,i)=>{const hour=i%24,weekday=Math.floor(i/24);return {weekday,hour,session_count:weekday===start.day()&&hour>=9&&hour<=18?'2':null,tokens:weekday===start.day()&&hour>=9&&hour<=18?(BigInt(usage.totals.total_tokens??'0')*BigInt(weights[hour-9])/100n).toString():null,sessions:weekday===start.day()&&hour>=9&&hour<=18?2:0};}),range:usage.range,scope:usage.scope,totals:usage.totals,coverage:usage.coverage,providers:usage.providers,models:usage.models.map(m=>({key:`${m.provider}:${m.model}`,name:m.model,totals:m.totals})),trend:usage.trend,heatmap:annual,heatmap_totals:annualTotals,heatmap_range:{start_at_ms:Date.UTC(2025,9,4),end_at_ms:Date.UTC(2026,9,4),time_zone:filter.time_zone},heatmap_activity:{total_tokens:annualTotals.total_tokens,peak_daily_tokens:'2420000',active_days:'235',current_streak_days:'5',longest_streak_days:'5',observed_days:330,unknown_days:35},devices:[{key:'machine-one',name:'SQMC03',totals:usage.totals}],tools:[],skills:[]};
 }
 export function reviewQuota(scenario:ReviewScenario) {
  const q=quotaFixture();
+ q.accounts[1].plan='Plus';
  q.evaluated_at_ms=reviewNow;
  const w=q.windows[0];
  w.current.used_percent=70;w.current.remaining_percent=30;
  w.current.window_start_at_ms=quotaNow-14400000;
  w.current.freshness=scenario==='current'?'fresh':'expired_unknown';
- if(scenario==='current'){w.current.observed_at_ms=reviewNow;w.current.resets_at_ms=reviewNow+3600000;w.current.window_start_at_ms=reviewNow-14400000;w.current.snapshot_reset_remaining_ms=3600000;}
+ if(scenario==='current'){w.current.observed_at_ms=reviewNow;w.current.resets_at_ms=reviewNow+120960000;w.current.window_start_at_ms=reviewNow-483840000;w.current.snapshot_reset_remaining_ms=120960000;}
  if(scenario==='conflict'){w.current.conflict=true;w.current.reason='source_conflict';}
  if(scenario==='unknown'){w.current.used_percent=null;w.current.remaining_percent=null;w.current.observed_at_ms=null;w.current.reason='unavailable';w.observations=[];}
  w.observations=w.observations.map(p=>({...p,used_percent:70,observed_at_ms:w.current.observed_at_ms??quotaNow,resets_at_ms:w.current.resets_at_ms}));
@@ -60,13 +67,23 @@ export function reviewPace(scenario:ReviewScenario) {
  p.evaluated_at_ms=reviewNow;
  w.current=q.windows[0].current;w.snapshot_at_ms=w.current.observed_at_ms;
  w.elapsed_percent=80;w.pace_delta_pp=-10;
- w.current_points=[{observed_at_ms:quotaNow-3600000,elapsed_percent:60,used_percent:55,remaining_percent:45,linked_history:false},{observed_at_ms:w.current.observed_at_ms??quotaNow,elapsed_percent:80,used_percent:70,remaining_percent:30,linked_history:false}];
+ w.current_points=[{observed_at_ms:(w.current.observed_at_ms??quotaNow)-120960000,elapsed_percent:60,used_percent:55,remaining_percent:45,linked_history:false},{observed_at_ms:w.current.observed_at_ms??quotaNow,elapsed_percent:80,used_percent:70,remaining_percent:30,linked_history:false}];
  if(scenario==='conflict'){w.unknown_reason='source_conflict';w.forecast.unknown_reason='source_conflict';}
  if(scenario==='unknown'){w.current_points=[];w.elapsed_percent=null;w.pace_delta_pp=null;w.unknown_reason='unavailable';w.forecast.unknown_reason='unavailable';}
  return p;
 }
-export const reviewDevices:Device[]=[{id:'machine-one',name:'合成采集机',revoked_at_ms:null,last_received_at_ms:reviewNow,providers:[{provider:'codex',version:'dev · 合成样本',collected_at_ms:quotaNow,coverage_start_ms:Date.UTC(2025,9,4),coverage_end_ms:quotaNow,pending_batches:8,status:'ready',received_at_ms:reviewNow,stale:true,sync_state:'ready',sync_checked_at_ms:reviewNow,full_sync_state:'running'},{provider:'cursor',version:'dev · 合成样本',collected_at_ms:quotaNow,coverage_start_ms:Date.UTC(2025,9,4),coverage_end_ms:quotaNow,pending_batches:0,status:'source_unavailable',received_at_ms:reviewNow,stale:true,sync_state:'source_unavailable',sync_checked_at_ms:reviewNow,full_sync_state:'running'}]}];
-export const reviewClients:Client[]=[{id:'story-browser',name:'Storybook · 合成管理浏览器',purpose:'admin',created_at_ms:quotaNow,expires_at_ms:null,revoked_at_ms:null,last_received_at_ms:null},{id:'machine-one',name:'合成采集机',purpose:'collector',created_at_ms:quotaNow,expires_at_ms:null,revoked_at_ms:null,last_received_at_ms:reviewNow}];
-export function reviewSubscription(account:string):Subscription {return {account_key:account,revision:'1',alias:null,automatic_plan:account==='account-one'?'Pro':null,manual_plan:null,resolved_plan:account==='account-one'?'Pro':null,date_kind:'monthly_renewal',renewal_day:15,membership_date:null,next_date:'2026-10-15',day_delta:12,date_state:'future',time_zone:'Asia/Shanghai',updated_at_ms:quotaNow};}
-export const reviewSessions:SessionRecord[]=sessions.map(s=>({id:s.key,provider:s.provider.toLowerCase(),session_id:s.key,title:s.title,session_kind:'interactive',project_id:projects.find(p=>p.name===s.project)?.key??'unknown',project_group_id:projects.find(p=>p.name===s.project)?.key??'unknown',project_name:s.project,created_at_ms:quotaNow-86400000,last_active_at_ms:quotaNow,collected_at_ms:quotaNow,complete:true,conflict:false,sources:[{id:`source-${s.key}`,client_id:'machine-one',client_name:'合成采集机',collected_at_ms:quotaNow,revision:2,source_kind:'synthetic',complete:true,deleted:false}],totals:totals(s.tokens,s.cost)}));
-export const reviewProjects:ProjectRecord[]=projects.map(p=>({id:p.key,name:p.name,members:[p.key],totals:totals(p.tokens,p.cost),last_active_at_ms:quotaNow,conflict:false}));
+export const reviewDevices:Device[]=[{id:'machine-one',name:'SQMC03',revoked_at_ms:null,last_received_at_ms:reviewNow,providers:[{provider:'codex',version:'dev · 合成样本',collected_at_ms:quotaNow,coverage_start_ms:Date.UTC(2025,9,4),coverage_end_ms:quotaNow,pending_batches:8,status:'ready',received_at_ms:reviewNow,stale:true,sync_state:'ready',sync_checked_at_ms:reviewNow,full_sync_state:'running'},{provider:'cursor',version:'dev · 合成样本',collected_at_ms:quotaNow,coverage_start_ms:Date.UTC(2025,9,4),coverage_end_ms:quotaNow,pending_batches:0,status:'source_unavailable',received_at_ms:reviewNow,stale:true,sync_state:'source_unavailable',sync_checked_at_ms:reviewNow,full_sync_state:'running'}]}];
+export const reviewClients:Client[]=[{id:'story-browser',name:'Storybook · 合成管理浏览器',purpose:'admin',created_at_ms:quotaNow,expires_at_ms:null,revoked_at_ms:null,last_received_at_ms:null},{id:'machine-one',name:'SQMC03',purpose:'collector',created_at_ms:quotaNow,expires_at_ms:null,revoked_at_ms:null,last_received_at_ms:reviewNow}];
+export function reviewSubscription(account:string):Subscription {return {account_key:account,revision:'1',alias:null,automatic_plan:account==='account-one'?'Pro':'Plus',manual_plan:null,resolved_plan:account==='account-one'?'Pro':'Plus',date_kind:'monthly_renewal',renewal_day:15,membership_date:null,next_date:'2026-10-15',day_delta:12,date_state:'future',time_zone:'Asia/Shanghai',updated_at_ms:quotaNow};}
+export const reviewSessions:SessionRecord[]=sessions.map(s=>({id:s.key,provider:s.provider.toLowerCase(),session_id:s.key,title:s.title,session_kind:'interactive',project_id:projects.find(p=>p.name===s.project)?.key??'unknown',project_group_id:projects.find(p=>p.name===s.project)?.key??'unknown',project_name:s.project,created_at_ms:quotaNow-86400000,last_active_at_ms:quotaNow,collected_at_ms:quotaNow,complete:true,conflict:false,sources:[{id:`source-${s.key}`,client_id:'machine-one',client_name:'SQMC03',collected_at_ms:reviewNow,revision:2,source_kind:'synthetic',complete:true,deleted:false}],totals:totals(s.tokens,s.cost)}));
+export const reviewProjects:ProjectRecord[]=projects.map(p=>({id:p.key,name:p.name,members:[p.key],machines:[{client_id:'machine-one',client_name:'SQMC03'}],totals:totals(p.tokens,p.cost),last_active_at_ms:quotaNow,conflict:false}));
+
+reviewDevices.push(...['SQMC04','SQMC05'].map((name,i)=>({...structuredClone(reviewDevices[0]),id:`machine-${i+2}`,name})));
+reviewSessions[0].sources.push({...reviewSessions[0].sources[0],id:'source-two',client_id:'machine-2',client_name:'SQMC04'});
+reviewProjects[0].machines.push({client_id:'machine-2',client_name:'SQMC04'});
+export function reviewSourceUsage(filter:StatsFilter){
+ const usage=reviewUsage({...filter,provider:'codex'});
+ return {range:usage.range,scope:'collector_copies_may_overlap',items:filter.provider&&filter.provider!=='codex'?[]:reviewDevices.filter(d=>!filter.client_id||filter.client_id===d.id).map(d=>{const i=reviewDevices.findIndex(r=>r.id===d.id),total=usage.totals.total_tokens===null?null:BigInt(usage.totals.total_tokens)*BigInt([95,70,40][i])/100n;return {machine:{client_id:d.id,client_name:d.name},totals:{...usage.totals,total_tokens:total?.toString()??null,input_tokens:total===null?null:(total*3n/4n).toString(),output_tokens:total===null?null:(total-total*3n/4n).toString(),sessions:5-i},coverage:{...usage.coverage,collected_at_ms:reviewNow,stale:i===2},revoked_at_ms:null};})};
+}
+
+reviewClients.push({...reviewClients[1],id:'revoked-machine',name:'已撤销合成机',revoked_at_ms:reviewNow},{...reviewClients[1],id:'machine-2',name:'SQMC04'});

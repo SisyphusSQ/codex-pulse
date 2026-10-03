@@ -77,3 +77,7 @@ capsule-only 变化产生持久新 revision，重启续传相同正文；metadat
 CoreService 新增 `FullSyncReporting(Empty)`，精确握手为 core-rpc-v9。手动全量补传重新导出当前已保存起点内的索引事实，清除本机去重摘要与导出游标，保留 revision、稳定事实 ID 和所有旧待传正文；不清空中心、不重扫 JSONL、不扩大范围。任务开始时间、排入快照数、确认批次数及 running/completed 持久保存在私有 reporting.db；关闭同步或退出 App 暂停，下次启用/启动续传。连续重复点击返回同一运行任务。状态中的 full_sync_state 供中心只读展示，无远程触发 API。
 
 先升级中心再升级 App。中心仍接收不带分片/同步扩展的 v1 旧批次；旧中心对未知字段返回 400 时，新 App 暂停并保留队列，不截断事实。中心结构 v3 的新增表与已确认 v1/v2 自动升级步骤随 Server 交付；生产升级与真实 MySQL 验证另行执行。
+
+## TOO-524 调用字段退出业务上报
+
+新Helper导出与新队列不包含Invocation。中心不写调用表、不参与调用仲裁与统计；既有历史表保留，原生工具/技能功能保留。v1 Invocation与分片计数仍保留供升级前不可变待传队列、旧客户端摘要校验和重放；不能原位删掉旧正文中的字段。旧来源payload保留重放所需的原内容，canonical投影移除调用。三机需分别升级Helper，中心上线本身不能证明所有发送方已停止新调用导出。参见 [中心优化设计](../../../../docs/design/details/multi-machine-reporting/center-overview.md)。

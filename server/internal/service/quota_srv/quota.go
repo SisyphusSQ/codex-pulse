@@ -114,6 +114,9 @@ func (s *Quota) Current(ctx context.Context, principal access_dto.Principal, q q
 				}
 				start := min((page-1)*limit, len(window.Observations))
 				end := min(start+limit, len(window.Observations))
+				if q.Direction != "asc" {
+					slices.Reverse(window.Observations)
+				}
 				window.Observations = window.Observations[start:end]
 				window.ObservationPage = page
 				window.ObservationLimit = limit

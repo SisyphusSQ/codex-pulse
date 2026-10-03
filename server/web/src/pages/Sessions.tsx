@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getSessions, type ListFilter } from '../api/records';
@@ -9,7 +10,12 @@ import { RecordWorkspace } from '../components/RecordWorkspace';
 import { integer } from '../format';
 
 export default function Sessions(){
- const [filter,setFilter]=useState(initialListFilter),[selected,setSelected]=useState<string>();
+ const [params]=useSearchParams();
+ const [filter,setFilter]=useState(()=>{
+  const value=initialListFilter();
+  for(const key of ['start_date','end_date_exclusive','time_zone','provider','client_id','model','search','project_id'] as const){const v=params.get(key);if(v!==null)value[key]=v;}
+  if(params.get('sort')==='tokens')value.sort='tokens';return value;
+ }),[selected,setSelected]=useState<string|undefined>(()=>params.get('selected')??undefined);
  const query=useQuery({queryKey:['sessions','list',filter],queryFn:({signal})=>getSessions(filter,signal)});
  const detailFilter={...filter,page:1,limit:25};
  function change(v:ListFilter){setFilter(v);if(!sameRecordScope(v,filter))setSelected(undefined);}

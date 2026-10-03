@@ -2,12 +2,14 @@ import { lazy, Suspense, useMemo, useState } from 'react';
 import { Alert, Button, Card, Collapse, Popover, Select, Segmented, Statistic, Table, Tooltip, Typography, theme } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link,useSearchParams } from 'react-router-dom';
 import type { EChartsCoreOption } from 'echarts/core';
 import { getDevices, getSummary, type Decimal, type Slice } from '../api/statistics';
 import { getUsage } from '../api/usage';
 import { usageChartOption } from '../components/ModelTrend';
 import { SourceTable } from '../components/SourceTable';
+import { OverviewActivity, MachineUsage, sessionsTarget } from '../components/OverviewActivity';
+import { decimalSorter } from '../components/sorting';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { CoverageNotice } from '../components/CoverageNotice';
 import { initialFilter, StatsFilters } from '../components/StatsFilters';
@@ -27,9 +29,9 @@ const providerColors: Record<string, string> = { codex: '#2678f5', cursor: '#3e9
 function SliceTable({ rows }: { rows: Slice[] }) {
   return <Table<Slice> size="small" rowKey="key" dataSource={rows} pagination={rows.length > 8 ? { pageSize: 8, showSizeChanger: false } : false} scroll={{ x: 420 }} columns={[
     { title: '名称', dataIndex: 'name', render: (name: string) => providerNames[name] ?? name },
-    { title:'会话',align:'right',render:(_,row)=>integer(row.totals.sessions) },
-    { title: 'Token', align: 'right', render: (_, row) => tokens(row.totals.total_tokens) },
-    { title: 'API 等价成本', align: 'right', render: (_, row) => <div><span className="numeric">{dollars(row.totals.cost_micro_usd)}</span>{row.totals.cost_status === 'partial' && <Tooltip trigger={['hover','focus']} title="已知金额小计，含未定价记录"><InfoCircleOutlined tabIndex={0} aria-label="已知小计" className="partial-cost-icon" /></Tooltip>}</div> },
+    { title:'会话',align:'right',...decimalSorter<Slice>(r=>r.totals.sessions),render:(_,row)=>integer(row.totals.sessions) },
+    { title: 'Token', align: 'right', ...decimalSorter<Slice>(r=>r.totals.total_tokens,true), render: (_, row) => tokens(row.totals.total_tokens) },
+    { title: 'API 等价成本', align: 'right', ...decimalSorter<Slice>(r=>r.totals.cost_micro_usd), render: (_, row) => <div><span className="numeric">{dollars(row.totals.cost_micro_usd)}</span>{row.totals.cost_status === 'partial' && <Tooltip trigger={['hover','focus']} title="已知金额小计，含未定价记录"><InfoCircleOutlined tabIndex={0} aria-label="已知小计" className="partial-cost-icon" /></Tooltip>}</div> },
   ]} />;
 }
 
@@ -66,9 +68,9 @@ function Distribution({ rows, title }: { rows: Slice[]; title: string }) {
 }
 
 export default function Overview() {
-  const [filter, setFilter] = useState(initialFilter);
+  const [params]=useSearchParams();
+  const [filter, setFilter] = useState(()=>({...initialFilter([1,7,30,90].includes(Number(params.get('days')))?Number(params.get('days')):1),...Object.fromEntries([...params].filter(([key])=>['start_date','end_date_exclusive','time_zone','provider','client_id'].includes(key)))}));
   const [metric, setMetric] = useState<Metric>('tokens');
-  const [calls,setCalls]=useState<'tools'|'skills'>('tools');
   const [breakdown,setBreakdown]=useState<'providers'|'models'>('providers');
   const [chosen, setChosen] = useState<string[]|null>(null);
   const usage = useQuery({queryKey:['usage',filter],queryFn:({signal})=>getUsage(filter,signal)});
@@ -104,9 +106,11 @@ export default function Overview() {
       <Card className="summary-band"><div className="metric-grid overview-kpis">
         <div><Statistic title="当前范围 Token 总量" value={data.totals.total_tokens ?? '未知'} formatter={() => tokens(data.totals.total_tokens)} /><div className="metric-note">输入 {tokens(data.totals.input_tokens)} · 输出 {tokens(data.totals.output_tokens)}</div></div>
         <div><Statistic title="当前范围 API 等价成本" value={data.totals.cost_micro_usd ?? '未知'} formatter={() => dollars(data.totals.cost_micro_usd)} /><div className="metric-note">{data.totals.cost_status === 'partial' ? '已知金额小计，含未定价记录' : '按历史价格估算'} · 不是实际账单</div></div>
-        <div><Statistic title="已收到会话" value={data.totals.sessions} formatter={() => integer(data.totals.sessions)} /><div className="metric-note">调用 {integer(data.totals.invocations)} · 执行设备归因未知</div></div>
+        <div><Statistic title="已收到会话" value={data.totals.sessions} formatter={() => integer(data.totals.sessions)} /><div className="metric-note">按 Token 活动去重 · 采集来源见下方</div></div>
       </div></Card>
 
+      <OverviewActivity data={data} filter={filter} onDay={date=>setFilter({...filter,start_date:date,end_date_exclusive:dayjs(date).add(1,'day').format('YYYY-MM-DD')})}/>
+      <MachineUsage filter={filter} onSelect={client_id=>setFilter({...filter,client_id})}/>
       <Suspense fallback={<LoadingState label="正在加载图表…" />}>
         <Card className="section-card overview-trend" title={<div className="trend-title"><span>模型用量趋势</span><div className="overview-quality"><Popover trigger="click" placement="bottomLeft" content={<div className="evidence-popover"><CoverageNotice coverage={data.coverage} zone={filter.time_zone} /></div>}><Button type="text" size="small" icon={<InfoCircleOutlined />}>{data.coverage.state==='unknown'?'暂无已知用量':'覆盖未确认'} · {data.coverage.stale?'采集证据陈旧':'有近期采集证据'} · 截至 {data.coverage.collected_at_ms===null?'尚无观测':dayjs(data.coverage.collected_at_ms).tz(filter.time_zone).format('MM-DD HH:mm')}</Button></Popover></div></div>} extra={<div className="overview-chart-controls">
           <Segmented aria-label="图表指标" size="small" options={metricOptions} value={metric} onChange={value => setMetric(value as Metric)} />
@@ -132,9 +136,9 @@ export default function Overview() {
         <div className="overview-breakdowns">
           <Distribution rows={data.providers} title="平台分布" />
           <Distribution rows={data.models} title="模型分布" />
-          <Card title="工具与技能" extra={<Segmented size="small" aria-label="调用类型" value={calls} options={[{value:'tools',label:'工具'},{value:'skills',label:'技能'}]} onChange={value=>setCalls(value as 'tools'|'skills')} />}><Table size="small" rowKey="key" dataSource={data[calls]} pagination={data[calls].length>8?{pageSize:8,showSizeChanger:false}:false} scroll={{x:340}} columns={[{title:'名称',dataIndex:'name'},{title:'已收到调用次数',align:'right',render:(_,row)=>integer(row.totals.invocations)}]} /></Card>
         </div>
-        <div className="overview-links"><Link to="/quota">查看账号额度与节奏</Link><Link to="/projects">项目明细</Link><Link to="/sessions">会话明细</Link></div>
+
+        <div className="overview-links"><Link to="/quota">查看账号额度与节奏</Link><Link to="/projects">项目明细</Link><Link to={sessionsTarget(filter)}>会话明细</Link></div>
       </Suspense>
     </>}
   </section>;

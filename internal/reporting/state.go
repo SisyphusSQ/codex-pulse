@@ -185,6 +185,8 @@ func snapshotDigest(value reportingv1.SessionSnapshot) (string, error) {
 // Enqueue atomically reserves the monotonic revision and immutable retry body. Only Ack
 // advances acknowledged_revision; queue capacity errors don't advance the export checkpoint.
 func (s *State) Enqueue(ctx context.Context, partition, sweep string, value reportingv1.SessionSnapshot) error {
+	// 新快照不携带工具/技能；已入队的不可变旧分片仍按原摘要续传。
+	value.Invocations = nil
 	digest, err := snapshotDigest(value)
 	if err != nil {
 		return err

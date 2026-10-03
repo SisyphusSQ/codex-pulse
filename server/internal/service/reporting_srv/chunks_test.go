@@ -48,9 +48,14 @@ func TestChunkedSnapshotAtomicReplayAndCorruption(t *testing.T) {
 			t.Fatal("complete total", total)
 		}
 	}
+
+	// 旧分片完成后的新批次重放仍使用原始摘要，不因业务忽略调用而拒绝续传。
+	if _, err := s.Accept(t.Context(), clients[0], reportingv1.Batch{Version: 1, ID: uuid.New().String(), Sessions: []reportingv1.SessionSnapshot{parts[0]}}); err != nil {
+		t.Fatal("legacy chunk retry", err)
+	}
 	var count int64
-	if err := db.Model(&reporting_do.Invocation{}).Count(&count).Error; err != nil || count != 16691 {
-		t.Fatal("invocations lost", count, err)
+	if err := db.Model(&reporting_do.Invocation{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatal("deprecated invocations persisted", count, err)
 	}
 	if err := db.Model(&reporting_do.SnapshotChunk{}).Count(&count).Error; err != nil || count != 0 {
 		t.Fatal("completed staging retained", count, err)

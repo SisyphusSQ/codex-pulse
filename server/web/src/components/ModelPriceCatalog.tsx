@@ -1,3 +1,4 @@
+import {decimalSorter} from './sorting';
 import {useState} from 'react';
 import {Alert,Card,Collapse,Descriptions,Input,Segmented,Select,Table,Tag,Typography} from 'antd';
 import {Link} from 'react-router-dom';
@@ -36,13 +37,13 @@ function source(url:string,label='官方来源') {
  return href?<a href={href} target="_blank" rel="noopener noreferrer">{label}</a>:<Typography.Text type="secondary">无公开来源</Typography.Text>;
 }
 const releaseDate=(row:ModelPrice)=>row.released_at_ms==null?'未知':dayjs(row.released_at_ms).utc().format('YYYY-MM-DD');
-const priceColumns=(keys:('input_price'|'cached_price'|'cache_write_price'|'output_price')[])=>keys.map(key=>({title:({input_price:'输入',cached_price:'缓存输入',cache_write_price:'缓存写入',output_price:'输出'})[key],align:'right' as const,width:110,render:(_:unknown,row:ModelPrice)=>referenceAmount(row[key],row.currency)}));
+const priceColumns=(keys:('input_price'|'cached_price'|'cache_write_price'|'output_price')[])=>keys.map(key=>({title:({input_price:'输入',cached_price:'缓存输入',cache_write_price:'缓存写入',output_price:'输出'})[key],align:'right' as const,width:110,...decimalSorter<ModelPrice>(r=>r[key]),render:(_:unknown,row:ModelPrice)=>referenceAmount(row[key],row.currency)}));
 
 function RateDetails({row}:{row:ModelGroup}) {
  const special=row.rates.filter(r=>r.evidence==='current'&&isReferenceRate(r,row.used)&&r.key!==row.key).sort(baselineOrder);
  const credits=row.rates.filter(r=>r.evidence==='current'&&r.currency==='credits');
  const historical=row.rates.filter(r=>r.evidence==='historical');
- const ratesTable=(rates:ModelPrice[])=><Table<ModelPrice> rowKey="key" size="small" dataSource={rates} pagination={false} scroll={{x:850}} columns={[{title:'计费条件',width:240,render:(_,r)=><>{r.mode}{r.model!==row.model&&<div className="metric-note">{r.model}</div>}<div className="metric-note">{r.currency} / {r.unit}</div></>},...priceColumns(['input_price','cached_price','cache_write_price','output_price']),{title:'来源与说明',width:240,render:(_,r)=><>{source(r.source_url)}<div className="metric-note">{r.version}</div><div className="metric-note">{r.notes}</div></>}]} />;
+ const ratesTable=(rates:ModelPrice[])=><Table<ModelPrice> rowKey="key" size="small" dataSource={rates} pagination={false} scroll={{x:850}} columns={[{title:'更新日期',...decimalSorter<ModelPrice>(r=>r.effective_from_ms??r.verified_at_ms,true),render:(_,r)=>dayjs(r.effective_from_ms??r.verified_at_ms).utc().format('YYYY-MM-DD')},{title:'计费条件',width:240,render:(_,r)=><>{r.mode}{r.model!==row.model&&<div className="metric-note">{r.model}</div>}<div className="metric-note">{r.currency} / {r.unit}</div></>},...priceColumns(['input_price','cached_price','cache_write_price','output_price']),{title:'来源与说明',width:240,render:(_,r)=><>{source(r.source_url)}<div className="metric-note">{r.version}</div><div className="metric-note">{r.notes}</div></>}]} />;
  return <div className="catalog-details"><Descriptions size="small" column={{xs:1,md:2}} items={[
   {key:'release',label:'发布时间',children:releaseDate(row)},
   {key:'release-source',label:'发布来源',children:source(row.release_source_url??'','发布说明')},
@@ -86,7 +87,7 @@ export function ModelPriceCatalog({models,used,provider,initialSearch='',initial
   <div className="metric-note catalog-note">{scope==='history'?'历史费率证据 · 展开查看各版本 · 不改写已记录成本':`API 参考折算 · ${rows.some(r=>r.evidence!=='observed'&&r.unit!=='1M tokens')?'价格单位见模型说明':'USD / 百万 Token'} · 默认基础文本价，特殊条件展开查看`}<span className="catalog-order-note">按发布时间从新到旧 · 未确认日期置后</span></div>
   <Card className="catalog-table"><Table<ModelGroup> rowKey={row=>modelKey(row)} size="small" dataSource={rows} loading={scope==='used'&&usageLoading} pagination={{pageSize:25,showSizeChanger:true,showTotal:n=>`共 ${n} 个模型`}} scroll={{x:920}} locale={{emptyText:scope==='used'&&usageError?'无法确认已使用模型':'没有符合条件的模型'}} expandable={{expandedRowRender:row=><RateDetails row={row}/>}} columns={[
    {title:'模型',width:250,render:(_,row)=><><Typography.Text strong>{row.model}</Typography.Text><div className="metric-note">{row.evidence==='observed'?'参考价未知':row.mode}{row.used&&<Tag>已使用</Tag>}</div>{row.evidence!=='observed'&&row.unit!=='1M tokens'&&<div className="metric-note">{row.currency} / {row.unit}</div>}</>},
-   {title:'发布时间',width:115,render:(_,row)=>releaseDate(row)},
+   {title:'发布时间',...decimalSorter<ModelGroup>(r=>r.released_at_ms,true),width:115,render:(_,row)=>releaseDate(row)},
    {title:'平台',width:90,render:(_,row)=>providerNames[row.provider]??row.provider},
    ...priceColumns(['input_price','cached_price','output_price']),
    {title:'用量',width:90,render:(_,row)=><Link to={`/usage/models?provider=${encodeURIComponent(row.provider)}&model=${encodeURIComponent(row.usageModel)}`}>查看用量</Link>},

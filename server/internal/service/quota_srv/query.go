@@ -14,9 +14,16 @@ import (
 func ParseQuery(values url.Values) (quota_dto.Query, error) {
 	var q quota_dto.Query
 	for key, value := range values {
-		if !slices.Contains([]string{"provider", "account_key", "client_id", "window_key", "view", "page", "limit"}, key) || len(value) != 1 || len(value[0]) > 128 {
+		if !slices.Contains([]string{"provider", "account_key", "client_id", "window_key", "view", "page", "limit", "direction"}, key) || len(value) != 1 || len(value[0]) > 128 {
 			return q, utils.ErrBadParamInput
 		}
+	}
+	q.Direction = values.Get("direction")
+	if q.Direction == "" {
+		q.Direction = "desc"
+	}
+	if q.Direction != "asc" && q.Direction != "desc" {
+		return q, utils.ErrBadParamInput
 	}
 	q.WindowKey, q.View = values.Get("window_key"), values.Get("view")
 	if q.WindowKey != "" {

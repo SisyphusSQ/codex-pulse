@@ -46,7 +46,7 @@ func quotaFact(id, raw string, used float64, at, reset int64) reportingv1.QuotaO
 	return reportingv1.QuotaObservation{Provider: "codex", ID: id, LocalScope: "scope-" + raw, AccountID: new(raw), LimitID: "codex", WindowKind: "primary", WindowMinutes: new(int64(300)), ResetsAtMS: new(reset), ObservedAtMS: at, UsedPercent: new(used), Validity: "accepted", Source: "app_server", HistoryOrigin: "confirmed"}
 }
 func accountFacts(raw string) reportingv1.Batch {
-	return reportingv1.Batch{Accounts: []reportingv1.Account{{Provider: "codex", ID: raw, Email: new("same@example.invalid"), CollectedAtMS: quotaNow - 60000}}, Bindings: []reportingv1.AccountBinding{{Provider: "codex", AccountID: raw, LocalScope: "scope-" + raw, ConfirmedAtMS: quotaNow - 60000}}}
+	return reportingv1.Batch{Accounts: []reportingv1.Account{{Provider: "codex", ID: raw, Email: new("same@example.invalid"), Plan: new("plus"), CollectedAtMS: quotaNow - 60000}}, Bindings: []reportingv1.AccountBinding{{Provider: "codex", AccountID: raw, LocalScope: "scope-" + raw, ConfirmedAtMS: quotaNow - 60000}}}
 }
 func readQuota(t *testing.T, s *Quota, p access_dto.Principal, q quota_dto.Query) quota_vo.Response {
 	t.Helper()
@@ -127,7 +127,7 @@ func TestUnassignedQuotaUnknownAndCreditsExpiryRemainDistinct(t *testing.T) {
 	q.HistoryOrigin = "pending_association"
 	sendQuota(t, reporting, clients[0], reportingv1.Batch{Quotas: []reportingv1.QuotaObservation{q}})
 	out := readQuota(t, s, admin, quota_dto.Query{})
-	if out.Windows[0].IdentityState != "unassigned" || out.Windows[0].Current.Freshness != "unassigned" || out.Windows[0].Current.ResetRemainingMS != nil {
+	if len(out.Windows) != 0 {
 		t.Fatal("unconfirmed account upgraded")
 	}
 	for _, client := range clients {

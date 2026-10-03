@@ -368,8 +368,8 @@ func TestStatisticsSessionCostRetainsNativeRangeRoundingAndToolWhitelist(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(detail.Tools) != 1 || detail.Tools[0].Totals.Invocations != 1 || len(detail.Skills) != 1 || detail.Skills[0].Totals.Invocations != 1 {
-		t.Fatal("tool/skill counts lost")
+	if len(detail.Tools) != 0 || len(detail.Skills) != 0 || detail.Session.Totals.Invocations != 0 {
+		t.Fatal("deprecated tool/skill counts exposed")
 	}
 	q.Model = "small"
 	filtered, err := stats.Summary(t.Context(), admin, q)

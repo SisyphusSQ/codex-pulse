@@ -18,7 +18,7 @@ beforeEach(()=>{api.setSession({client_id:'synthetic-browser',name:'测试浏览
 afterEach(()=>vi.unstubAllGlobals());
 describe('overview facts',()=>{
   it('requests the seven-day range and opens a real date picker for custom dates',async()=>{
-    fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):success(String(path).includes('/usage')?usageFrom(summaryFixture()):summaryFixture()));
+    fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):success(String(path).includes('/usage')?usageFrom(summaryFixture()):summaryFixture()));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
     await screen.findByText('当前范围 Token 总量');const user=userEvent.setup();
     await user.click(screen.getByText('7天',{selector:'.ant-segmented-item-label'}));
@@ -36,7 +36,7 @@ describe('overview facts',()=>{
     expect(dollars('123456789')).toBe('$123.46');expect(dollars(null)).toBe('未知');
   });
   it('uses Server totals and separate annual coverage, sends date/provider filters, and retains cached data on refresh failure',async()=>{
-    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):success(String(path).includes('/usage')?usageFrom(summaryFixture()):summaryFixture()));
+    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):success(String(path).includes('/usage')?usageFrom(summaryFixture()):summaryFixture()));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
     expect((await screen.findAllByText('90071992.5亿')).length).toBeGreaterThan(0);
     expect(screen.getByText('已知金额小计，含未定价记录 · 不是实际账单')).toBeInTheDocument();
@@ -46,20 +46,20 @@ describe('overview facts',()=>{
     await waitFor(()=>expect(fetcher.mock.calls.some(([path])=>new URL(String(path),'http://localhost').searchParams.get('provider')==='cursor')).toBe(true));
     const url=new URL(String(fetcher.mock.calls.find(([path])=>String(path).includes('summary'))![0]),'http://localhost');
     expect(url.searchParams.get('start_date')).toMatch(/^\d{4}-\d{2}-\d{2}$/);expect(url.searchParams.get('time_zone')).toBe('Asia/Shanghai');expect(url.searchParams.has('start_at_ms')).toBe(false);
-    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):new Response('',{status:503}));
+    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):new Response('',{status:503}));
     await user.click(screen.getByRole('button',{name:'刷新'}));
     await screen.findByText('刷新失败，以下保留上次读取的数据');expect(screen.getAllByText('$123.46').length).toBeGreaterThan(0);
   });
   it('does not turn a failed initial query into an empty range',async()=>{
-    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):new Response('',{status:503}));
+    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):new Response('',{status:503}));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
     await screen.findByText('数据未能读取');expect(screen.queryByText('当前范围 Token 总量')).not.toBeInTheDocument();
   });
-  it('places annual activity above summary and trend while keeping independent Server annual metrics',async()=>{
+  it('keeps annual activity first before summary and new activity while preserving independent Server annual metrics',async()=>{
     const fixture=summaryFixture();
     fixture.heatmap_totals={...fixture.totals,total_tokens:'999999999999999999',cost_micro_usd:'9876543210',cost_status:'partial'};
     fixture.heatmap_activity={total_tokens:'999999999999999999',peak_daily_tokens:'100000',active_days:'15',current_streak_days:null,longest_streak_days:'4',observed_days:22,unknown_days:343};
-    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):success(String(path).includes('/usage')?usageFrom(fixture):fixture));
+    fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):success(String(path).includes('/usage')?usageFrom(fixture):fixture));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
     await screen.findByText('近 365 天 API 等价成本');expect(screen.getByText('$9,876.54')).toBeInTheDocument();expect(document.querySelector('.annual-totals')).toHaveTextContent('10000000000亿');
     await userEvent.setup().click(await screen.findByRole('button',{name:/年度活动统计/}));
@@ -72,5 +72,9 @@ describe('overview facts',()=>{
     const summary=screen.getByText('当前范围 Token 总量').closest('.summary-band')!;
     expect(activity.compareDocumentPosition(summary)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(activity.compareDocumentPosition(trend)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const added=screen.getByText('活动分布').closest('.ant-card')!;
+    expect(activity.compareDocumentPosition(added)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for(const title of ['平台 / 模型明细','采集来源','平台分布','模型分布'])expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.queryByText('工具与技能')).not.toBeInTheDocument();
   });
 });

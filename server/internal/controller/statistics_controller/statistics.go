@@ -18,6 +18,7 @@ func NewStatistics(service *statistics_srv.Statistics) *Statistics {
 }
 func (s *Statistics) Register(e *echo.Echo) {
 	e.GET("/api/v1/statistics/summary", s.Summary)
+	e.GET("/api/v1/statistics/source-usage", s.SourceUsage)
 	e.GET("/api/v1/statistics/usage", s.Usage)
 	e.GET("/api/v1/sessions", s.Sessions)
 	e.GET("/api/v1/sessions/:id", s.Session)
@@ -97,6 +98,18 @@ func (s *Statistics) Usage(c *echo.Context) error {
 		return err
 	}
 	out, err := s.service.Usage(c.Request().Context(), apphttp.Principal(c), q)
+	if err != nil {
+		return err
+	}
+	return vo.CommSuccResp(c, out)
+}
+
+func (s *Statistics) SourceUsage(c *echo.Context) error {
+	q, err := statisticsQuery(c)
+	if err != nil {
+		return err
+	}
+	out, err := s.service.SourceUsage(c.Request().Context(), apphttp.Principal(c), q)
 	if err != nil {
 		return err
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"math/big"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,21 +33,21 @@ func NewStatistics(repository *statistics_repo.Statistics) *Statistics {
 
 // statisticsRead 仅保存本次只读快照的计算状态；对外只返回明确 VO。
 type statisticsRead struct {
-	q                                                                      statistics_dto.StatisticsQuery
-	projects                                                               map[string]reporting_do.Project
-	metadata                                                               map[string]reporting_do.Session
-	sources                                                                map[string][]statistics_vo.StatisticsSource
-	clients                                                                map[string]access_do.Client
-	status                                                                 []reporting_do.DeviceStatus
-	total                                                                  *statisticsAggregate
-	providers, models, days, sessions, tools, skills, hours, projectGroups map[string]*statisticsAggregate
-	providerSeen                                                           map[string]bool
-	collected                                                              *int64
-	modelDays                                                              map[string]*statisticsAggregate
-	modelTotals                                                            map[string]*statisticsAggregate
-	cursorPools                                                            map[string]*statisticsAggregate
-	modelTrendExceeded                                                     bool
-	heatmapOnly                                                            bool
+	q                                                                 statistics_dto.StatisticsQuery
+	projects                                                          map[string]reporting_do.Project
+	metadata                                                          map[string]reporting_do.Session
+	sources                                                           map[string][]statistics_vo.StatisticsSource
+	clients                                                           map[string]access_do.Client
+	status                                                            []reporting_do.DeviceStatus
+	total                                                             *statisticsAggregate
+	providers, models, days, sessions, hours, projectGroups, timeline map[string]*statisticsAggregate
+	providerSeen                                                      map[string]bool
+	collected                                                         *int64
+	modelDays                                                         map[string]*statisticsAggregate
+	modelTotals                                                       map[string]*statisticsAggregate
+	cursorPools                                                       map[string]*statisticsAggregate
+	modelTrendExceeded                                                bool
+	heatmapOnly                                                       bool
 }
 
 func (s *Statistics) read(ctx context.Context, q statistics_dto.StatisticsQuery) (*statisticsRead, error) {
@@ -56,7 +57,7 @@ func (s *Statistics) readWithModelTrend(ctx context.Context, q statistics_dto.St
 	return s.readFacts(ctx, q, include, false)
 }
 func (s *Statistics) readFacts(ctx context.Context, q statistics_dto.StatisticsQuery, include, heatmapOnly bool) (*statisticsRead, error) {
-	out := &statisticsRead{q: q, projects: map[string]reporting_do.Project{}, metadata: map[string]reporting_do.Session{}, sources: map[string][]statistics_vo.StatisticsSource{}, clients: map[string]access_do.Client{}, total: newStatisticsAggregate(), providers: map[string]*statisticsAggregate{}, models: map[string]*statisticsAggregate{}, days: map[string]*statisticsAggregate{}, sessions: map[string]*statisticsAggregate{}, tools: map[string]*statisticsAggregate{}, skills: map[string]*statisticsAggregate{}, hours: map[string]*statisticsAggregate{}, projectGroups: map[string]*statisticsAggregate{}, providerSeen: map[string]bool{}}
+	out := &statisticsRead{q: q, projects: map[string]reporting_do.Project{}, metadata: map[string]reporting_do.Session{}, sources: map[string][]statistics_vo.StatisticsSource{}, clients: map[string]access_do.Client{}, total: newStatisticsAggregate(), providers: map[string]*statisticsAggregate{}, models: map[string]*statisticsAggregate{}, days: map[string]*statisticsAggregate{}, sessions: map[string]*statisticsAggregate{}, hours: map[string]*statisticsAggregate{}, projectGroups: map[string]*statisticsAggregate{}, timeline: map[string]*statisticsAggregate{}, providerSeen: map[string]bool{}}
 	out.heatmapOnly = heatmapOnly
 	if include {
 		out.modelDays = map[string]*statisticsAggregate{}
@@ -147,13 +148,6 @@ func (s *Statistics) readFacts(ctx context.Context, q statistics_dto.StatisticsQ
 				return utils.ErrRequestBudget
 			}
 		}
-		for _, i := range chosen.Invocations {
-			factRows++
-			if factRows > statistics_dto.MaximumStatisticsFacts {
-				return utils.ErrRequestBudget
-			}
-			out.call(reporting_do.Invocation{SessionKey: key, InvocationID: i.ID, ObservedAtMS: i.ObservedAtMS, Kind: i.Kind, ToolName: i.Name, Outcome: i.Outcome, DurationMS: i.DurationMS})
-		}
 		return nil
 	}
 	if q.ClientID == "" {
@@ -183,6 +177,7 @@ func (s *Statistics) readFacts(ctx context.Context, q statistics_dto.StatisticsQ
 			if err := json.Unmarshal([]byte(row.Payload), &snapshot, json.RejectUnknownMembers(true)); err != nil {
 				return err
 			}
+			snapshot.Invocations = nil
 			out.sources[row.SessionKey] = append(out.sources[row.SessionKey], statistics_vo.StatisticsSource{ID: row.ID, ClientID: row.ClientID, ClientName: out.clients[row.ClientID].Name, CollectedAtMS: row.CollectedAtMS, Revision: row.Revision, SourceKind: row.SourceKind, Complete: snapshot.Complete, Deleted: snapshot.Deleted})
 			if q.ClientID != "" {
 				size += len(row.Payload)
@@ -217,16 +212,6 @@ func (s *Statistics) readFacts(ctx context.Context, q statistics_dto.StatisticsQ
 			if out.modelTrendExceeded {
 				return utils.ErrRequestBudget
 			}
-			return nil
-		}); err != nil {
-			return nil, err
-		}
-		if err := s.repository.StreamInvocations(ctx, q, func(row reporting_do.Invocation) error {
-			factRows++
-			if factRows > statistics_dto.MaximumStatisticsFacts {
-				return utils.ErrRequestBudget
-			}
-			out.call(row)
 			return nil
 		}); err != nil {
 			return nil, err
@@ -302,32 +287,8 @@ func (o *statisticsRead) usage(row reporting_do.Usage) {
 	}
 	local := time.UnixMilli(at).In(o.q.Location)
 	hour := local.Format("Mon-15")
-	for _, g := range []*statisticsAggregate{o.total, sessionAggregate(o.sessions, row.SessionKey), aggregateFor(o.providers, m.Provider), aggregateFor(o.models, valueString(row.Model, "unknown")), aggregateFor(o.days, day), aggregateFor(o.hours, hour), aggregateFor(o.projectGroups, o.projects[m.ProjectID].GroupID)} {
+	for _, g := range []*statisticsAggregate{o.total, sessionAggregate(o.sessions, row.SessionKey), aggregateFor(o.providers, m.Provider), aggregateFor(o.models, valueString(row.Model, "unknown")), aggregateFor(o.days, day), aggregateFor(o.hours, hour), aggregateFor(o.timeline, statisticsHourKey(at, o.q.Location)), aggregateFor(o.projectGroups, o.projects[m.ProjectID].GroupID)} {
 		g.usage(row, o.q.Location, m.Provider)
-	}
-}
-func (o *statisticsRead) call(row reporting_do.Invocation) {
-	m, ok := o.metadata[row.SessionKey]
-	if !ok || row.ObservedAtMS < o.q.StartAtMS || row.ObservedAtMS >= o.q.EndAtMS {
-		return
-	}
-	// 模型归因属于 Token 事实；模型筛选时工具计数不能假定属于该模型。
-	if o.q.Model != "" {
-		return
-	}
-	o.providerSeen[m.Provider] = true
-	if o.heatmapOnly {
-		o.total.call(row)
-		aggregateFor(o.days, statisticsDay(row.ObservedAtMS, o.q.Location).Format(time.DateOnly)).call(row)
-		return
-	}
-	for _, g := range []*statisticsAggregate{o.total, sessionAggregate(o.sessions, row.SessionKey), aggregateFor(o.providers, m.Provider), aggregateFor(o.days, statisticsDay(row.ObservedAtMS, o.q.Location).Format(time.DateOnly)), aggregateFor(o.projectGroups, o.projects[m.ProjectID].GroupID)} {
-		g.call(row)
-	}
-	if row.Kind == "skill" {
-		aggregateFor(o.skills, row.ToolName).call(row)
-	} else {
-		aggregateFor(o.tools, row.ToolName).call(row)
 	}
 }
 func statisticsRange(q statistics_dto.StatisticsQuery) statistics_vo.StatisticsRange {
@@ -415,14 +376,19 @@ func (o *statisticsRead) summary(now time.Time) statistics_vo.StatisticsSummary 
 		for hour := range 24 {
 			key := time.Date(2023, 1, 1+weekday, hour, 0, 0, 0, time.UTC).Format("Mon-15")
 			g := o.hours[key]
+			observed := g != nil
 			if g == nil {
 				g = newStatisticsAggregate()
 			}
 			t, _ := g.finish(false)
-			hours = append(hours, statistics_vo.StatisticsHour{Weekday: weekday, Hour: hour, Tokens: t.TotalTokens, Sessions: t.Sessions})
+			var count *string
+			if observed {
+				count = new(strconv.FormatInt(t.Sessions, 10))
+			}
+			hours = append(hours, statistics_vo.StatisticsHour{SessionCount: count, Weekday: weekday, Hour: hour, Tokens: t.TotalTokens, Sessions: t.Sessions})
 		}
 	}
-	return statistics_vo.StatisticsSummary{Range: statisticsRange(o.q), Scope: o.scope(), CostBasis: "codex_day_model_version;cursor_range_sum;event_cost_sum", TrendCostRoundingDeltaMicroUSD: decimalDifference(totals.CostMicroUSD, trend), Totals: totals, Coverage: o.coverage(now), Providers: statisticsSlices(o.providers, len(o.providerSeen) > 0), Models: models, Devices: []statistics_vo.StatisticsSlice{{Key: "execution_unknown", Name: "执行设备未知", Totals: totals}}, Trend: trend, WeekdayHours: hours, Tools: statisticsSlices(o.tools, true), Skills: statisticsSlices(o.skills, true)}
+	return statistics_vo.StatisticsSummary{Range: statisticsRange(o.q), Scope: o.scope(), CostBasis: "codex_day_model_version;cursor_range_sum;event_cost_sum", TrendCostRoundingDeltaMicroUSD: decimalDifference(totals.CostMicroUSD, trend), Totals: totals, Coverage: o.coverage(now), Providers: statisticsSlices(o.providers, len(o.providerSeen) > 0), Models: models, Devices: []statistics_vo.StatisticsSlice{{Key: "execution_unknown", Name: "执行设备未知", Totals: totals}}, Trend: trend, WeekdayHours: hours, ActivityGranularity: o.activityGranularity(), ActivityTimeline: o.activityTimeline(), TopSessions: o.topSessions(), Tools: []statistics_vo.StatisticsSlice{}, Skills: []statistics_vo.StatisticsSlice{}}
 }
 func (s *Statistics) Summary(ctx context.Context, p access_dto.Principal, q statistics_dto.StatisticsQuery) (result statistics_vo.StatisticsSummary, err error) {
 	if err = access_srv.RequireAdmin(p); err != nil {

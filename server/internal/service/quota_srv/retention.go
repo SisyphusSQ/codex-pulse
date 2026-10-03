@@ -69,7 +69,7 @@ func (s *Quota) Accounts(ctx context.Context, p access_dto.Principal, q quota_dt
 
 // Compact 保留四个已观测周期及最后有效值，仅压缩已结束周期中的同状态区间。
 func (s *Quota) Compact(ctx context.Context) (retired int, err error) {
-	windows, err := s.repository.Windows(ctx, quota_dto.Query{})
+	windows, err := s.repository.Windows(ctx, quota_dto.Query{RawHistory: true})
 	if err != nil {
 		return 0, err
 	}

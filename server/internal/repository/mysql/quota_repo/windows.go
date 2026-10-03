@@ -14,7 +14,7 @@ import (
 )
 
 func (r *Quota) Windows(ctx context.Context, q quota_dto.Query) (out []quota_dto.WindowScope, err error) {
-	db := r.query(ctx, q).Model(&reporting_do.QuotaObservation{})
+	db := r.quotaWindowsQuery(ctx, q).Model(&reporting_do.QuotaObservation{})
 	err = db.Select("provider,account_key,CASE WHEN account_key IS NULL THEN client_id ELSE '' END AS client_id,CASE WHEN account_key IS NULL THEN local_scope ELSE '' END AS local_scope,limit_id,window_kind,window_minutes").Distinct().Limit(4097).Scan(&out).Error
 	if len(out) > 4096 {
 		return nil, utils.ErrRequestBudget
@@ -23,7 +23,7 @@ func (r *Quota) Windows(ctx context.Context, q quota_dto.Query) (out []quota_dto
 }
 
 func (r *Quota) windowQuery(ctx context.Context, q quota_dto.Query, w quota_dto.WindowScope) *gorm.DB {
-	db := r.query(ctx, q).Model(&reporting_do.QuotaObservation{}).Where("provider = ? AND limit_id = ? AND window_kind = ?", w.Provider, w.LimitID, w.WindowKind)
+	db := r.quotaWindowsQuery(ctx, q).Model(&reporting_do.QuotaObservation{}).Where("provider = ? AND limit_id = ? AND window_kind = ?", w.Provider, w.LimitID, w.WindowKind)
 	if w.AccountKey != nil {
 		db = db.Where("account_key = ?", *w.AccountKey)
 	} else {
@@ -64,7 +64,7 @@ func (r *Quota) WindowObservations(ctx context.Context, q quota_dto.Query, w quo
 }
 
 func (r *Quota) AllWindowObservations(ctx context.Context, w quota_dto.WindowScope) (out []reporting_do.QuotaObservation, err error) {
-	err = r.windowQuery(ctx, quota_dto.Query{}, w).Order("observed_at_ms,id").Find(&out).Error
+	err = r.windowQuery(ctx, quota_dto.Query{RawHistory: true}, w).Order("observed_at_ms,id").Find(&out).Error
 	return
 }
 
