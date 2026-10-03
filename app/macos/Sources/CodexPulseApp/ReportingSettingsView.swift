@@ -4,6 +4,7 @@ import SwiftUI
 struct ReportingSettingsSection: View {
     @ObservedObject var settings: ReportingSettingsModel
     @State private var confirmsClear = false
+    @State private var confirmsFull = false
 
     var body: some View {
         Section("多机中心") {
@@ -38,6 +39,9 @@ struct ReportingSettingsSection: View {
                     .accessibilityIdentifier("reporting.save")
                 Button("立即增量补传") { Task { await settings.syncNow() } }
                     .disabled(settings.status?.enabled != true).accessibilityIdentifier("reporting.sync-now")
+                Button("全量补传…") { confirmsFull = true }
+                    .disabled(settings.status?.enabled != true || settings.status?.fullSyncState == "running")
+                    .accessibilityIdentifier("reporting.full-sync")
                 Button("刷新状态") { Task { await settings.refresh() } }
                 if settings.busy { ProgressView().controlSize(.small) }
             }
@@ -47,6 +51,12 @@ struct ReportingSettingsSection: View {
                 LabeledContent("同步状态", value: stateLabel(status.state))
                 LabeledContent("实际已保存开关", value: status.enabled ? "已启用" : "已关闭")
                 LabeledContent("待发送批次", value: String(status.pendingBatches))
+                if !status.fullSyncState.isEmpty {
+                    LabeledContent("全量补传", value: status.fullSyncState == "completed" ? "已完成" : status.enabled ? "进行中" : "已暂停，启用后续传")
+                    LabeledContent("已排入完整快照", value: String(status.fullSyncExportedSessions))
+                    LabeledContent("已确认上传批次", value: String(status.fullSyncAcknowledgedBatches))
+                    LabeledContent("任务开始", value: time(status.hasFullSyncStartedAtMs ? status.fullSyncStartedAtMs : nil))
+                }
                 LabeledContent("队列大小", value: ByteCountFormatter.string(fromByteCount: status.pendingBytes, countStyle: .file))
                 LabeledContent("其他中心保留批次", value: String(status.retainedBatches))
                 LabeledContent("最近尝试", value: time(status.hasLastAttemptAtMs ? status.lastAttemptAtMs : nil))
@@ -60,6 +70,12 @@ struct ReportingSettingsSection: View {
         }
         .disabled(settings.busy)
         .task { await settings.observe() }
+        .confirmationDialog("全量补传当前范围？", isPresented: $confirmsFull, titleVisibility: .visible) {
+            Button("开始全量补传") { Task { await settings.fullSync() } }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("重新发送当前已保存历史范围内的已索引事实，不重扫原始文件、不改变起点、不删除中心历史。大快照分片上传，保留幂等性与待传队列；退出 App 后暂停，下次启动继续。")
+        }
         .confirmationDialog("清理本机待发送队列？", isPresented: $confirmsClear, titleVisibility: .visible) {
             Button("关闭同步并清理队列", role: .destructive) { Task { await settings.configure(clearPending: true) } }
             Button("取消", role: .cancel) {}
@@ -73,6 +89,6 @@ struct ReportingSettingsSection: View {
         return Date(timeIntervalSince1970: Double(value) / 1000).formatted(date: .abbreviated, time: .shortened)
     }
     private func stateLabel(_ value: String) -> String {
-        ["disabled":"已关闭", "ready":"已准备 / 等待增量同步", "partial":"部分来源可用", "offline":"连接失败，等待有界重试", "reconnect_required":"凭证已失效，请重新配对", "protocol_rejected":"协议不兼容，请先更新中心", "queue_full":"队列已满，保留待发送数据", "source_budget_exceeded":"来源超过单批预算", "source_unavailable":"本机来源尚不可用", "storage_unavailable":"本机同步存储不可用"][value] ?? "状态未知"
+        ["disabled":"已关闭", "ready":"已准备 / 等待增量同步", "partial":"部分来源可用", "offline":"连接失败，等待有界重试", "reconnect_required":"凭证已失效，请重新配对", "protocol_rejected":"协议不兼容，请先更新中心", "queue_full":"队列已满，保留待发送数据", "source_budget_exceeded":"来源快照超过总预算", "source_unavailable":"本机来源尚不可用", "storage_unavailable":"本机同步存储不可用"][value] ?? "状态未知"
     }
 }

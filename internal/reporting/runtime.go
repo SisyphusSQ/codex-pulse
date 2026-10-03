@@ -279,6 +279,8 @@ func finiteState(err error) string {
 		return "storage_unavailable"
 	}
 }
+
+// cycle 将来源错误限定在该 Provider，最新额度不依赖 Session 和历史游标。
 func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool, returnErr error) {
 	now := time.Now().UnixMilli()
 	cfg.LastAttemptAtMS = &now
@@ -298,141 +300,78 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 		return false, err
 	}
 	defer client.Close()
-	// Drain before export so a full queue can recover; every failure retains the same body.
-	for sent := 0; sent < 32; sent++ {
-		item, err := r.state.next(ctx, cfg.partition())
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			break
-		}
-		if err != nil {
-			if errors.Is(err, ErrProtocol) {
-				return false, err
+	drain := func(limit int) error {
+		for range limit {
+			item, err := r.state.next(ctx, cfg.partition())
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				break
 			}
-			return false, ErrUnavailable
+			if err != nil {
+				return err
+			}
+			receipt, err := client.Upload(ctx, cfg.Credential, item)
+			if err != nil {
+				return err
+			}
+			if err := r.state.Ack(ctx, item, receipt); err != nil {
+				return err
+			}
+			success := time.Now().UnixMilli()
+			cfg.LastSuccessAtMS = &success
 		}
-		receipt, err := client.Upload(ctx, cfg.Credential, item)
-		if err != nil {
-			return false, err
-		}
-		if err := r.state.Ack(ctx, item, receipt); err != nil {
-			return false, err
-		}
-		success := time.Now().UnixMilli()
-		cfg.LastSuccessAtMS = &success
+		return nil
+	}
+	// 先释放少量队列空间，然后优先排入当前额度；历史不会占满每次上传机会。
+	if err := drain(8); err != nil {
+		return false, err
 	}
 	cfg.State = "ready"
+	sourceErrors := map[string]error{}
+	unavailableProviders := map[string]bool{}
 	missing := false
-	for _, provider := range []string{"codex", "cursor", "grok"} {
-		homeID, err := r.source.Partition(ctx, provider)
+	record := func(provider string, err error) {
 		if errors.Is(err, store.ErrReportingSource) {
 			missing = true
-			continue
 		}
 		if err != nil {
-			return false, err
-		}
-		cursor, err := r.state.cursor(ctx, cfg.partition(), provider, homeID)
-		if err != nil {
-			return false, ErrUnavailable
-		}
-		if cursor.NextDueAtMS > now {
-			continue
-		}
-		page, err := r.source.Page(ctx, provider, cursor.After, cfg.HistoryStartAtMS)
-		if errors.Is(err, store.ErrReportingSource) {
-			missing = true
-			continue
-		}
-		if err != nil {
-			return false, err
-		}
-		cursor.Authority = cursor.Authority && page.Authority
-		for _, snap := range page.Sessions {
-			if snap.HomeID != homeID {
-				return false, store.ErrReportingSource
+			sourceErrors[provider] = err
+			if returnErr == nil {
+				returnErr = err
 			}
-			snap.HistoryStartAtMS = cfg.HistoryStartAtMS
-			if err := r.state.Enqueue(ctx, cfg.partition(), cursor.Sweep, snap); err != nil {
-				return false, err
-			}
-		}
-		if len(page.Sessions) > 0 {
-			cursor.After = page.Next
-			again = true
-		} else {
-			if cursor.Authority {
-				removed, err := r.state.removed(ctx, cfg.partition(), provider, homeID, cursor.Sweep)
-				if err != nil {
-					return false, err
-				}
-				for _, snap := range removed {
-					snap.CollectedAtMS = now
-					if err := r.state.Enqueue(ctx, cfg.partition(), cursor.Sweep, snap); err != nil {
-						return false, err
-					}
-				}
-				if len(removed) == 128 {
-					again = true
-					continue
-				}
-			}
-			cursor.After = ""
-			cursor.Sweep = uuid.NewString()
-			cursor.Authority = true
-			cursor.NextDueAtMS = now + cfg.IntervalSeconds*1000
-		}
-		if err := r.state.saveCursor(ctx, cursor); err != nil {
-			return false, ErrUnavailable
 		}
 	}
-
-	for _, provider := range []string{"codex", "cursor", "grok"} {
-		partition, err := r.source.FactsPartition(ctx, provider)
-		if errors.Is(err, store.ErrReportingSource) {
-			missing = true
-			continue
-		}
-		if err != nil {
-			return false, err
-		}
-		cursor, err := r.state.cursor(ctx, cfg.partition(), "quota:"+provider, partition)
-		if err != nil {
-			return false, ErrUnavailable
-		}
-		if cursor.NextDueAtMS > now {
-			continue
-		}
-		page, err := r.source.Facts(ctx, provider, cursor.After, cfg.HistoryStartAtMS)
-		if errors.Is(err, store.ErrReportingSource) {
-			missing = true
-			continue
-		}
-		if err != nil {
-			return false, err
-		}
-		if page.Partition != partition {
-			missing = true
-			continue
-		}
-		changed, err := r.state.EnqueueFactGroups(ctx, cfg.partition(), page.Groups)
-		if err != nil {
-			return false, err
-		}
-		again = again || changed
-
-		if page.Done {
-			cursor.After = ""
-			cursor.NextDueAtMS = now + cfg.IntervalSeconds*1000
-		} else {
-			if page.Next == "" || page.Next == cursor.After {
-				return false, ErrProtocol
+	providers := []string{"codex", "cursor", "grok"}
+	if current, ok := r.source.(interface {
+		CurrentFacts(context.Context, string, int64) (ExportFactsPage, error)
+	}); ok {
+		for _, provider := range providers {
+			page, err := current.CurrentFacts(ctx, provider, cfg.HistoryStartAtMS)
+			if errors.Is(err, store.ErrReportingSource) {
+				missing = true
+				unavailableProviders[provider] = true
+				continue
 			}
-			cursor.After = page.Next
-			again = true
+			if err != nil {
+				record(provider, err)
+				continue
+			}
+			_, err = r.state.EnqueueFactGroups(ctx, cfg.partition(), page.Groups, -1)
+			record(provider, err)
 		}
-		if err := r.state.saveCursor(ctx, cursor); err != nil {
-			return false, ErrUnavailable
-		}
+	}
+	for _, provider := range providers {
+		more, unavailable, err := r.exportFacts(ctx, cfg, provider, now)
+		again = again || more
+		missing = missing || unavailable
+		unavailableProviders[provider] = unavailableProviders[provider] || unavailable
+		record(provider, err)
+	}
+	for _, provider := range providers {
+		more, unavailable, err := r.exportSessions(ctx, cfg, provider, now)
+		again = again || more
+		missing = missing || unavailable
+		unavailableProviders[provider] = unavailableProviders[provider] || unavailable
+		record(provider, err)
 	}
 	if missing {
 		cfg.State = "partial"
@@ -445,15 +384,28 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 	if err != nil {
 		return false, ErrUnavailable
 	}
-	if cursor.NextDueAtMS <= now {
-		var statuses []reportingv1.DeviceStatus
-		for _, provider := range []string{"codex", "cursor", "grok"} {
+	if cursor.NextDueAtMS <= now || returnErr != nil || status.FullSyncState == "running" {
+		statuses := []reportingv1.DeviceStatus{}
+		for _, provider := range providers {
 			facts, err := r.source.Status(ctx, provider, cfg.HistoryStartAtMS)
 			if err != nil {
-				return false, err
+				record(provider, err)
+				facts = reportingv1.DeviceStatus{Provider: provider, Status: "source_unavailable"}
+			}
+			if (facts.Status == "source_unavailable" || unavailableProviders[provider] && facts.Status != "disabled") && status.FullSyncState == "running" {
+				record(provider, store.ErrReportingSource)
 			}
 			facts.Version = r.version
 			facts.PendingBatches = status.PendingBatches
+			facts.SyncState = "ready"
+			if facts.Status == "source_unavailable" {
+				facts.SyncState = "source_unavailable"
+			}
+			if err := sourceErrors[provider]; err != nil {
+				facts.SyncState = finiteState(err)
+			}
+			facts.SyncCheckedAtMS = &now
+			facts.FullSyncState = status.FullSyncState
 			statuses = append(statuses, facts)
 		}
 		if err := r.state.EnqueueFacts(ctx, cfg.partition(), reportingv1.Batch{Status: statuses}); err != nil {
@@ -463,8 +415,131 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 		if err := r.state.saveCursor(ctx, cursor); err != nil {
 			return false, ErrUnavailable
 		}
-		again = true
 	}
-	again = again || status.PendingBatches > 0
-	return again, nil
+	if err := drain(32); err != nil {
+		return false, err
+	}
+	pending, err := r.state.Status(ctx)
+	if err != nil {
+		return false, ErrUnavailable
+	}
+	again = again || pending.PendingBatches > 0
+	if returnErr == nil && !again {
+		if err := r.state.finishFullSync(ctx, cfg.partition()); err != nil {
+			return false, ErrUnavailable
+		}
+		if pending.FullSyncState == "running" {
+			again = true
+		}
+	}
+	return again, returnErr
+}
+
+func (r *Runtime) exportFacts(ctx context.Context, cfg credentialSettings, provider string, now int64) (bool, bool, error) {
+	partition, err := r.source.FactsPartition(ctx, provider)
+	if errors.Is(err, store.ErrReportingSource) {
+		return false, true, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	cursor, err := r.state.cursor(ctx, cfg.partition(), "quota:"+provider, partition)
+	if err != nil {
+		return false, false, ErrUnavailable
+	}
+	if cursor.NextDueAtMS > now {
+		return false, false, nil
+	}
+	page, err := r.source.Facts(ctx, provider, cursor.After, cfg.HistoryStartAtMS)
+	if errors.Is(err, store.ErrReportingSource) {
+		return false, true, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	if page.Partition != partition {
+		return false, true, nil
+	}
+	changed, err := r.state.EnqueueFactGroups(ctx, cfg.partition(), page.Groups)
+	if err != nil {
+		return false, false, err
+	}
+	if page.Done {
+		cursor.After = ""
+		cursor.NextDueAtMS = now + cfg.IntervalSeconds*1000
+	} else {
+		if page.Next == "" || page.Next == cursor.After {
+			return false, false, ErrProtocol
+		}
+		cursor.After = page.Next
+		changed = true
+	}
+	if err := r.state.saveCursor(ctx, cursor); err != nil {
+		return false, false, ErrUnavailable
+	}
+	return changed, false, nil
+}
+func (r *Runtime) exportSessions(ctx context.Context, cfg credentialSettings, provider string, now int64) (again, missing bool, err error) {
+	homeID, err := r.source.Partition(ctx, provider)
+	if errors.Is(err, store.ErrReportingSource) {
+		return false, true, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	cursor, err := r.state.cursor(ctx, cfg.partition(), provider, homeID)
+	if err != nil {
+		return false, false, ErrUnavailable
+	}
+	if cursor.NextDueAtMS > now {
+		return false, false, nil
+	}
+	page, err := r.source.Page(ctx, provider, cursor.After, cfg.HistoryStartAtMS)
+	if errors.Is(err, store.ErrReportingSource) {
+		return false, true, nil
+	}
+	if err != nil {
+		return false, false, err
+	}
+	cursor.Authority = cursor.Authority && page.Authority
+	for _, snap := range page.Sessions {
+		if snap.HomeID != homeID {
+			return false, false, store.ErrReportingSource
+		}
+		snap.HistoryStartAtMS = cfg.HistoryStartAtMS
+		if err := r.state.Enqueue(ctx, cfg.partition(), cursor.Sweep, snap); err != nil {
+			return false, false, err
+		}
+	}
+	if len(page.Sessions) > 0 {
+		if page.Next == "" || page.Next == cursor.After {
+			return false, false, ErrProtocol
+		}
+		cursor.After = page.Next
+		again = true
+	} else {
+		if cursor.Authority {
+			removed, err := r.state.removed(ctx, cfg.partition(), provider, homeID, cursor.Sweep)
+			if err != nil {
+				return false, false, err
+			}
+			for _, snap := range removed {
+				snap.CollectedAtMS = now
+				if err := r.state.Enqueue(ctx, cfg.partition(), cursor.Sweep, snap); err != nil {
+					return false, false, err
+				}
+			}
+			if len(removed) == 128 {
+				return true, false, nil
+			}
+		}
+		cursor.After = ""
+		cursor.Sweep = uuid.NewString()
+		cursor.Authority = true
+		cursor.NextDueAtMS = now + cfg.IntervalSeconds*1000
+	}
+	if err := r.state.saveCursor(ctx, cursor); err != nil {
+		return false, false, ErrUnavailable
+	}
+	return again, false, nil
 }

@@ -53,4 +53,4 @@ Query --> Store["SQLite"]
 
 已确认保留 App 托管 Helper：退出 App 后停止采集和上报，下次打开增量补采并恢复待发送队列；未观测的配额历史保留缺口。实施按 3 个 Master、14 张 Execution 组织，中心开发阶段暂用 SQLite，同时实现 MySQL 支持，真实 MySQL 整体联调待环境提供后进行。
 
-本机新增 `internal/reporting`，通过已有 SQLite 的一致只读事务构造白名单 DTO，独立私有 `reporting.db` 持久化队列和 Pulse 自有凭证。上报默认关闭，精确握手升级为 `core-rpc-v8`；CoreService 仅开放同步状态、配对、配置和立即同步命令；不把凭证返回 Swift。App 退出先取消并 join 同步 worker，确认只推进中心已经匹配提交的 batch。独立网络 contract 见 `api/codexpulse/reporting/v1`；它不开放本机控制 RPC。
+本机新增 `internal/reporting`，通过已有 SQLite 的一致只读事务构造白名单 DTO，独立私有 `reporting.db` 持久化队列和 Pulse 自有凭证。上报默认关闭，精确握手升级为 `core-rpc-v9`；CoreService 仅开放同步状态、配对、配置和立即同步命令；不把凭证返回 Swift。App 退出先取消并 join 同步 worker，确认只推进中心已经匹配提交的 batch。独立网络 contract 见 `api/codexpulse/reporting/v1`；它不开放本机控制 RPC。

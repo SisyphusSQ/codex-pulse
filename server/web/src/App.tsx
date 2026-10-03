@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Alert, Breadcrumb, Button, Drawer, Grid, Layout, Menu, Result, Typography } from 'antd';
+import { Breadcrumb, Button, Drawer, Grid, Layout, Menu, Result, Typography } from 'antd';
 import { BarChartOutlined, DatabaseOutlined, DesktopOutlined, DollarOutlined, FolderOutlined, LineChartOutlined, MenuOutlined, MessageOutlined, TeamOutlined } from '@ant-design/icons';
 import { HashRouter, Link, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { ApiError } from './api/client';
 import { SessionProvider, useSession } from './auth/SessionProvider';
 import { SignIn } from './auth/SignIn';
 import { ErrorState, LoadingState } from './components/QueryState';
+import { OperationNotifications, useOperationNotifications } from './components/OperationNotifications';
 import { RuntimeInfo } from './components/RuntimeInfo';
 
 const Overview=lazy(()=>import('./pages/Overview'));
@@ -40,15 +41,15 @@ function Shell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const screens = Grid.useBreakpoint();
   const mobile = !screens.md;
-  const [error, setError] = useState<string>();
+  const notify=useOperationNotifications();
   const selected = navigation.find(item => item.key !== '/' && location.pathname.startsWith(item.key))?.key ?? '/';
   const title = navigation.find(item=>item.key===selected)?.label;
 
   useEffect(()=>{window.scrollTo(0,0);},[location.pathname]);
 
   async function leave() {
-    setBusy(true);setError(undefined);
-    try { await logout(); } catch (cause) { setError(cause instanceof ApiError ? cause.message : '退出未完成，请稍后重试。'); }
+    setBusy(true);
+    try { await logout(); } catch (cause) { notify.error('退出授权未完成',cause instanceof ApiError ? cause.message : '请稍后重试。',()=>void leave()); }
     finally { setBusy(false); }
   }
 
@@ -63,7 +64,6 @@ function Shell() {
       </Layout.Header>
       <Layout.Content className="app-content">
         <div className="workspace-heading"><h1>{title}</h1>{selected==='/'&&<Link to="/quota">查看账号额度与节奏</Link>}{selected==='/quota'&&<Link to="/pricing">模型与订阅价目表</Link>}</div>
-        {error && <Alert type="error" title={error} showIcon className="form-alert" />}
         <Suspense fallback={<LoadingState />}><Routes>
           <Route path="/" element={<Overview />} />
           <Route path="/usage/models" element={<Usage />} />
@@ -91,5 +91,5 @@ function SessionGate() {
 }
 
 export function PulseApp({ queryClient }: { queryClient: QueryClient }) {
-  return <QueryClientProvider client={queryClient}><SessionProvider><HashRouter><SessionGate /></HashRouter></SessionProvider></QueryClientProvider>;
+  return <OperationNotifications><QueryClientProvider client={queryClient}><SessionProvider><HashRouter><SessionGate /></HashRouter></SessionProvider></QueryClientProvider></OperationNotifications>;
 }

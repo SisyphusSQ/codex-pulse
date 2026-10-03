@@ -10,7 +10,7 @@ import (
 	schema_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/schema_do"
 )
 
-// Upgrade 只接受已确认 v1 定义，增加设置表后读回全部字段，最后提交版本标记。
+// Upgrade 只接受已确认 v1/v2 定义，新增已登记结构后读回字段，最后提交版本标记。
 func (s *Schema) Upgrade(ctx context.Context) error {
 	return s.withMigrationLock(ctx, s.upgrade)
 }
@@ -25,8 +25,8 @@ func (s *Schema) upgrade(ctx context.Context) error {
 		return s.Check(ctx)
 	}
 	legacy := map[string]string{"mysql": "0acd2ecebfc06e0fb6b22a552055adbad95033e228eeb58d8148164c9cce9c7c", "sqlite": "e5e94cb539d004969cd009c78c12be71bbb3dcbd30e2a69dcb7b310b428e8568"}
-	// 当前登记的是 v1→v2；未来提升目标版本时必须实现对应步骤，不能跳过迁移直接改标记。
-	if marker.Version != 1 || schema.Version != 2 || marker.Checksum != legacy[db.Dialector.Name()] {
+	v2 := map[string]string{"mysql": "be7938a996a860030d7484aff0a443fc42672e02d0fe35e004efc80ca289899e", "sqlite": "de4c490365d9ba42a38041a5b6b3f7be4f92e5b2c275dc9b6a51ba0c234862ec"}
+	if schema.Version != 3 || !((marker.Version == 1 && marker.Checksum == legacy[db.Dialector.Name()]) || (marker.Version == 2 && marker.Checksum == v2[db.Dialector.Name()])) {
 		return ErrSchemaIncompatible
 	}
 	statements, checksum, _, err := schema.Definition(db.Dialector.Name())
@@ -35,16 +35,16 @@ func (s *Schema) upgrade(ctx context.Context) error {
 	}
 	upgrade := func(ctx context.Context) error {
 		for _, ddl := range statements {
-			if strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_account_settings ") {
+			if strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_account_settings ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_snapshot_chunks ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_device_sync ") {
 				if err := s.engine.DB(ctx).Exec(ddl).Error; err != nil {
-					return fmt.Errorf("upgrade subscription structure: %w", err)
+					return fmt.Errorf("upgrade center structure: %w", err)
 				}
 			}
 		}
 		if err := s.checkColumns(ctx); err != nil {
 			return err
 		}
-		result := s.engine.DB(ctx).Model(&schema_do.SchemaVersion{}).Where("id = ? AND version = ? AND checksum = ?", 1, 1, marker.Checksum).Updates(map[string]any{"version": schema.Version, "checksum": checksum, "initialized_at_ms": time.Now().UnixMilli()})
+		result := s.engine.DB(ctx).Model(&schema_do.SchemaVersion{}).Where("id = ? AND version = ? AND checksum = ?", 1, marker.Version, marker.Checksum).Updates(map[string]any{"version": schema.Version, "checksum": checksum, "initialized_at_ms": time.Now().UnixMilli()})
 		if result.Error != nil {
 			return result.Error
 		}

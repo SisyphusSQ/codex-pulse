@@ -35,3 +35,11 @@ func (api *grpcAPI) SyncReportingNow(ctx context.Context, _ *corev1.Empty) (*cor
 	out, err := api.service.SyncReportingNow(ctx)
 	return encodeRPC(out, &corev1.ReportingStatusResponse{}, err)
 }
+
+func (api *grpcAPI) FullSyncReporting(ctx context.Context, _ *corev1.Empty) (*corev1.ReportingStatusResponse, error) {
+	if api == nil || api.service == nil {
+		return nil, coreServiceUnavailable()
+	}
+	out, err := api.service.FullSyncReporting(ctx)
+	return encodeRPC(out, &corev1.ReportingStatusResponse{}, err)
+}

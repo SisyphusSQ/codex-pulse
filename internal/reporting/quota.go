@@ -56,7 +56,13 @@ func (e *Exporter) FactsPartition(ctx context.Context, provider string) (string,
 	}
 	return e.state.HomeID("quota-partition", source.HomeID, revision, reportingv1.Key(relation...)), nil
 }
-func (e *Exporter) Facts(ctx context.Context, provider, after string, start int64) (out ExportFactsPage, err error) {
+func (e *Exporter) Facts(ctx context.Context, provider, after string, start int64) (ExportFactsPage, error) {
+	return e.facts(ctx, provider, after, start, false)
+}
+func (e *Exporter) CurrentFacts(ctx context.Context, provider string, start int64) (ExportFactsPage, error) {
+	return e.facts(ctx, provider, "", start, true)
+}
+func (e *Exporter) facts(ctx context.Context, provider, after string, start int64, current bool) (out ExportFactsPage, err error) {
 	before, err := e.FactsPartition(ctx, provider)
 	if err != nil {
 		return out, err
@@ -71,7 +77,12 @@ func (e *Exporter) Facts(ctx context.Context, provider, after string, start int6
 			known[identity.LocalScope] = identity
 		}
 	}
-	page, err := e.repository.ReportingQuotaPage(ctx, provider, after, start)
+	var page store.ReportingQuotaPage
+	if current {
+		page, err = e.repository.ReportingCurrentQuotaPage(ctx, provider, start)
+	} else {
+		page, err = e.repository.ReportingQuotaPage(ctx, provider, after, start)
+	}
 	if err != nil {
 		return out, err
 	}

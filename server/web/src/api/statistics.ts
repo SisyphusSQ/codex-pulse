@@ -29,11 +29,12 @@ export interface Summary {
   providers: Slice[]; models: Slice[]; devices: Slice[]; trend: Day[];
   heatmap: Day[]; heatmap_range: ReportingRange; heatmap_coverage: Coverage;
   heatmap_activity: AnnualActivity;
+  heatmap_totals?: Totals;
   weekday_hours: Hour[]; tools: Slice[]; skills: Slice[];
 }
 export interface Device {
   id: string; name: string; revoked_at_ms: number | null; last_received_at_ms: number | null;
-  providers: { provider: string; version: string; collected_at_ms: number | null; coverage_start_ms: number | null; coverage_end_ms: number | null; pending_batches: number; status: string; received_at_ms: number; stale: boolean }[];
+  providers: { sync_state?:string; sync_checked_at_ms?:number|null; full_sync_state?:string; provider: string; version: string; collected_at_ms: number | null; coverage_start_ms: number | null; coverage_end_ms: number | null; pending_batches: number; status: string; received_at_ms: number; stale: boolean }[];
 }
 export interface StatsFilter {
   start_date: string; end_date_exclusive: string; time_zone: string;

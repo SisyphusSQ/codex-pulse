@@ -17,6 +17,7 @@ private actor ReportingFake: ReportingSettingsServing {
     var holdRead = false
     var readContinuation: CheckedContinuation<Codexpulse_Core_V1_ReportingStatusResponse, Never>?
     var failsPair = false
+    var fullRequests = 0
     var readPending: Bool { readContinuation != nil }
     func prepareReadRace() { holdRead = true }
     func setPairFailure() { failsPair = true }
@@ -38,6 +39,7 @@ private actor ReportingFake: ReportingSettingsServing {
         value.state = request.enabled ? "ready" : "disabled"
         return value
     }
+    func fullSyncReporting() async throws -> Codexpulse_Core_V1_ReportingStatusResponse { fullRequests += 1; value.fullSyncState = "running"; return value }
     func syncReportingNow() async throws -> Codexpulse_Core_V1_ReportingStatusResponse { value }
 }
 
@@ -55,6 +57,8 @@ func testReportingSettingsSafetyAndLateRead() async throws {
     await model.configure()
     let config = await core.configurationRequests.last
     try reportingExpect(config?.enabled == true && config?.historyStartAtMs == 1_234_000 && config?.intervalSeconds == 30, "Helper owns precise persisted range and enable")
+    await model.fullSync()
+    try reportingExpect(await core.fullRequests == 1 && model.status?.fullSyncState == "running" && model.status?.historyStartAtMs == 1_234_000, "full resend must retain configured range and use CoreService")
     model.historyStart = Date(timeIntervalSince1970: 9999)
     await model.configure(clearPending: true)
     let clear = await core.configurationRequests.last

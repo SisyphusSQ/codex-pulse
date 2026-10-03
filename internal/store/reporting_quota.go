@@ -66,7 +66,15 @@ func (r *Repository) ReportingQuotaPartition(ctx context.Context) (string, error
 	})
 	return strconv.FormatInt(revision, 10), err
 }
-func (r *Repository) ReportingQuotaPage(ctx context.Context, provider, after string, start int64) (page ReportingQuotaPage, err error) {
+func (r *Repository) ReportingQuotaPage(ctx context.Context, provider, after string, start int64) (ReportingQuotaPage, error) {
+	return r.reportingQuotaPage(ctx, provider, after, start, false)
+}
+
+// ReportingCurrentQuotaPage 独立提取每个 scope/limit/window 的最新观测，避免历史游标阻塞。
+func (r *Repository) ReportingCurrentQuotaPage(ctx context.Context, provider string, start int64) (ReportingQuotaPage, error) {
+	return r.reportingQuotaPage(ctx, provider, "", start, true)
+}
+func (r *Repository) reportingQuotaPage(ctx context.Context, provider, after string, start int64, current bool) (page ReportingQuotaPage, err error) {
 	cursor, err := quotaReportingCursor(after)
 	if err != nil {
 		return page, err
@@ -84,6 +92,9 @@ func (r *Repository) ReportingQuotaPage(ctx context.Context, provider, after str
 			if cursor.Stage == "quota" {
 				var rows []quotaObservationModel
 				query := db.Where("last_observed_at_ms >= ?", start)
+				if current {
+					query = query.Where("observation_id IN (SELECT observation_id FROM (SELECT observation_id, ROW_NUMBER() OVER (PARTITION BY account_scope, limit_id, window_kind, validity, source ORDER BY last_observed_at_ms DESC, observation_id DESC) AS rank FROM quota_observations WHERE last_observed_at_ms >= ?) WHERE rank = 1)", start)
+				}
 				if after != "" {
 					query = query.Where("last_observed_at_ms > ? OR (last_observed_at_ms = ? AND observation_id > ?)", cursor.At, cursor.At, cursor.Key)
 				}
@@ -109,7 +120,7 @@ func (r *Repository) ReportingQuotaPage(ctx context.Context, provider, after str
 					}
 					cursor = reportingQuotaCursor{Stage: "quota", At: row.LastObservedAtMS, Key: row.ObservationID}
 				}
-				if len(rows) > 0 {
+				if len(rows) > 0 && !current {
 					page.Next = encodeQuotaCursor(cursor)
 					return nil
 				}
@@ -117,6 +128,9 @@ func (r *Repository) ReportingQuotaPage(ctx context.Context, provider, after str
 			}
 			var rows []resetCreditsSnapshotModel
 			query := db.Where("observed_at_ms >= ?", start)
+			if current {
+				query = query.Where("snapshot_id IN (SELECT snapshot_id FROM (SELECT snapshot_id, ROW_NUMBER() OVER (PARTITION BY account_scope ORDER BY observed_at_ms DESC, snapshot_id DESC) AS rank FROM reset_credit_snapshots WHERE observed_at_ms >= ?) WHERE rank=1)", start)
+			}
 			if cursor.Key != "" {
 				query = query.Where("observed_at_ms > ? OR (observed_at_ms = ? AND snapshot_id > ?)", cursor.At, cursor.At, cursor.Key)
 			}
@@ -174,7 +188,7 @@ func (r *Repository) ReportingQuotaPage(ctx context.Context, provider, after str
 				page.Batch.Credits = append(page.Batch.Credits, fact)
 				cursor = reportingQuotaCursor{Stage: "credits", At: row.ObservedAtMS, Key: row.SnapshotID}
 			}
-			if len(rows) > 0 {
+			if len(rows) > 0 && !current {
 				page.Next = encodeQuotaCursor(cursor)
 				return nil
 			}
@@ -191,6 +205,9 @@ func (r *Repository) ReportingQuotaPage(ctx context.Context, provider, after str
 			// 两个 Provider 的持久观测表共用明确列，不依赖各自当前账期快照。
 			var rows []cursorDashboardQuotaObservationModel
 			query := db.Table(table).Where("observed_at_ms >= ?", start)
+			if current {
+				query = query.Where("(limit_id, observed_at_ms, generation) IN (SELECT limit_id, observed_at_ms, generation FROM (SELECT limit_id, observed_at_ms, generation, ROW_NUMBER() OVER (PARTITION BY limit_id ORDER BY observed_at_ms DESC, generation DESC) AS rank FROM "+table+" WHERE observed_at_ms >= ?) WHERE rank = 1)", start)
+			}
 			if after != "" {
 				query = query.Where("observed_at_ms > ? OR (observed_at_ms = ? AND generation > ?) OR (observed_at_ms = ? AND generation = ? AND limit_id > ?)", cursor.At, cursor.At, cursor.Generation, cursor.At, cursor.Generation, cursor.Key)
 			}
@@ -227,6 +244,9 @@ func (r *Repository) ReportingQuotaPage(ctx context.Context, provider, after str
 				id := reportingv1.Key("quota", provider, row.LimitID, strconv.FormatInt(row.ObservedAtMS, 10), strconv.FormatInt(row.CycleStartAtMS, 10), strconv.FormatInt(row.CycleEndAtMS, 10), strconv.FormatFloat(row.UsedPercent, 'f', -1, 64))
 				page.Batch.Quotas = append(page.Batch.Quotas, reportingv1.QuotaObservation{Provider: provider, ID: id, LocalScope: "default", LimitID: row.LimitID, WindowKind: kind, WindowMinutes: &minutes, WindowStartAtMS: new(row.CycleStartAtMS), ResetsAtMS: new(row.CycleEndAtMS), ObservedAtMS: row.ObservedAtMS, UsedPercent: new(row.UsedPercent), Validity: "accepted", Source: source, HistoryOrigin: "pending_association"})
 				cursor = reportingQuotaCursor{Stage: "quota", At: row.ObservedAtMS, Generation: row.Generation, Key: row.LimitID}
+			}
+			if current {
+				page.Done = true
 			}
 			if len(rows) > 0 && !page.Done {
 				page.Next = encodeQuotaCursor(cursor)

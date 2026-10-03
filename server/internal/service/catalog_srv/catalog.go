@@ -92,7 +92,10 @@ func (s *Catalog) current(ctx context.Context) (out catalog_vo.Response, err err
 		}
 		out.Models = append(out.Models, catalog_vo.Model{Key: m.Provider + ":observed:" + m.Model, Provider: m.Provider, Model: m.Model, Mode: "已观测 · 参考价未知", Currency: "USD", Unit: "未知", Evidence: "observed", Notes: "保留实际模型名；没有匹配公开价格证据，不猜价或视为免费。"})
 	}
-	slices.SortFunc(out.Models, func(a, b catalog_vo.Model) int { return strings.Compare(a.Key, b.Key) })
+	if err := applyModelReleases(out.Models); err != nil {
+		return out, err
+	}
+	slices.SortFunc(out.Models, compareModelRelease)
 	return out, nil
 }
 func amount(v *int64) *string {

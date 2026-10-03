@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -271,5 +272,39 @@ func TestHTTPSUsesSamePairingAndSecureSession(t *testing.T) {
 	cookie := response.Cookies()[0]
 	if !cookie.Secure || !cookie.HttpOnly || cookie.Name != "__Host-pulse_session" {
 		t.Fatal("HTTPS cookie flags")
+	}
+}
+
+func TestIndependentMetricsCredentialCannotAccessBusinessAPI(t *testing.T) {
+	token := strings.Repeat("m", 48)
+	path := filepath.Join(t.TempDir(), "metrics-token")
+	if err := os.WriteFile(path, []byte(token), 0600); err != nil {
+		t.Fatal(err)
+	}
+	server, _ := testServer(t, "http://example.com", func(cfg *config.Config) { cfg.Server.Metrics = true; cfg.Server.MetricsTokenFile = path })
+	for _, path := range []string{"/metrics", "/api/v1/clients", "/api/v1/sync"} {
+		req := httptest.NewRequest(http.MethodGet, "http://example.com"+path, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		response := httptest.NewRecorder()
+		server.Echo.ServeHTTP(response, req)
+		if path == "/metrics" {
+			if response.Code != 200 {
+				t.Fatal(response.Code, response.Body.String())
+			}
+			for _, metric := range []string{"go_goroutines", "process_cpu_seconds_total", "pulse_database_connections_open", "pulse_metrics_database_up 1"} {
+				if !strings.Contains(response.Body.String(), metric) {
+					t.Fatal("missing metric", metric)
+				}
+			}
+		} else if response.Code != 401 {
+			t.Fatal("metrics credential escaped read-only scope", path, response.Code)
+		}
+	}
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/metrics", nil)
+	req.Header.Set("Authorization", "Bearer wrong")
+	response := httptest.NewRecorder()
+	server.Echo.ServeHTTP(response, req)
+	if response.Code != 401 {
+		t.Fatal("bad metrics credential accepted")
 	}
 }

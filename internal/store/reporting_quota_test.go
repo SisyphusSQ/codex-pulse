@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -92,5 +93,28 @@ func TestReportingQuotaCursorAndGrokUseHistoricalWindowsWithoutGeneration(t *tes
 	}
 	if *grok.Batch.Quotas[0].UsedPercent != 0 {
 		t.Fatal("grok real zero lost")
+	}
+}
+
+func TestReportingCurrentQuotaBypassesOldHistoricalPage(t *testing.T) {
+	repo := openRuntimeRepository(t)
+	ctx := t.Context()
+	at := int64(1784000000000)
+	for index := range 120 {
+		sample := quotaProjectionWhamSample("history-"+fmt.Sprint(index), float64(index%100), at+int64(index)*1000, at+18000000)
+		if err := repo.UpsertFacts(ctx, FactBatch{QuotaObservation: &sample}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	history, err := repo.ReportingQuotaPage(ctx, "codex", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := repo.ReportingCurrentQuotaPage(ctx, "codex", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !current.Done || len(current.Batch.Quotas) != 1 || current.Batch.Quotas[0].ObservedAtMS != at+119000 || history.Batch.Quotas[len(history.Batch.Quotas)-1].ObservedAtMS >= current.Batch.Quotas[0].ObservedAtMS {
+		t.Fatal("current followed oldest history")
 	}
 }

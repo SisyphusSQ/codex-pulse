@@ -57,14 +57,14 @@ func (r *Statistics) Clients(ctx context.Context) (rows []access_do.Client, err 
 	return
 }
 func (r *Statistics) Status(ctx context.Context, q statistics_dto.StatisticsQuery) (rows []reporting_do.DeviceStatus, err error) {
-	db := r.engine.DB(ctx)
+	db := r.engine.DB(ctx).Table("pulse_device_status AS st").Select("st.*, sy.sync_state, sy.sync_checked_at_ms, sy.full_sync_state").Joins("LEFT JOIN pulse_device_sync AS sy ON sy.client_id=st.client_id AND sy.provider=st.provider")
 	if q.Provider != "" {
-		db = db.Where("provider = ?", q.Provider)
+		db = db.Where("st.provider = ?", q.Provider)
 	}
 	if q.ClientID != "" {
-		db = db.Where("client_id = ?", q.ClientID)
+		db = db.Where("st.client_id = ?", q.ClientID)
 	}
-	err = db.Order("client_id,provider").Limit(statistics_dto.MaximumStatisticsClients*3 + 1).Find(&rows).Error
+	err = db.Order("st.client_id,st.provider").Limit(statistics_dto.MaximumStatisticsClients*3 + 1).Find(&rows).Error
 	if len(rows) > statistics_dto.MaximumStatisticsClients*3 {
 		return nil, utils.ErrRequestBudget
 	}

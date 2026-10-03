@@ -49,7 +49,7 @@ export function QuotaAccounts(){
  {(catalog.error||devices.error)&&<Alert showIcon type="warning" className="form-alert" title="筛选选项读取失败，可刷新重试" />}
  {query.isPending?<LoadingState />:query.error&&!data?<ErrorState error={query.error} retry={refresh} />:data&&<>
  {query.error&&<Alert showIcon type="warning" className="form-alert" title="额度刷新失败，保留上次读取的数据与原时间" description={query.error.message} />}
- <div className="quota-snapshot-note"><span>中心评估 {dateTime(data.evaluated_at_ms)}</span><EvidenceIcon label="中心快照说明"><p>每30秒读取中心快照，不触发远端刷新。App关闭期间的采样缺口保留；仅已观测事实，当前收到 {data.windows.length} 个窗口。</p></EvidenceIcon></div>
+ <div className="quota-snapshot-note"><span>中心读取 {dateTime(data.evaluated_at_ms)}</span><EvidenceIcon label="中心快照说明"><p>每30秒读取中心已收到的数据。额度、节奏和 Credits 显示最后一次有效更新及其时间，收到新观测后更新；App关闭期间保留这份数据。当前收到 {data.windows.length} 个窗口。</p></EvidenceIcon></div>
  {!groups.length?<EmptyState description="尚无已收到的额度或 Credits。请启用设备上报；未确认账号不根据邮箱推断归属。" />:<div className="quota-workspace">
  <Card title="账号" className="quota-selection">{groups.map(a=><button type="button" className={`account-item ${a.key===group?.key?'selected':''}`} key={a.key} aria-pressed={a.key===group?.key} onClick={()=>{setSelectedAccount(a.key);setSelectedKey('');setDetailTab('pace');}} aria-label={a.accountKey===null?'查看待关联观测':`查看账号 ${providerNames[a.provider]??a.provider} ${a.account?.email??'邮箱未提供'} ${a.account?.raw_id??a.accountKey}`}><span className="account-provider">{a.accountKey===null?'待关联观测':providerNames[a.provider]??a.provider}</span><strong>{a.account?.email??(a.accountKey===null?'尚未确认账号':'账号信息未取得')}</strong><span>{a.account?.plan??'套餐未知'} · {a.windows.length} 个额度窗口</span><small>{a.account?.raw_id??a.accountKey??'尚未确认账号 ID'}</small></button>)}</Card>
  {group&&<Card key={group.key} className="quota-detail">
@@ -57,10 +57,10 @@ export function QuotaAccounts(){
   {group.account&&group.accountKey&&<SubscriptionPanel accountKey={group.accountKey} provider={group.provider} />}
   <div className="quota-window-overview">{group.windows.map(w=><Card key={w.key} size="small" className={w.key===selected?.key?'quota-window-summary selected-window':'quota-window-summary'}>
    <Button type="link" className="record-link" aria-pressed={w.key===selected?.key} onClick={()=>{setSelectedKey(w.key);setDetailTab('pace');}}>{w.limit_id} · {w.window_minutes==null?'窗口时长未知':w.window_minutes%1440===0?`${w.window_minutes/1440} 天`:w.window_minutes%60===0?`${w.window_minutes/60} 小时`:`${w.window_minutes} 分钟`}</Button>
-   <div className="quota-summary-value">{w.current.freshness==='fresh'&&!w.current.conflict&&w.current.remaining_percent!==null?`剩余 ${percent(w.current.remaining_percent)}`:'当前未知'}</div>
-   {w.current.freshness==='fresh'&&!w.current.conflict&&w.current.remaining_percent!==null?<Progress percent={w.current.remaining_percent} showInfo={false} size="small" />:<div className="metric-note">上次剩余 {percent(w.current.remaining_percent)} · 原观测 {dateTime(w.current.observed_at_ms)}</div>}
+   <div className="quota-summary-value">{w.current.remaining_percent!==null?`剩余 ${percent(w.current.remaining_percent)}`:'尚无有效观测'}</div>
+   {w.current.remaining_percent!==null?<Progress aria-label="最后观测剩余额度" percent={w.current.remaining_percent} showInfo={false} size="small" />:null}
    <div className="metric-note">已用 <span>{percent(w.current.used_percent)}</span> · reset {dateTime(w.current.resets_at_ms)}</div>
-   <div className="metric-note">{w.current.freshness==='fresh'?'新鲜观测':w.current.freshness.startsWith('expired')?'reset已过，当前额度未知':'观测陈旧或未知'}{w.current.conflict?' · 来源冲突':''}{group.accountKey===null?` · ${w.observations[0]?.client_name??'来源未知'}`:''}</div>
+   <div className="metric-note">最后更新 {dateTime(w.current.observed_at_ms)}{w.current.conflict?' · 来源冲突':''}{w.current.freshness==='suspicious'?' · 发现可疑观测，保留有效值':''}{group.accountKey===null?` · ${w.observations[0]?.client_name??'来源未知'}`:''}</div>
   </Card>)}</div>
   {!group.windows.length&&<Typography.Paragraph type="secondary">当前账号暂无已收到的额度窗口。</Typography.Paragraph>}
   {!group.credits.length&&<Typography.Paragraph type="secondary">当前账号暂无已收到的 Reset Credits，库存保持未知。</Typography.Paragraph>}

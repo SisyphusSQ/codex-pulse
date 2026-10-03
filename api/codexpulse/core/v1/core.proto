@@ -47,6 +47,7 @@ service CoreService {
   rpc PairReporting(PairReportingRequest) returns (ReportingStatusResponse);
   rpc ConfigureReporting(ConfigureReportingRequest) returns (ReportingStatusResponse);
   rpc SyncReportingNow(Empty) returns (ReportingStatusResponse);
+  rpc FullSyncReporting(Empty) returns (ReportingStatusResponse);
   rpc Settings(SettingsRequest) returns (SettingsResponse);
   rpc UpdateSettings(UpdateSettingsRequest) returns (SettingsUpdateReceipt);
   rpc PlanHomeSwitch(PlanHomeSwitchRequest) returns (HomeSwitchPlanReceipt);
@@ -1847,4 +1848,8 @@ message ReportingStatusResponse {
   int64 retained_batches = 10;
   optional int64 last_attempt_at_ms = 11;
   optional int64 last_success_at_ms = 12;
+  string full_sync_state = 13;
+  optional int64 full_sync_started_at_ms = 14;
+  int64 full_sync_exported_sessions = 15;
+  int64 full_sync_acknowledged_batches = 16;
 }

@@ -59,6 +59,9 @@ func sourceDigest(s reportingv1.SessionSnapshot) (string, error) {
 }
 func validateStableIDs(batch reportingv1.Batch) error {
 	for _, s := range batch.Sessions {
+		if s.Chunk != nil {
+			continue
+		}
 		facts := make(map[string]int64)
 		calls := make(map[string]int64)
 		for _, c := range s.Contributions {
@@ -126,6 +129,12 @@ func (s *Reporting) Accept(ctx context.Context, p access_dto.Principal, batch re
 			return strings.Compare(reportingv1.Key(a.Provider, a.SessionID), reportingv1.Key(b.Provider, b.SessionID))
 		})
 		for _, snapshot := range snapshots {
+			if snapshot.Chunk != nil {
+				if err := s.acceptChunk(ctx, p, snapshot, now); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := s.acceptSession(ctx, p, snapshot); err != nil {
 				return err
 			}
@@ -134,6 +143,11 @@ func (s *Reporting) Accept(ctx context.Context, p access_dto.Principal, batch re
 			return err
 		}
 		for _, status := range batch.Status {
+			if status.SyncCheckedAtMS != nil {
+				if err := s.repository.SaveSync(ctx, reporting_do.DeviceSync{ClientID: p.ID, Provider: status.Provider, SyncState: status.SyncState, SyncCheckedAtMS: *status.SyncCheckedAtMS, FullSyncState: status.FullSyncState}); err != nil {
+					return err
+				}
+			}
 			previous, err := s.repository.DeviceStatus(ctx, p.ID, status.Provider)
 			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err

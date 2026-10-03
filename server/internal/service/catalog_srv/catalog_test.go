@@ -2,6 +2,7 @@ package catalog_srv
 
 import (
 	"errors"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -44,6 +45,9 @@ func TestCatalogAllModelsVersionsAndObservedUnknown(t *testing.T) {
 	}
 	if !unknown || !old || !credits || !media || len(out.Models) < 300 || len(out.Plans) < 20 {
 		t.Fatal("incomplete catalog", len(out.Models), unknown, old, credits, media)
+	}
+	if !slices.IsSortedFunc(out.Models, compareModelRelease) || out.Models[0].ReleasedAtMS == nil || out.Models[len(out.Models)-1].ReleasedAtMS != nil {
+		t.Fatal("full catalog is not ordered newest first with unknown dates last")
 	}
 	if _, err := s.Current(t.Context(), access_dto.Principal{Purpose: "collector"}); !errors.Is(err, utils.ErrForbidden) {
 		t.Fatal("collector queried prices", err)

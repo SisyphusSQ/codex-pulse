@@ -36,7 +36,7 @@ List / Create / Update / Delete / Link / Unlink 只读写 SQLite，不启动 App
 
 ## Core
 
-精确握手为 `core-rpc-v8`。`Contracts.codex_subscription_accounts_version=codex-subscription-accounts-v2`，`codex_account_quotas_version=codex-account-quotas-v1`。`codex_pro_tier_version` 保持 v1。invalidation 为 `query-invalidation-v4`；Codex 在线额度刷新使用 `quota_codex`，账号资料变化使用 `account`。legacy history Link/Unlink 同时失效 `account` 与 `quota`。Provider 启停见 [Agent Providers](../providers/README.md)。
+精确握手为 `core-rpc-v9`。`Contracts.codex_subscription_accounts_version=codex-subscription-accounts-v2`，`codex_account_quotas_version=codex-account-quotas-v1`。`codex_pro_tier_version` 保持 v1。invalidation 为 `query-invalidation-v4`；Codex 在线额度刷新使用 `quota_codex`，账号资料变化使用 `account`。legacy history Link/Unlink 同时失效 `account` 与 `quota`。Provider 启停见 [Agent Providers](../providers/README.md)。
 
 账号 query 为 `ListCodexSubscriptionAccounts`，订阅 command 为 `Create/Update/Delete/Link/UnlinkCodexSubscriptionAccount`，历史 command 为 `Link/UnlinkLegacyQuotaHistory`。`AccountSnapshotRequest` additive `evaluated_at_ms` / `time_zone`；Codex 响应 additive `subscription`。非 Codex provider 的 `subscription` 必须 absent。
 

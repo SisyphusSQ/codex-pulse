@@ -184,6 +184,9 @@ func buildWindow(key string, rows []reporting_do.QuotaObservation, names map[str
 	if out.Current.Freshness == "fresh" && !out.Current.Conflict && out.Current.ResetsAtMS != nil && *out.Current.ResetsAtMS > now {
 		out.Current.ResetRemainingMS = new(*out.Current.ResetsAtMS - now)
 	}
+	if out.Current.ObservedAtMS != nil && out.Current.ResetsAtMS != nil && *out.Current.ResetsAtMS > *out.Current.ObservedAtMS {
+		out.Current.SnapshotResetRemainingMS = new(*out.Current.ResetsAtMS - *out.Current.ObservedAtMS)
+	}
 	for _, row := range rows {
 		e := evidence[row.ID]
 		o := quota_vo.Observation{ID: row.ID, ClientID: row.ClientID, ClientName: names[row.ClientID], ObservedAtMS: row.ObservedAtMS, ReceivedAtMS: row.ReceivedAtMS, UsedPercent: row.UsedPercent, ResetsAtMS: row.ResetsAtMS, WindowStartAtMS: row.WindowStartAtMS, Source: row.Source, Validity: row.Validity, HistoryOrigin: row.HistoryOrigin, Disposition: string(e.Disposition)}

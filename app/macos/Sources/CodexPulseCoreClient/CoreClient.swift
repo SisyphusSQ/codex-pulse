@@ -434,6 +434,9 @@ public actor CoreClient {
     public func syncReportingNow() async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
         try await service.syncReportingNow(Codexpulse_Core_V1_Empty(), metadata: metadata)
     }
+    public func fullSyncReporting() async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        try await service.fullSyncReporting(Codexpulse_Core_V1_Empty(), metadata: metadata)
+    }
 
     public func settings(
         retryPolicy: ReadRetryPolicy = .transportDefault

@@ -5,6 +5,7 @@ export interface QuotaAccount { key:string; provider:string; raw_id:string; emai
 export interface QuotaCurrent {
  used_percent:number|null; remaining_percent:number|null; window_start_at_ms:number|null; resets_at_ms:number|null;
  reset_remaining_ms:number|null; observed_at_ms:number|null; freshness:string; conflict:boolean; reason:string;
+ snapshot_reset_remaining_ms?:number|null;
  selected_observation_id:string|null; selected_client_id:string|null; source:string|null;
 }
 export interface QuotaObservation {
@@ -20,6 +21,7 @@ export interface QuotaWindow {
 export interface QuotaCredits {
  key:string; provider:string; account_key:string|null; client_id:string; observed_at_ms:number;
  observed_inventory:string|null; available_inventory:string|null; details_status:string; freshness:string; conflict:boolean;
+ snapshot_available_inventory?:string|null; snapshot_next_expires_at_ms?:number|null;
  next_reset_at_ms:number|null; next_expires_at_ms:number|null; expiry_schedule:{expires_at_ms:number|null; count:string}[];
 }
 export interface QuotaResponse { evaluated_at_ms:number; rule_version:string; accounts:QuotaAccount[]; windows:QuotaWindow[]; credits:QuotaCredits[]; coverage:string }
@@ -28,6 +30,7 @@ export interface PaceCycle { id:string; window_start_at_ms:number; resets_at_ms:
 export interface HistoryBandPoint { elapsed_percent:number; median_remaining:number; minimum_remaining:number; maximum_remaining:number; cycle_count:number }
 export interface PaceForecast { state:string; method:string; exhaust_at_ms:number|null; lead_before_reset_ms:number|null; evidence_count:number; evidence_span_ms:number; unknown_reason:string|null }
 export interface PaceWindow {
+ snapshot_at_ms?:number|null;
  key:string; provider:string; account_key:string|null; identity_state:string; limit_id:string; window_kind:string; window_minutes:number|null;
  current:QuotaCurrent; elapsed_percent:number|null; pace_delta_pp:number|null; forecast:PaceForecast; current_points:PacePoint[];
  previous_cycle:PaceCycle|null; historical_cycles:PaceCycle[]; history_band:HistoryBandPoint[]; history_cycle_count:number;

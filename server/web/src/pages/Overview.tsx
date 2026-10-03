@@ -94,12 +94,16 @@ export default function Overview() {
         <div className="metric-note">年度范围独立于上方统计日期；未知日期不补零，活跃天数与最长连续天数仅计已观测事实。</div>
         <CoverageNotice coverage={data.heatmap_coverage} zone={filter.time_zone} />
         </div>}><Button type="text" size="small">年度活动统计</Button></Popover></div>}>
+        <div className="annual-totals" aria-label="年度用量汇总">
+          <div><Statistic title="近 365 天 Token 总量" value={data.heatmap_totals?.total_tokens??data.heatmap_activity.total_tokens??'未知'} formatter={()=>tokens(data.heatmap_totals?.total_tokens??data.heatmap_activity.total_tokens)} /><span className="metric-note">按年度活动范围汇总已收到事实</span></div>
+          <div><Statistic title="近 365 天 API 等价成本" value={data.heatmap_totals?.cost_micro_usd??'未知'} formatter={()=>dollars(data.heatmap_totals?.cost_micro_usd??null)} /><span className="metric-note">{data.heatmap_totals?.cost_status==='partial'?'已知金额小计，含未定价记录':'按历史价格估算'} · USD</span></div>
+        </div>
         {data.heatmap.length ? <ActivityHeatmap days={data.heatmap} /> : <EmptyState description="年度活动暂时不可用" />}
         <div className="activity-scope"><span>{dayjs(data.heatmap_range.start_at_ms).tz(filter.time_zone).format('YYYY-MM-DD')} 至 {dayjs(data.heatmap_range.end_at_ms).tz(filter.time_zone).subtract(1, 'day').format('YYYY-MM-DD')}</span><span>{filter.time_zone}</span><span>{filter.provider ? providerNames[filter.provider] : '全部客户端'}</span></div>
       </Card>
       <Card className="summary-band"><div className="metric-grid overview-kpis">
-        <div><Statistic title="Token 总量" value={data.totals.total_tokens ?? '未知'} formatter={() => tokens(data.totals.total_tokens)} /><div className="metric-note">输入 {tokens(data.totals.input_tokens)} · 输出 {tokens(data.totals.output_tokens)}</div></div>
-        <div><Statistic title="API 等价成本" value={data.totals.cost_micro_usd ?? '未知'} formatter={() => dollars(data.totals.cost_micro_usd)} /><div className="metric-note">{data.totals.cost_status === 'partial' ? '已知金额小计，含未定价记录' : '按历史价格估算'} · 不是实际账单</div></div>
+        <div><Statistic title="当前范围 Token 总量" value={data.totals.total_tokens ?? '未知'} formatter={() => tokens(data.totals.total_tokens)} /><div className="metric-note">输入 {tokens(data.totals.input_tokens)} · 输出 {tokens(data.totals.output_tokens)}</div></div>
+        <div><Statistic title="当前范围 API 等价成本" value={data.totals.cost_micro_usd ?? '未知'} formatter={() => dollars(data.totals.cost_micro_usd)} /><div className="metric-note">{data.totals.cost_status === 'partial' ? '已知金额小计，含未定价记录' : '按历史价格估算'} · 不是实际账单</div></div>
         <div><Statistic title="已收到会话" value={data.totals.sessions} formatter={() => integer(data.totals.sessions)} /><div className="metric-note">调用 {integer(data.totals.invocations)} · 执行设备归因未知</div></div>
       </div></Card>
 

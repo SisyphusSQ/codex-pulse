@@ -4,7 +4,7 @@
 
 ## 公开参考目录
 
-`GET /api/v1/catalog` 不接受query参数，返回 `models/plans/version`。模型包括计费平台、模型名、模式、币种、单位、input/cached/cache_write/output价格、版本、来源、核对日和可选历史生效边界。价格是nullable精确十进制字符串，未知不是0。核对日用UTC日界编码、UI按日期显示。`evidence=current/historical/observed` 区分公開参考、本机计算快照与已观测未匹配模型。最新公开目录与本机历史目录不同，目录更新不改写上报费率。可观测模型最多2000个，超预算413。
+`GET /api/v1/catalog` 不接受query参数，返回 `models/plans/version`。模型包括计费平台、模型名、模式、币种、单位、input/cached/cache_write/output价格、版本、来源、核对日和可选历史生效边界；附加 nullable released_at_ms 与 release_source_url 表示独立官方发布事实。模型按 released_at_ms 倒序、未知末置，同日按模型名/稳定键确定顺序。发布时间不取价格生效日或核对日，相同型号跨模式/单位/历史版本保持一致，现有未知价格仍为 NULL。价格是nullable精确十进制字符串，未知不是0。核对日用UTC日界编码、UI按日期显示。`evidence=current/historical/observed` 区分公開参考、本机计算快照与已观测未匹配模型。最新公开目录与本机历史目录不同，目录更新不改写上报费率。可观测模型最多2000个，超预算413。
 
 套餐参考包含价格、币种、计费周期、地区、包含额度描述、reset规则、来源和核对日。未知或合同价格为NULL，不把套餐费用推算成固定Token额度。Credits费率与USD API价格分开。
 

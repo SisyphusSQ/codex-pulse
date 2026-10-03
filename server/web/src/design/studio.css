@@ -192,3 +192,55 @@
   .ds-record-detail { padding: 18px 14px; } .ds-detail-heading h2 { font-size: 17px; } .ds-associate-button { margin-left: 0; } .ds-record-detail .ds-metric-band strong { font-size: 21px; }
   .ds-catalog-toolbar { align-items: start; } .ds-catalog-toolbar .ant-space { width: 100%; } .ds-signin { padding: 24px; margin: 24px auto; }
 }
+/* 订阅购买页样稿：沿用 Pulse 主题，平台与套餐类别分层。 */
+.ds-purchase { --purchase-accent: #2678f5; }
+.ds-purchase-cursor { --purchase-accent: #3e9e82; }
+.ds-purchase-grok { --purchase-accent: #8464b4; }
+.ds-purchase-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 10px 0 24px; }
+.ds-purchase-heading h2 { font-size: 23px; margin: 0 0 6px; }
+.ds-purchase-heading p { color: #617089; margin: 0; }
+.ds-purchase-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr)); gap: 18px; }
+.ds-purchase-card { border-top: 3px solid var(--purchase-accent); }
+.ds-purchase-card .ant-card-body { height: 100%; display: flex; flex-direction: column; padding: 24px; }
+.ds-purchase-current { border-color: var(--purchase-accent); background: #f8fbff; }
+.ds-purchase-card-heading { display: flex; align-items: start; justify-content: space-between; gap: 6px; min-height: 34px; }
+.ds-purchase-card h3 { font-size: 20px; margin: 0; line-height: 1.45; }
+.ds-purchase-card-heading .ant-tag { white-space: nowrap; margin: 4px 0 0; }
+.ds-purchase-audience { color: #617089; margin: 10px 0 22px; }
+.ds-purchase-price { display: flex; align-items: baseline; gap: 8px; min-height: 49px; flex-wrap: wrap; }
+.ds-purchase-price strong { font-size: 36px; font-weight: 600; letter-spacing: -1px; }
+.ds-purchase-price span { color: #617089; font-size: 13px; }
+.ds-purchase-variant { min-height: 67px; margin: 12px 0 12px; display: flex; flex-direction: column; gap: 6px; color: #617089; font-size: 12px; }
+.ds-purchase-variant .ant-select { width: 100%; }
+.ds-purchase-features { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 16px; }
+.ds-purchase-features li { display: flex; gap: 10px; align-items: start; line-height: 1.6; }
+.ds-purchase-features .anticon { color: var(--purchase-accent); margin-top: 5px; }
+.ds-purchase-rules { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 18px; }
+.ds-purchase-rules h3 { font-size: 16px; margin: 0 0 16px; }
+.ds-purchase-rules > div { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 24px; }
+.ds-purchase-rules p { color: #617089; font-size: 13px; line-height: 1.7; margin: 6px 0 0; }
+.ds-purchase-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 24px; font-size: 12px; color: #617089; }
+.ds-purchase-footer .anticon { margin-right: 5px; }
+.ds-purchase-footer .ant-btn { padding: 0; margin-left: auto; }
+.ds-review-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 24px; background: #edf4ff; color: #304c76; font-size: 12px; }
+.ds-review-banner a { margin-left: auto; }
+.ds-review-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.ds-review-grid h3 { margin: 0 0 8px; font-size: 16px; }
+.ds-review-grid p { color: #617089; }
+.ds-sync-preview { max-width: 760px; margin: auto; }
+.ds-sync-progress { margin: 22px 0; }
+.ds-sync-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.ds-metrics-sample { background: #f3f6fb; border-radius: 8px; padding: 18px; overflow-x: auto; font-size: 12px; line-height: 1.8; }
+@media (max-width: 1050px) {
+ .ds-purchase-card .ant-card-body { padding: 18px; }
+ .ds-purchase-card-heading { flex-direction: column; min-height: 60px; }
+ .ds-purchase-heading { align-items: start; }
+}
+@media (max-width: 767px) {
+ .ds-purchase-heading { flex-direction: column; gap: 16px; margin-bottom: 18px; }
+ .ds-purchase-grid, .ds-purchase-rules > div, .ds-review-grid { grid-template-columns: minmax(0,1fr); }
+ .ds-purchase-card-heading { flex-direction: row; min-height: 34px; }
+ .ds-purchase-audience { margin-bottom: 14px; }
+ .ds-purchase-footer { flex-direction: column; align-items: start; gap: 10px; }
+ .ds-purchase-footer .ant-btn { margin-left: 0; }
+}

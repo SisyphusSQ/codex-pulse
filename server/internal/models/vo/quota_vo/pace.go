@@ -39,6 +39,7 @@ type PaceWindow struct {
 	WindowKind                      string             `json:"window_kind"`
 	WindowMinutes                   *int64             `json:"window_minutes"`
 	Current                         Current            `json:"current"`
+	SnapshotAtMS                    *int64             `json:"snapshot_at_ms"`
 	ElapsedPercent                  *float64           `json:"elapsed_percent"`
 	PaceDeltaPP                     *float64           `json:"pace_delta_pp"`
 	Forecast                        Forecast           `json:"forecast"`

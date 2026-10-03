@@ -58,6 +58,7 @@ func buildCredits(rows []reporting_do.ResetCredits, now int64) ([]quota_vo.Credi
 		}
 		if !known {
 			view.Freshness = "unknown"
+			view.ObservedInventory = nil
 		}
 		if last[key].ObservedAtMS > row.ObservedAtMS {
 			view.Freshness = "stale"
@@ -76,12 +77,18 @@ func buildCredits(rows []reporting_do.ResetCredits, now int64) ([]quota_vo.Credi
 		}
 		view.Conflict = conflicts[reportingv1.Key(key, strconv.FormatInt(row.ObservedAtMS, 10))]
 		if row.DetailsStatus == "complete" && row.Inventory != nil {
-			available, total := int64(0), int64(0)
+			available, snapshotAvailable, total := int64(0), int64(0), int64(0)
 			for _, expiry := range view.ExpirySchedule {
 				if expiry.Count <= 0 {
 					return nil, errors.New("stored credit schedule is invalid")
 				}
 				total += expiry.Count
+				if known && (expiry.ExpiresAtMS == nil || *expiry.ExpiresAtMS > row.ObservedAtMS) {
+					snapshotAvailable += expiry.Count
+					if expiry.ExpiresAtMS != nil && (view.SnapshotNextExpiresAtMS == nil || *expiry.ExpiresAtMS < *view.SnapshotNextExpiresAtMS) {
+						view.SnapshotNextExpiresAtMS = expiry.ExpiresAtMS
+					}
+				}
 				if expiry.ExpiresAtMS == nil || *expiry.ExpiresAtMS > now {
 					available += expiry.Count
 					if expiry.ExpiresAtMS != nil && (view.NextExpiresAtMS == nil || *expiry.ExpiresAtMS < *view.NextExpiresAtMS) {
@@ -95,8 +102,14 @@ func buildCredits(rows []reporting_do.ResetCredits, now int64) ([]quota_vo.Credi
 			if view.Freshness == "fresh" && !view.Conflict {
 				view.AvailableInventory = &available
 			}
+			if known && row.AccountKey != nil && !view.Conflict {
+				view.SnapshotAvailableInventory = &snapshotAvailable
+			}
 		} else {
 			view.NextExpiresAtMS = row.NextExpiresAtMS
+			if known && row.NextExpiresAtMS != nil && *row.NextExpiresAtMS > row.ObservedAtMS {
+				view.SnapshotNextExpiresAtMS = row.NextExpiresAtMS
+			}
 			if view.NextExpiresAtMS != nil && *view.NextExpiresAtMS <= now {
 				view.NextExpiresAtMS = nil
 			}

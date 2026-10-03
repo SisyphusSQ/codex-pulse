@@ -17067,21 +17067,25 @@ func (x *ConfigureReportingRequest) GetClearPending() bool {
 }
 
 type ReportingStatusResponse struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Endpoint         string                 `protobuf:"bytes,1,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
-	ClientId         string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
-	Enabled          bool                   `protobuf:"varint,3,opt,name=enabled,proto3" json:"enabled,omitempty"`
-	AllowHttp        bool                   `protobuf:"varint,4,opt,name=allow_http,json=allowHttp,proto3" json:"allow_http,omitempty"`
-	IntervalSeconds  int64                  `protobuf:"varint,5,opt,name=interval_seconds,json=intervalSeconds,proto3" json:"interval_seconds,omitempty"`
-	HistoryStartAtMs int64                  `protobuf:"varint,6,opt,name=history_start_at_ms,json=historyStartAtMs,proto3" json:"history_start_at_ms,omitempty"`
-	State            string                 `protobuf:"bytes,7,opt,name=state,proto3" json:"state,omitempty"`
-	PendingBatches   int64                  `protobuf:"varint,8,opt,name=pending_batches,json=pendingBatches,proto3" json:"pending_batches,omitempty"`
-	PendingBytes     int64                  `protobuf:"varint,9,opt,name=pending_bytes,json=pendingBytes,proto3" json:"pending_bytes,omitempty"`
-	RetainedBatches  int64                  `protobuf:"varint,10,opt,name=retained_batches,json=retainedBatches,proto3" json:"retained_batches,omitempty"`
-	LastAttemptAtMs  *int64                 `protobuf:"varint,11,opt,name=last_attempt_at_ms,json=lastAttemptAtMs,proto3,oneof" json:"last_attempt_at_ms,omitempty"`
-	LastSuccessAtMs  *int64                 `protobuf:"varint,12,opt,name=last_success_at_ms,json=lastSuccessAtMs,proto3,oneof" json:"last_success_at_ms,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state                       protoimpl.MessageState `protogen:"open.v1"`
+	Endpoint                    string                 `protobuf:"bytes,1,opt,name=endpoint,proto3" json:"endpoint,omitempty"`
+	ClientId                    string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	Enabled                     bool                   `protobuf:"varint,3,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	AllowHttp                   bool                   `protobuf:"varint,4,opt,name=allow_http,json=allowHttp,proto3" json:"allow_http,omitempty"`
+	IntervalSeconds             int64                  `protobuf:"varint,5,opt,name=interval_seconds,json=intervalSeconds,proto3" json:"interval_seconds,omitempty"`
+	HistoryStartAtMs            int64                  `protobuf:"varint,6,opt,name=history_start_at_ms,json=historyStartAtMs,proto3" json:"history_start_at_ms,omitempty"`
+	State                       string                 `protobuf:"bytes,7,opt,name=state,proto3" json:"state,omitempty"`
+	PendingBatches              int64                  `protobuf:"varint,8,opt,name=pending_batches,json=pendingBatches,proto3" json:"pending_batches,omitempty"`
+	PendingBytes                int64                  `protobuf:"varint,9,opt,name=pending_bytes,json=pendingBytes,proto3" json:"pending_bytes,omitempty"`
+	RetainedBatches             int64                  `protobuf:"varint,10,opt,name=retained_batches,json=retainedBatches,proto3" json:"retained_batches,omitempty"`
+	LastAttemptAtMs             *int64                 `protobuf:"varint,11,opt,name=last_attempt_at_ms,json=lastAttemptAtMs,proto3,oneof" json:"last_attempt_at_ms,omitempty"`
+	LastSuccessAtMs             *int64                 `protobuf:"varint,12,opt,name=last_success_at_ms,json=lastSuccessAtMs,proto3,oneof" json:"last_success_at_ms,omitempty"`
+	FullSyncState               string                 `protobuf:"bytes,13,opt,name=full_sync_state,json=fullSyncState,proto3" json:"full_sync_state,omitempty"`
+	FullSyncStartedAtMs         *int64                 `protobuf:"varint,14,opt,name=full_sync_started_at_ms,json=fullSyncStartedAtMs,proto3,oneof" json:"full_sync_started_at_ms,omitempty"`
+	FullSyncExportedSessions    int64                  `protobuf:"varint,15,opt,name=full_sync_exported_sessions,json=fullSyncExportedSessions,proto3" json:"full_sync_exported_sessions,omitempty"`
+	FullSyncAcknowledgedBatches int64                  `protobuf:"varint,16,opt,name=full_sync_acknowledged_batches,json=fullSyncAcknowledgedBatches,proto3" json:"full_sync_acknowledged_batches,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *ReportingStatusResponse) Reset() {
@@ -17194,6 +17198,34 @@ func (x *ReportingStatusResponse) GetLastAttemptAtMs() int64 {
 func (x *ReportingStatusResponse) GetLastSuccessAtMs() int64 {
 	if x != nil && x.LastSuccessAtMs != nil {
 		return *x.LastSuccessAtMs
+	}
+	return 0
+}
+
+func (x *ReportingStatusResponse) GetFullSyncState() string {
+	if x != nil {
+		return x.FullSyncState
+	}
+	return ""
+}
+
+func (x *ReportingStatusResponse) GetFullSyncStartedAtMs() int64 {
+	if x != nil && x.FullSyncStartedAtMs != nil {
+		return *x.FullSyncStartedAtMs
+	}
+	return 0
+}
+
+func (x *ReportingStatusResponse) GetFullSyncExportedSessions() int64 {
+	if x != nil {
+		return x.FullSyncExportedSessions
+	}
+	return 0
+}
+
+func (x *ReportingStatusResponse) GetFullSyncAcknowledgedBatches() int64 {
+	if x != nil {
+		return x.FullSyncAcknowledgedBatches
 	}
 	return 0
 }
@@ -18812,7 +18844,7 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12)\n" +
 	"\x10interval_seconds\x18\x02 \x01(\x03R\x0fintervalSeconds\x12-\n" +
 	"\x13history_start_at_ms\x18\x03 \x01(\x03R\x10historyStartAtMs\x12#\n" +
-	"\rclear_pending\x18\x04 \x01(\bR\fclearPending\"\x86\x04\n" +
+	"\rclear_pending\x18\x04 \x01(\bR\fclearPending\"\x89\x06\n" +
 	"\x17ReportingStatusResponse\x12\x1a\n" +
 	"\bendpoint\x18\x01 \x01(\tR\bendpoint\x12\x1b\n" +
 	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12\x18\n" +
@@ -18827,9 +18859,14 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x10retained_batches\x18\n" +
 	" \x01(\x03R\x0fretainedBatches\x120\n" +
 	"\x12last_attempt_at_ms\x18\v \x01(\x03H\x00R\x0flastAttemptAtMs\x88\x01\x01\x120\n" +
-	"\x12last_success_at_ms\x18\f \x01(\x03H\x01R\x0flastSuccessAtMs\x88\x01\x01B\x15\n" +
+	"\x12last_success_at_ms\x18\f \x01(\x03H\x01R\x0flastSuccessAtMs\x88\x01\x01\x12&\n" +
+	"\x0ffull_sync_state\x18\r \x01(\tR\rfullSyncState\x129\n" +
+	"\x17full_sync_started_at_ms\x18\x0e \x01(\x03H\x02R\x13fullSyncStartedAtMs\x88\x01\x01\x12=\n" +
+	"\x1bfull_sync_exported_sessions\x18\x0f \x01(\x03R\x18fullSyncExportedSessions\x12C\n" +
+	"\x1efull_sync_acknowledged_batches\x18\x10 \x01(\x03R\x1bfullSyncAcknowledgedBatchesB\x15\n" +
 	"\x13_last_attempt_at_msB\x15\n" +
-	"\x13_last_success_at_ms*\x86\x01\n" +
+	"\x13_last_success_at_msB\x1a\n" +
+	"\x18_full_sync_started_at_ms*\x86\x01\n" +
 	"\x0eProviderIntent\x12\x1f\n" +
 	"\x1bPROVIDER_INTENT_UNSPECIFIED\x10\x00\x12\x18\n" +
 	"\x14PROVIDER_INTENT_AUTO\x10\x01\x12\x1b\n" +
@@ -18906,7 +18943,7 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	",CODEX_LEGACY_QUOTA_HISTORY_STATE_UNAVAILABLE\x10\x01\x12.\n" +
 	"*CODEX_LEGACY_QUOTA_HISTORY_STATE_AVAILABLE\x10\x02\x12+\n" +
 	"'CODEX_LEGACY_QUOTA_HISTORY_STATE_LINKED\x10\x03\x125\n" +
-	"1CODEX_LEGACY_QUOTA_HISTORY_STATE_LINKED_ELSEWHERE\x10\x042\xbe1\n" +
+	"1CODEX_LEGACY_QUOTA_HISTORY_STATE_LINKED_ELSEWHERE\x10\x042\x9b2\n" +
 	"\vCoreService\x12X\n" +
 	"\tHandshake\x12$.codexpulse.core.v1.HandshakeRequest\x1a%.codexpulse.core.v1.HandshakeResponse\x12X\n" +
 	"\tBootstrap\x12$.codexpulse.core.v1.BootstrapRequest\x1a%.codexpulse.core.v1.BootstrapResponse\x12X\n" +
@@ -18950,7 +18987,8 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x0fReportingStatus\x12\x19.codexpulse.core.v1.Empty\x1a+.codexpulse.core.v1.ReportingStatusResponse\x12f\n" +
 	"\rPairReporting\x12(.codexpulse.core.v1.PairReportingRequest\x1a+.codexpulse.core.v1.ReportingStatusResponse\x12p\n" +
 	"\x12ConfigureReporting\x12-.codexpulse.core.v1.ConfigureReportingRequest\x1a+.codexpulse.core.v1.ReportingStatusResponse\x12Z\n" +
-	"\x10SyncReportingNow\x12\x19.codexpulse.core.v1.Empty\x1a+.codexpulse.core.v1.ReportingStatusResponse\x12U\n" +
+	"\x10SyncReportingNow\x12\x19.codexpulse.core.v1.Empty\x1a+.codexpulse.core.v1.ReportingStatusResponse\x12[\n" +
+	"\x11FullSyncReporting\x12\x19.codexpulse.core.v1.Empty\x1a+.codexpulse.core.v1.ReportingStatusResponse\x12U\n" +
 	"\bSettings\x12#.codexpulse.core.v1.SettingsRequest\x1a$.codexpulse.core.v1.SettingsResponse\x12f\n" +
 	"\x0eUpdateSettings\x12).codexpulse.core.v1.UpdateSettingsRequest\x1a).codexpulse.core.v1.SettingsUpdateReceipt\x12f\n" +
 	"\x0ePlanHomeSwitch\x12).codexpulse.core.v1.PlanHomeSwitchRequest\x1a).codexpulse.core.v1.HomeSwitchPlanReceipt\x12h\n" +
@@ -19713,81 +19751,83 @@ var file_api_codexpulse_core_v1_core_proto_depIdxs = []int32{
 	230, // 492: codexpulse.core.v1.CoreService.PairReporting:input_type -> codexpulse.core.v1.PairReportingRequest
 	231, // 493: codexpulse.core.v1.CoreService.ConfigureReporting:input_type -> codexpulse.core.v1.ConfigureReportingRequest
 	14,  // 494: codexpulse.core.v1.CoreService.SyncReportingNow:input_type -> codexpulse.core.v1.Empty
-	118, // 495: codexpulse.core.v1.CoreService.Settings:input_type -> codexpulse.core.v1.SettingsRequest
-	157, // 496: codexpulse.core.v1.CoreService.UpdateSettings:input_type -> codexpulse.core.v1.UpdateSettingsRequest
-	159, // 497: codexpulse.core.v1.CoreService.PlanHomeSwitch:input_type -> codexpulse.core.v1.PlanHomeSwitchRequest
-	161, // 498: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:input_type -> codexpulse.core.v1.ConfirmHomeSwitchRequest
-	162, // 499: codexpulse.core.v1.CoreService.RecoverHomeSwitch:input_type -> codexpulse.core.v1.RecoverHomeSwitchRequest
-	164, // 500: codexpulse.core.v1.CoreService.RunRuntimeAction:input_type -> codexpulse.core.v1.RuntimeActionRequest
-	166, // 501: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:input_type -> codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
-	168, // 502: codexpulse.core.v1.CoreService.NotifyLifecycle:input_type -> codexpulse.core.v1.LifecycleNotificationRequest
-	170, // 503: codexpulse.core.v1.CoreService.MigrationRecoveryState:input_type -> codexpulse.core.v1.MigrationRecoveryStateRequest
-	171, // 504: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:input_type -> codexpulse.core.v1.MigrationRecoveryRetryRequest
-	174, // 505: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:input_type -> codexpulse.core.v1.MigrationRecoveryPrepareRequest
-	175, // 506: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:input_type -> codexpulse.core.v1.MigrationRecoveryConfirmRequest
-	172, // 507: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:input_type -> codexpulse.core.v1.MigrationRecoveryCancelRequest
-	173, // 508: codexpulse.core.v1.CoreService.MigrationRecoveryExit:input_type -> codexpulse.core.v1.MigrationRecoveryExitRequest
-	180, // 509: codexpulse.core.v1.CoreService.SubscribeInvalidations:input_type -> codexpulse.core.v1.SubscribeInvalidationsRequest
-	182, // 510: codexpulse.core.v1.CoreService.Shutdown:input_type -> codexpulse.core.v1.ShutdownRequest
-	16,  // 511: codexpulse.core.v1.CoreService.Handshake:output_type -> codexpulse.core.v1.HandshakeResponse
-	18,  // 512: codexpulse.core.v1.CoreService.Bootstrap:output_type -> codexpulse.core.v1.BootstrapResponse
-	21,  // 513: codexpulse.core.v1.CoreService.Contracts:output_type -> codexpulse.core.v1.ContractsResponse
-	188, // 514: codexpulse.core.v1.CoreService.AccountSnapshot:output_type -> codexpulse.core.v1.AccountSnapshotResponse
-	193, // 515: codexpulse.core.v1.CoreService.ListCodexSubscriptionAccounts:output_type -> codexpulse.core.v1.CodexSubscriptionAccountsResponse
-	197, // 516: codexpulse.core.v1.CoreService.ListCodexAccountQuotas:output_type -> codexpulse.core.v1.CodexAccountQuotasResponse
-	199, // 517: codexpulse.core.v1.CoreService.ClearCodexAccountQuotaHistory:output_type -> codexpulse.core.v1.CodexAccountQuotaHistoryClearReceipt
-	208, // 518: codexpulse.core.v1.CoreService.CreateCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
-	208, // 519: codexpulse.core.v1.CoreService.UpdateCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
-	208, // 520: codexpulse.core.v1.CoreService.DeleteCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
-	208, // 521: codexpulse.core.v1.CoreService.LinkCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
-	208, // 522: codexpulse.core.v1.CoreService.UnlinkCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
-	208, // 523: codexpulse.core.v1.CoreService.LinkLegacyQuotaHistory:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
-	208, // 524: codexpulse.core.v1.CoreService.UnlinkLegacyQuotaHistory:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
-	51,  // 525: codexpulse.core.v1.CoreService.UsageCost:output_type -> codexpulse.core.v1.UsageCostResponse
-	61,  // 526: codexpulse.core.v1.CoreService.DashboardSummary:output_type -> codexpulse.core.v1.DashboardSummaryResponse
-	68,  // 527: codexpulse.core.v1.CoreService.InvocationUsage:output_type -> codexpulse.core.v1.InvocationUsageResponse
-	71,  // 528: codexpulse.core.v1.CoreService.PricingCatalogCurrent:output_type -> codexpulse.core.v1.PricingCatalogCurrentResponse
-	75,  // 529: codexpulse.core.v1.CoreService.ListSessions:output_type -> codexpulse.core.v1.SessionListResponse
-	77,  // 530: codexpulse.core.v1.CoreService.SessionDetail:output_type -> codexpulse.core.v1.SessionDetailResponse
-	82,  // 531: codexpulse.core.v1.CoreService.ListProjects:output_type -> codexpulse.core.v1.ProjectListResponse
-	83,  // 532: codexpulse.core.v1.CoreService.ProjectDetail:output_type -> codexpulse.core.v1.ProjectDetailResponse
-	95,  // 533: codexpulse.core.v1.CoreService.QuotaCurrent:output_type -> codexpulse.core.v1.QuotaCurrentResponse
-	228, // 534: codexpulse.core.v1.CoreService.APISubscriptionsCurrent:output_type -> codexpulse.core.v1.APISubscriptionsCurrentResponse
-	211, // 535: codexpulse.core.v1.CoreService.APICredentialStatus:output_type -> codexpulse.core.v1.APICredentialStatusResponse
-	211, // 536: codexpulse.core.v1.CoreService.UpdateAPICredential:output_type -> codexpulse.core.v1.APICredentialStatusResponse
-	103, // 537: codexpulse.core.v1.CoreService.QuotaPace:output_type -> codexpulse.core.v1.QuotaPaceResponse
-	105, // 538: codexpulse.core.v1.CoreService.RequestQuotaRefresh:output_type -> codexpulse.core.v1.QuotaRefreshReceipt
-	109, // 539: codexpulse.core.v1.CoreService.RequestProviderRefresh:output_type -> codexpulse.core.v1.ProviderRefreshReceipt
-	122, // 540: codexpulse.core.v1.CoreService.ListSources:output_type -> codexpulse.core.v1.SourceListResponse
-	123, // 541: codexpulse.core.v1.CoreService.Source:output_type -> codexpulse.core.v1.SourceDetailResponse
-	127, // 542: codexpulse.core.v1.CoreService.ListJobs:output_type -> codexpulse.core.v1.JobListResponse
-	128, // 543: codexpulse.core.v1.CoreService.Job:output_type -> codexpulse.core.v1.JobDetailResponse
-	131, // 544: codexpulse.core.v1.CoreService.ListHealth:output_type -> codexpulse.core.v1.HealthListResponse
-	132, // 545: codexpulse.core.v1.CoreService.Health:output_type -> codexpulse.core.v1.HealthDetailResponse
-	134, // 546: codexpulse.core.v1.CoreService.HealthProjection:output_type -> codexpulse.core.v1.HealthProjectionResponse
-	140, // 547: codexpulse.core.v1.CoreService.DataHealth:output_type -> codexpulse.core.v1.DataHealthResponse
-	232, // 548: codexpulse.core.v1.CoreService.ReportingStatus:output_type -> codexpulse.core.v1.ReportingStatusResponse
-	232, // 549: codexpulse.core.v1.CoreService.PairReporting:output_type -> codexpulse.core.v1.ReportingStatusResponse
-	232, // 550: codexpulse.core.v1.CoreService.ConfigureReporting:output_type -> codexpulse.core.v1.ReportingStatusResponse
-	232, // 551: codexpulse.core.v1.CoreService.SyncReportingNow:output_type -> codexpulse.core.v1.ReportingStatusResponse
-	151, // 552: codexpulse.core.v1.CoreService.Settings:output_type -> codexpulse.core.v1.SettingsResponse
-	158, // 553: codexpulse.core.v1.CoreService.UpdateSettings:output_type -> codexpulse.core.v1.SettingsUpdateReceipt
-	160, // 554: codexpulse.core.v1.CoreService.PlanHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchPlanReceipt
-	163, // 555: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
-	163, // 556: codexpulse.core.v1.CoreService.RecoverHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
-	165, // 557: codexpulse.core.v1.CoreService.RunRuntimeAction:output_type -> codexpulse.core.v1.RuntimeActionReceipt
-	167, // 558: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:output_type -> codexpulse.core.v1.RepairDryRunReceipt
-	169, // 559: codexpulse.core.v1.CoreService.NotifyLifecycle:output_type -> codexpulse.core.v1.LifecycleNotificationReceipt
-	177, // 560: codexpulse.core.v1.CoreService.MigrationRecoveryState:output_type -> codexpulse.core.v1.MigrationRecoverySnapshot
-	178, // 561: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
-	179, // 562: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:output_type -> codexpulse.core.v1.MigrationRestoreConfirmation
-	178, // 563: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
-	14,  // 564: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:output_type -> codexpulse.core.v1.Empty
-	14,  // 565: codexpulse.core.v1.CoreService.MigrationRecoveryExit:output_type -> codexpulse.core.v1.Empty
-	181, // 566: codexpulse.core.v1.CoreService.SubscribeInvalidations:output_type -> codexpulse.core.v1.QueryInvalidationEvent
-	183, // 567: codexpulse.core.v1.CoreService.Shutdown:output_type -> codexpulse.core.v1.ShutdownResponse
-	511, // [511:568] is the sub-list for method output_type
-	454, // [454:511] is the sub-list for method input_type
+	14,  // 495: codexpulse.core.v1.CoreService.FullSyncReporting:input_type -> codexpulse.core.v1.Empty
+	118, // 496: codexpulse.core.v1.CoreService.Settings:input_type -> codexpulse.core.v1.SettingsRequest
+	157, // 497: codexpulse.core.v1.CoreService.UpdateSettings:input_type -> codexpulse.core.v1.UpdateSettingsRequest
+	159, // 498: codexpulse.core.v1.CoreService.PlanHomeSwitch:input_type -> codexpulse.core.v1.PlanHomeSwitchRequest
+	161, // 499: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:input_type -> codexpulse.core.v1.ConfirmHomeSwitchRequest
+	162, // 500: codexpulse.core.v1.CoreService.RecoverHomeSwitch:input_type -> codexpulse.core.v1.RecoverHomeSwitchRequest
+	164, // 501: codexpulse.core.v1.CoreService.RunRuntimeAction:input_type -> codexpulse.core.v1.RuntimeActionRequest
+	166, // 502: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:input_type -> codexpulse.core.v1.AnalyzeSessionIndexRepairRequest
+	168, // 503: codexpulse.core.v1.CoreService.NotifyLifecycle:input_type -> codexpulse.core.v1.LifecycleNotificationRequest
+	170, // 504: codexpulse.core.v1.CoreService.MigrationRecoveryState:input_type -> codexpulse.core.v1.MigrationRecoveryStateRequest
+	171, // 505: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:input_type -> codexpulse.core.v1.MigrationRecoveryRetryRequest
+	174, // 506: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:input_type -> codexpulse.core.v1.MigrationRecoveryPrepareRequest
+	175, // 507: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:input_type -> codexpulse.core.v1.MigrationRecoveryConfirmRequest
+	172, // 508: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:input_type -> codexpulse.core.v1.MigrationRecoveryCancelRequest
+	173, // 509: codexpulse.core.v1.CoreService.MigrationRecoveryExit:input_type -> codexpulse.core.v1.MigrationRecoveryExitRequest
+	180, // 510: codexpulse.core.v1.CoreService.SubscribeInvalidations:input_type -> codexpulse.core.v1.SubscribeInvalidationsRequest
+	182, // 511: codexpulse.core.v1.CoreService.Shutdown:input_type -> codexpulse.core.v1.ShutdownRequest
+	16,  // 512: codexpulse.core.v1.CoreService.Handshake:output_type -> codexpulse.core.v1.HandshakeResponse
+	18,  // 513: codexpulse.core.v1.CoreService.Bootstrap:output_type -> codexpulse.core.v1.BootstrapResponse
+	21,  // 514: codexpulse.core.v1.CoreService.Contracts:output_type -> codexpulse.core.v1.ContractsResponse
+	188, // 515: codexpulse.core.v1.CoreService.AccountSnapshot:output_type -> codexpulse.core.v1.AccountSnapshotResponse
+	193, // 516: codexpulse.core.v1.CoreService.ListCodexSubscriptionAccounts:output_type -> codexpulse.core.v1.CodexSubscriptionAccountsResponse
+	197, // 517: codexpulse.core.v1.CoreService.ListCodexAccountQuotas:output_type -> codexpulse.core.v1.CodexAccountQuotasResponse
+	199, // 518: codexpulse.core.v1.CoreService.ClearCodexAccountQuotaHistory:output_type -> codexpulse.core.v1.CodexAccountQuotaHistoryClearReceipt
+	208, // 519: codexpulse.core.v1.CoreService.CreateCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	208, // 520: codexpulse.core.v1.CoreService.UpdateCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	208, // 521: codexpulse.core.v1.CoreService.DeleteCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	208, // 522: codexpulse.core.v1.CoreService.LinkCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	208, // 523: codexpulse.core.v1.CoreService.UnlinkCodexSubscriptionAccount:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	208, // 524: codexpulse.core.v1.CoreService.LinkLegacyQuotaHistory:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	208, // 525: codexpulse.core.v1.CoreService.UnlinkLegacyQuotaHistory:output_type -> codexpulse.core.v1.CodexSubscriptionMutationReceipt
+	51,  // 526: codexpulse.core.v1.CoreService.UsageCost:output_type -> codexpulse.core.v1.UsageCostResponse
+	61,  // 527: codexpulse.core.v1.CoreService.DashboardSummary:output_type -> codexpulse.core.v1.DashboardSummaryResponse
+	68,  // 528: codexpulse.core.v1.CoreService.InvocationUsage:output_type -> codexpulse.core.v1.InvocationUsageResponse
+	71,  // 529: codexpulse.core.v1.CoreService.PricingCatalogCurrent:output_type -> codexpulse.core.v1.PricingCatalogCurrentResponse
+	75,  // 530: codexpulse.core.v1.CoreService.ListSessions:output_type -> codexpulse.core.v1.SessionListResponse
+	77,  // 531: codexpulse.core.v1.CoreService.SessionDetail:output_type -> codexpulse.core.v1.SessionDetailResponse
+	82,  // 532: codexpulse.core.v1.CoreService.ListProjects:output_type -> codexpulse.core.v1.ProjectListResponse
+	83,  // 533: codexpulse.core.v1.CoreService.ProjectDetail:output_type -> codexpulse.core.v1.ProjectDetailResponse
+	95,  // 534: codexpulse.core.v1.CoreService.QuotaCurrent:output_type -> codexpulse.core.v1.QuotaCurrentResponse
+	228, // 535: codexpulse.core.v1.CoreService.APISubscriptionsCurrent:output_type -> codexpulse.core.v1.APISubscriptionsCurrentResponse
+	211, // 536: codexpulse.core.v1.CoreService.APICredentialStatus:output_type -> codexpulse.core.v1.APICredentialStatusResponse
+	211, // 537: codexpulse.core.v1.CoreService.UpdateAPICredential:output_type -> codexpulse.core.v1.APICredentialStatusResponse
+	103, // 538: codexpulse.core.v1.CoreService.QuotaPace:output_type -> codexpulse.core.v1.QuotaPaceResponse
+	105, // 539: codexpulse.core.v1.CoreService.RequestQuotaRefresh:output_type -> codexpulse.core.v1.QuotaRefreshReceipt
+	109, // 540: codexpulse.core.v1.CoreService.RequestProviderRefresh:output_type -> codexpulse.core.v1.ProviderRefreshReceipt
+	122, // 541: codexpulse.core.v1.CoreService.ListSources:output_type -> codexpulse.core.v1.SourceListResponse
+	123, // 542: codexpulse.core.v1.CoreService.Source:output_type -> codexpulse.core.v1.SourceDetailResponse
+	127, // 543: codexpulse.core.v1.CoreService.ListJobs:output_type -> codexpulse.core.v1.JobListResponse
+	128, // 544: codexpulse.core.v1.CoreService.Job:output_type -> codexpulse.core.v1.JobDetailResponse
+	131, // 545: codexpulse.core.v1.CoreService.ListHealth:output_type -> codexpulse.core.v1.HealthListResponse
+	132, // 546: codexpulse.core.v1.CoreService.Health:output_type -> codexpulse.core.v1.HealthDetailResponse
+	134, // 547: codexpulse.core.v1.CoreService.HealthProjection:output_type -> codexpulse.core.v1.HealthProjectionResponse
+	140, // 548: codexpulse.core.v1.CoreService.DataHealth:output_type -> codexpulse.core.v1.DataHealthResponse
+	232, // 549: codexpulse.core.v1.CoreService.ReportingStatus:output_type -> codexpulse.core.v1.ReportingStatusResponse
+	232, // 550: codexpulse.core.v1.CoreService.PairReporting:output_type -> codexpulse.core.v1.ReportingStatusResponse
+	232, // 551: codexpulse.core.v1.CoreService.ConfigureReporting:output_type -> codexpulse.core.v1.ReportingStatusResponse
+	232, // 552: codexpulse.core.v1.CoreService.SyncReportingNow:output_type -> codexpulse.core.v1.ReportingStatusResponse
+	232, // 553: codexpulse.core.v1.CoreService.FullSyncReporting:output_type -> codexpulse.core.v1.ReportingStatusResponse
+	151, // 554: codexpulse.core.v1.CoreService.Settings:output_type -> codexpulse.core.v1.SettingsResponse
+	158, // 555: codexpulse.core.v1.CoreService.UpdateSettings:output_type -> codexpulse.core.v1.SettingsUpdateReceipt
+	160, // 556: codexpulse.core.v1.CoreService.PlanHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchPlanReceipt
+	163, // 557: codexpulse.core.v1.CoreService.ConfirmHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
+	163, // 558: codexpulse.core.v1.CoreService.RecoverHomeSwitch:output_type -> codexpulse.core.v1.HomeSwitchReceipt
+	165, // 559: codexpulse.core.v1.CoreService.RunRuntimeAction:output_type -> codexpulse.core.v1.RuntimeActionReceipt
+	167, // 560: codexpulse.core.v1.CoreService.AnalyzeSessionIndexRepair:output_type -> codexpulse.core.v1.RepairDryRunReceipt
+	169, // 561: codexpulse.core.v1.CoreService.NotifyLifecycle:output_type -> codexpulse.core.v1.LifecycleNotificationReceipt
+	177, // 562: codexpulse.core.v1.CoreService.MigrationRecoveryState:output_type -> codexpulse.core.v1.MigrationRecoverySnapshot
+	178, // 563: codexpulse.core.v1.CoreService.MigrationRecoveryRetry:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
+	179, // 564: codexpulse.core.v1.CoreService.MigrationRecoveryPrepare:output_type -> codexpulse.core.v1.MigrationRestoreConfirmation
+	178, // 565: codexpulse.core.v1.CoreService.MigrationRecoveryConfirm:output_type -> codexpulse.core.v1.MigrationRecoveryReceipt
+	14,  // 566: codexpulse.core.v1.CoreService.MigrationRecoveryCancel:output_type -> codexpulse.core.v1.Empty
+	14,  // 567: codexpulse.core.v1.CoreService.MigrationRecoveryExit:output_type -> codexpulse.core.v1.Empty
+	181, // 568: codexpulse.core.v1.CoreService.SubscribeInvalidations:output_type -> codexpulse.core.v1.QueryInvalidationEvent
+	183, // 569: codexpulse.core.v1.CoreService.Shutdown:output_type -> codexpulse.core.v1.ShutdownResponse
+	512, // [512:570] is the sub-list for method output_type
+	454, // [454:512] is the sub-list for method input_type
 	454, // [454:454] is the sub-list for extension type_name
 	454, // [454:454] is the sub-list for extension extendee
 	0,   // [0:454] is the sub-list for field type_name

@@ -77,3 +77,34 @@ npm run build
 | [AI-usage-tracker](https://github.com/Danielw412/AI-usage-tracker/tree/4a98ff5aed4cc2af62c27585fabdcc356b761e52) | `4a98ff5` | 当前窗口、历史周期与多设备组织；不按成本分摊推算真实额度 |
 
 官方组件参考：[AntD](https://ant.design/components/overview-cn/)、[Storybook React/Vite](https://storybook.js.org/docs/get-started/frameworks/react-vite)。
+
+## TOO-523 追加样稿与当前实现（2026-10-03）
+
+V0.15.1 收尾新增“07 正式订阅分类与目录证据”，复用正式 `SubscriptionPlans`，静态价格由既有合成目录提供；原购买页样稿保留用于对照。正式组件不导入设计数据，当前故事合计 41 条。
+
+用户要求将本轮已实现改动全部追加进Storybook，并先评审订阅与额度分类样稿。原22条已批准设计保留作对照；新增加“本轮优化”12条与“订阅分类样稿”5条，合计39条。最新柱状图、年度常驻汇总、额度最后有效更新和发布时间排序取代上文原设计对应决定；该追加不代表生产部署或真实账号验收。
+
+| 新分组 | 范围与依据 |
+| --- | --- |
+| 订阅分类样稿 | 价目表先保留“模型价格 / 订阅与额度”两个主标签；模型价格复用正式表格与完整筛选/发布时间排序。仅订阅标签内按 Codex / ChatGPT、Cursor、Grok 分平台，再按个人与团队/企业分类；套餐卡突出档位、价格单位、适用任务和少量能力差异，详细额度与计费规则放在卡片下方 |
+| 本轮优化 | 改动目录、年度总量/成本与模型自然日柱状图、一次操作通知、reset后的最后更新额度/Credits与节奏、最新额度恢复、未知与冲突、设备同步/全量状态、原生补传交互、Prometheus说明、SVG图标、价目发布时间排序 |
+
+购买页参考于2026-10-03读取：[Codex购买页](https://chatgpt.com/codex/pricing/)、[OpenAI套餐说明](https://learn.chatgpt.com/docs/pricing)、[Cursor购买页](https://cursor.com/pricing)、[Grok购买页](https://grok.com/plans)。借鉴的是个人/团队分类、并列套餐卡、档位选择与价格/能力层级；沿用Pulse浅色主题，不复制支付流程或宣传推荐。
+
+Codex将Free/Go作为轻量档，Plus与Pro分开，Pro可比较$100/$200/$500；Business的月付与已公开年付折算明确不同。Cursor个人页比较Hobby和Individual，Individual切换Pro/Pro+/Ultra，团队页另列Teams的Standard/Premium与Enterprise；Start保持印度和INR条件。Grok个人购买页实际展示Lite/$10、SuperGrok/$30、Heavy/$300；当前中心目录的SuperGrok Plus单列“其他来源”，未确认渠道前不把它混入这次购买页。新的Grok参考值只进入样稿，正式价目数据未被改写。
+
+套餐价格不生成固定Token配额、reset或预测。API计费、订阅费、Credits、X会员渠道和账号实际用量保持各自口径。“查看官方套餐”打开公开购买页，不提交订单；“查看账号额度”进入合成账号故事。示例账号在用标签只在示例实际档位上显示，切换比较其他档位不改变订阅。
+
+当前实现故事直接复用正式PulseApp、查询/页面/Notification/图表组件，`reviewApi`只在Storybook iframe装配：所有`/api/`请求由合成适配器处理，未配置返回501，独立Vite不设后端proxy。数据和操作只在当前故事内存生效，不读取真实Home/SQLite或上报队列，不签发有效凭证。卸载恢复fetch并清理合成会话。后端指标与原生补传仅作说明/交互样稿，不伪装成正式Web新增操作或实际运行证据。
+
+用户已要求停止旧工作树6007，当前分支以6008保留预览。启动：`npm --prefix server/web run storybook -- --port 6008`。订阅入口`/?path=/story/subscription-plans--codex`，全部改动入口`/?path=/story/too-523-updates--index`；截图和静态构建留在ignored `.artifacts/too-523/`。正式订阅页替换需等用户评审本样稿后继续。
+
+### 价目精简与正式接入
+
+用户已批准价目围绕实际工具与模型收窄，并要求先更新Storybook再接入正式前端。新增“06 相关模型与 API 参考折算”，订阅分组现为6条、总计40条；新故事与已有模型价格入口都复用正式`Pricing`和`ModelPriceCatalog`。
+
+主表每个平台内一个模型一行，按发布时间倒排。Codex默认集合依据[官方模型说明](https://learn.chatgpt.com/docs/models)于2026-10-03核对，保留6.1 Sol、6 Astra/Sol/Luna及仍在过渡期的5.6 Sol/Terra/Luna；Cursor/Grok沿用已有文本型号。近30天已使用的旧型号、未知价目观测和精确型号搜索继续可查，不能只按`-codex`后缀筛选或把未知价格当免费。未使用的完整API型号、Batch/Flex、图片/音频/Embedding不占主表。
+
+默认展示美元基础文本参考价，输入/缓存输入/输出常驻；同一型号的Fast、长上下文、缓存写入规则和Credits放进展开区。Cursor的Fast/500k作为计费条件合并，但用量下钻保留原始已使用型号。历史计价仍按版本查阅，价格版本深链保留；公开参考、订阅价格、Credits、实际上报费用和历史计算边界不改写。
+
+API参考折算可与同时间范围的订阅支出比较使用强度，不能当实际账单、节省金额或剩余额度。当前统计继续使用已接受的历史费率，不因前端参考模式切换重新估价。此轮已同步正式模型价目代码；订阅购买页分类仍保持独立样稿。

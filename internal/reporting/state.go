@@ -26,6 +26,7 @@ type queued struct {
 	Seq                           int64 `gorm:"primaryKey"`
 	Partition, BatchID, SourceKey string
 	Revision                      int64
+	Priority                      int
 	Body                          []byte
 }
 
@@ -61,7 +62,7 @@ func OpenState(ctx context.Context, path string) (*State, error) {
 			if err := tx.Raw("SELECT version FROM reporting_schema WHERE id=1").Scan(&version).Error; err != nil {
 				return err
 			}
-			if version != 1 && version != 2 {
+			if version != 1 && version != 2 && version != 3 {
 				return ErrUnavailable
 			}
 		}
@@ -96,13 +97,22 @@ func OpenState(ctx context.Context, path string) (*State, error) {
 		} else if result.Error != nil {
 			return result.Error
 		}
-		if (schema.Version != 1 && schema.Version != 2) || len(schema.Salt) != 32 {
+		if (schema.Version != 1 && schema.Version != 2 && schema.Version != 3) || len(schema.Salt) != 32 {
 			return ErrUnavailable
 		}
-		if schema.Version == 1 {
-			if err := tx.Exec("UPDATE reporting_schema SET version=2 WHERE id=1 AND version=1").Error; err != nil {
+		if !tx.Migrator().HasColumn(&queued{}, "priority") {
+			if err := tx.Exec("ALTER TABLE reporting_outbox ADD COLUMN priority INTEGER NOT NULL DEFAULT 2").Error; err != nil {
 				return err
 			}
+			if err := tx.Exec("UPDATE reporting_outbox SET priority=1 WHERE source_key='' ").Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Exec("UPDATE reporting_schema SET version=3 WHERE id=1").Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(`CREATE TABLE IF NOT EXISTS reporting_full_sync(partition TEXT PRIMARY KEY,state TEXT NOT NULL,started_at_ms INTEGER NOT NULL,exported_sessions INTEGER NOT NULL,acknowledged_batches INTEGER NOT NULL) STRICT`).Error; err != nil {
+			return err
 		}
 		state.salt = append([]byte(nil), schema.Salt...)
 		var count int64
@@ -145,6 +155,16 @@ func (s *State) Status(ctx context.Context) (status Status, err error) {
 		if err := db.Model(&queued{}).Select("COUNT(*) AS count,COALESCE(SUM(length(body)),0) AS bytes").Where("partition = ?", cfg.partition()).Scan(&counts).Error; err != nil {
 			return err
 		}
+		var task fullSync
+		if err := db.Where("partition = ?", cfg.partition()).Find(&task).Error; err != nil {
+			return err
+		}
+		status.FullSyncState = task.State
+		if task.StartedAtMS > 0 {
+			status.FullSyncStartedAtMS = new(task.StartedAtMS)
+		}
+		status.FullSyncExportedSessions = task.ExportedSessions
+		status.FullSyncAcknowledgedBatches = task.AcknowledgedBatches
 		status.PendingBatches = counts.Count
 		status.PendingBytes = counts.Bytes
 		return db.Model(&queued{}).Where("partition <> ?", cfg.partition()).Count(&status.RetainedBatches).Error
@@ -183,22 +203,32 @@ func (s *State) Enqueue(ctx context.Context, partition, sweep string, value repo
 			return ErrProtocol
 		}
 		value.Revision = previous.Revision + 1
-		batch := reportingv1.Batch{Version: reportingv1.Version, ID: uuid.NewString(), Sessions: []reportingv1.SessionSnapshot{value}}
-		if err := batch.Validate(); err != nil {
+		parts, err := reportingv1.SplitSnapshot(value)
+		if err != nil {
 			return ErrProtocol
 		}
-		body, err := json.Marshal(batch)
-		if err != nil {
-			return err
-		}
-		if len(body) > reportingv1.MaxBodyBytes {
-			return ErrQueueFull
+		rows := make([]queued, 0, len(parts))
+		totalBytes := int64(0)
+		for _, part := range parts {
+			batch := reportingv1.Batch{Version: reportingv1.Version, ID: uuid.NewString(), Sessions: []reportingv1.SessionSnapshot{part}}
+			if batch.Validate() != nil {
+				return ErrProtocol
+			}
+			body, err := json.Marshal(batch)
+			if err != nil {
+				return err
+			}
+			if len(body) > reportingv1.MaxBodyBytes {
+				return ErrQueueFull
+			}
+			rows = append(rows, queued{Partition: partition, BatchID: batch.ID, SourceKey: key, Revision: value.Revision, Priority: 2, Body: body})
+			totalBytes += int64(len(body))
 		}
 		var budget struct{ Count, Bytes int64 }
 		if err := tx.Model(&queued{}).Select("COUNT(*) AS count,COALESCE(SUM(length(body)),0) AS bytes").Scan(&budget).Error; err != nil {
 			return err
 		}
-		if budget.Count >= QueueBatchBudget || budget.Bytes+int64(len(body)) > QueueByteBudget {
+		if budget.Count+int64(len(rows)) > QueueBatchBudget || budget.Bytes+totalBytes > QueueByteBudget {
 			return ErrQueueFull
 		}
 		metadata := value
@@ -214,12 +244,15 @@ func (s *State) Enqueue(ctx context.Context, partition, sweep string, value repo
 		if err := tx.Save(&saved).Error; err != nil {
 			return err
 		}
-		return tx.Create(&queued{Partition: partition, BatchID: batch.ID, SourceKey: key, Revision: value.Revision, Body: body}).Error
+		if err := tx.CreateInBatches(rows, 32).Error; err != nil {
+			return err
+		}
+		return tx.Model(&fullSync{}).Where("partition = ? AND state = ?", partition, "running").Update("exported_sessions", gorm.Expr("exported_sessions+1")).Error
 	})
 }
 func (s *State) next(ctx context.Context, partition string) (out queued, err error) {
 	err = s.db.View(ctx, func(_ context.Context, db *gorm.DB) error {
-		if err := db.Where("partition = ?", partition).Order("seq").First(&out).Error; err != nil {
+		if err := db.Where("partition = ?", partition).Order("priority, seq").First(&out).Error; err != nil {
 			return err
 		}
 		if len(out.Body) > reportingv1.MaxBodyBytes {
@@ -253,10 +286,19 @@ func (s *State) Ack(ctx context.Context, item queued, receipt reportingv1.Receip
 		if err := tx.Where("seq = ? AND partition = ? AND batch_id = ?", item.Seq, item.Partition, item.BatchID).Take(&actual).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&checkpoint{}).Where("partition = ? AND source_key = ? AND acknowledged_revision < ?", item.Partition, item.SourceKey, item.Revision).Update("acknowledged_revision", item.Revision).Error; err != nil {
+		var remaining int64
+		if err := tx.Model(&queued{}).Where("partition = ? AND source_key = ? AND revision = ? AND seq <> ?", item.Partition, item.SourceKey, item.Revision, item.Seq).Count(&remaining).Error; err != nil {
 			return err
 		}
-		return tx.Delete(&actual).Error
+		if remaining == 0 {
+			if err := tx.Model(&checkpoint{}).Where("partition = ? AND source_key = ? AND acknowledged_revision < ?", item.Partition, item.SourceKey, item.Revision).Update("acknowledged_revision", item.Revision).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Delete(&actual).Error; err != nil {
+			return err
+		}
+		return tx.Model(&fullSync{}).Where("partition = ? AND state = ?", item.Partition, "running").Update("acknowledged_batches", gorm.Expr("acknowledged_batches+1")).Error
 	})
 }
 func (s *State) removed(ctx context.Context, partition, provider, homeID, sweep string) (out []reportingv1.SessionSnapshot, err error) {
@@ -429,7 +471,11 @@ func (s *State) EnqueueCheckedFacts(ctx context.Context, partition, key string, 
 
 // EnqueueFactGroups 将有变化的事实装成有界批次。正文与所有 checkpoint 一次提交，
 // 避免历史补传逐条上报的生产速度超过上传速度，也避免半页成功推进游标。
-func (s *State) EnqueueFactGroups(ctx context.Context, partition string, groups []FactsGroup) (changed bool, err error) {
+func (s *State) EnqueueFactGroups(ctx context.Context, partition string, groups []FactsGroup, priorities ...int) (changed bool, err error) {
+	priority := 1
+	if len(priorities) > 0 {
+		priority = priorities[0]
+	}
 	if len(groups) > 1000 {
 		return false, ErrQueueFull
 	}
@@ -502,7 +548,7 @@ func (s *State) EnqueueFactGroups(ctx context.Context, partition string, groups 
 			if len(body) > reportingv1.MaxBodyBytes {
 				return ErrQueueFull
 			}
-			rows = append(rows, queued{Partition: partition, BatchID: batch.ID, Body: body})
+			rows = append(rows, queued{Partition: partition, BatchID: batch.ID, Priority: priority, Body: body})
 			totalBytes += int64(len(body))
 		}
 		var budget struct{ Count, Bytes int64 }

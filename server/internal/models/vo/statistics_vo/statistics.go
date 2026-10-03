@@ -78,6 +78,7 @@ type StatisticsSummary struct {
 	Heatmap                        []StatisticsDay    `json:"heatmap"`
 	HeatmapRange                   StatisticsRange    `json:"heatmap_range"`
 	HeatmapCoverage                StatisticsCoverage `json:"heatmap_coverage"`
+	HeatmapTotals                  StatisticsTotals   `json:"heatmap_totals"`
 	HeatmapActivity                StatisticsActivity `json:"heatmap_activity"`
 	WeekdayHours                   []StatisticsHour   `json:"weekday_hours"`
 }
@@ -164,6 +165,9 @@ type StatisticsDevice struct {
 	Providers        []StatisticsDeviceProvider `json:"providers"`
 }
 type StatisticsDeviceProvider struct {
+	SyncState       string `json:"sync_state"`
+	SyncCheckedAtMS *int64 `json:"sync_checked_at_ms"`
+	FullSyncState   string `json:"full_sync_state"`
 	Provider        string `json:"provider"`
 	Version         string `json:"version"`
 	CollectedAtMS   *int64 `json:"collected_at_ms"`

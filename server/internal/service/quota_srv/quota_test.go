@@ -116,6 +116,9 @@ func TestQuotaNewCyclesExpiredUnknownAndLinkedHistoryCannotRefresh(t *testing.T)
 	if out.Windows[0].Current.Freshness != "expired_unknown" || out.Windows[0].Current.ResetRemainingMS != nil || *out.Windows[0].Current.ObservedAtMS != q.ObservedAtMS {
 		t.Fatal("expiry fabricated current or receipt freshness")
 	}
+	if out.Windows[0].Current.SnapshotResetRemainingMS == nil || *out.Windows[0].Current.SnapshotResetRemainingMS != *q.ResetsAtMS-q.ObservedAtMS {
+		t.Fatal("expiry erased the observed reset interval")
+	}
 }
 func TestUnassignedQuotaUnknownAndCreditsExpiryRemainDistinct(t *testing.T) {
 	s, reporting, admin, clients := quotaFixture(t)
@@ -141,6 +144,11 @@ func TestUnassignedQuotaUnknownAndCreditsExpiryRemainDistinct(t *testing.T) {
 	out = readQuota(t, s, admin, quota_dto.Query{})
 	if *out.Credits[0].ObservedInventory != 2 || out.Credits[0].AvailableInventory != nil || out.Credits[0].Freshness != "stale" {
 		t.Fatal("failed refresh erased credits LKG")
+	}
+	s.now = func() time.Time { return time.UnixMilli(quotaNow + 86400000) }
+	out = readQuota(t, s, admin, quota_dto.Query{})
+	if *out.Credits[0].SnapshotAvailableInventory != 2 || *out.Credits[0].SnapshotNextExpiresAtMS != quotaNow-30000 || out.Credits[0].NextExpiresAtMS != nil || *out.Credits[0].ObservedInventory != 2 {
+		t.Fatal("clock or failed refresh changed the credit snapshot")
 	}
 }
 func TestQuotaQueriesRejectUnknownDuplicateAndUnsafeFilters(t *testing.T) {

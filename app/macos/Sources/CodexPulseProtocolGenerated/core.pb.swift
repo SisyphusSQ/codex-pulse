@@ -9453,12 +9453,28 @@ public nonisolated struct Codexpulse_Core_V1_ReportingStatusResponse: Sendable {
   /// Clears the value of `lastSuccessAtMs`. Subsequent reads from it will return its default value.
   public mutating func clearLastSuccessAtMs() {self._lastSuccessAtMs = nil}
 
+  public var fullSyncState: String = String()
+
+  public var fullSyncStartedAtMs: Int64 {
+    get {_fullSyncStartedAtMs ?? 0}
+    set {_fullSyncStartedAtMs = newValue}
+  }
+  /// Returns true if `fullSyncStartedAtMs` has been explicitly set.
+  public var hasFullSyncStartedAtMs: Bool {self._fullSyncStartedAtMs != nil}
+  /// Clears the value of `fullSyncStartedAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearFullSyncStartedAtMs() {self._fullSyncStartedAtMs = nil}
+
+  public var fullSyncExportedSessions: Int64 = 0
+
+  public var fullSyncAcknowledgedBatches: Int64 = 0
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _lastAttemptAtMs: Int64? = nil
   fileprivate var _lastSuccessAtMs: Int64? = nil
+  fileprivate var _fullSyncStartedAtMs: Int64? = nil
 }
 
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
@@ -22746,7 +22762,7 @@ nonisolated extension Codexpulse_Core_V1_ConfigureReportingRequest: SwiftProtobu
 
 nonisolated extension Codexpulse_Core_V1_ReportingStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".ReportingStatusResponse"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}endpoint\0\u{3}client_id\0\u{1}enabled\0\u{3}allow_http\0\u{3}interval_seconds\0\u{3}history_start_at_ms\0\u{1}state\0\u{3}pending_batches\0\u{3}pending_bytes\0\u{3}retained_batches\0\u{3}last_attempt_at_ms\0\u{3}last_success_at_ms\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}endpoint\0\u{3}client_id\0\u{1}enabled\0\u{3}allow_http\0\u{3}interval_seconds\0\u{3}history_start_at_ms\0\u{1}state\0\u{3}pending_batches\0\u{3}pending_bytes\0\u{3}retained_batches\0\u{3}last_attempt_at_ms\0\u{3}last_success_at_ms\0\u{3}full_sync_state\0\u{3}full_sync_started_at_ms\0\u{3}full_sync_exported_sessions\0\u{3}full_sync_acknowledged_batches\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -22766,6 +22782,10 @@ nonisolated extension Codexpulse_Core_V1_ReportingStatusResponse: SwiftProtobuf.
       case 10: try { try decoder.decodeSingularInt64Field(value: &self.retainedBatches) }()
       case 11: try { try decoder.decodeSingularInt64Field(value: &self._lastAttemptAtMs) }()
       case 12: try { try decoder.decodeSingularInt64Field(value: &self._lastSuccessAtMs) }()
+      case 13: try { try decoder.decodeSingularStringField(value: &self.fullSyncState) }()
+      case 14: try { try decoder.decodeSingularInt64Field(value: &self._fullSyncStartedAtMs) }()
+      case 15: try { try decoder.decodeSingularInt64Field(value: &self.fullSyncExportedSessions) }()
+      case 16: try { try decoder.decodeSingularInt64Field(value: &self.fullSyncAcknowledgedBatches) }()
       default: break
       }
     }
@@ -22812,6 +22832,18 @@ nonisolated extension Codexpulse_Core_V1_ReportingStatusResponse: SwiftProtobuf.
     try { if let v = self._lastSuccessAtMs {
       try visitor.visitSingularInt64Field(value: v, fieldNumber: 12)
     } }()
+    if !self.fullSyncState.isEmpty {
+      try visitor.visitSingularStringField(value: self.fullSyncState, fieldNumber: 13)
+    }
+    try { if let v = self._fullSyncStartedAtMs {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 14)
+    } }()
+    if self.fullSyncExportedSessions != 0 {
+      try visitor.visitSingularInt64Field(value: self.fullSyncExportedSessions, fieldNumber: 15)
+    }
+    if self.fullSyncAcknowledgedBatches != 0 {
+      try visitor.visitSingularInt64Field(value: self.fullSyncAcknowledgedBatches, fieldNumber: 16)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -22828,6 +22860,10 @@ nonisolated extension Codexpulse_Core_V1_ReportingStatusResponse: SwiftProtobuf.
     if lhs.retainedBatches != rhs.retainedBatches {return false}
     if lhs._lastAttemptAtMs != rhs._lastAttemptAtMs {return false}
     if lhs._lastSuccessAtMs != rhs._lastSuccessAtMs {return false}
+    if lhs.fullSyncState != rhs.fullSyncState {return false}
+    if lhs._fullSyncStartedAtMs != rhs._fullSyncStartedAtMs {return false}
+    if lhs.fullSyncExportedSessions != rhs.fullSyncExportedSessions {return false}
+    if lhs.fullSyncAcknowledgedBatches != rhs.fullSyncAcknowledgedBatches {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
