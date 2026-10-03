@@ -52,3 +52,5 @@ HTTP/HTTPS 共用统一配对、凭证摘要、用途和撤销体系，无 Basic
 - [SQL 结构与验证边界](docs/sqls/schema/README.md)
 
 `.starter.json` 记录生成来源，不授权覆盖业务修改。生成后不再次运行生成器覆盖本目录。实际 MySQL、三机产品与生产部署验收单独记录；构建或 SQLite 测试不代表这些项目已通过。
+
+中心查询与精简：`server.quotaMaintenance` 默认关闭；完成备份后显式启用，中心启动及每小时保留四个已观测额度周期，精简结束周期的重复状态。Session 查询投影独立分批补建，新上报在同一事务内维护。Web 使用账号/额度摘要、选中窗口节奏及分页证据，详见[设计与回滚边界](../docs/design/details/multi-machine-reporting/center-query-performance.md)。

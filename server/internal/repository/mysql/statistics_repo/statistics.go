@@ -72,8 +72,8 @@ func (r *Statistics) Status(ctx context.Context, q statistics_dto.StatisticsQuer
 }
 
 func (r *Statistics) StreamUsage(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Usage) error) error {
-	db := r.engine.DB(ctx).Table("pulse_usage AS u").Select("u.*").Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS).Where("u.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
-	rows, err := db.Order("u.session_key,u.position").Rows()
+	db := r.engine.DB(ctx).Table("pulse_usage AS u").Select("u.session_key,u.contribution_id,u.position,u.observed_at_ms,u.model,u.input_tokens,u.cached_tokens,u.cache_write_tokens,u.output_tokens,u.reasoning_tokens,u.total_tokens,u.cost_micro_usd,u.reported_charge_micro_usd,u.pricing_version,u.pricing_mode,u.input_price,u.cached_price,u.cache_write_price,u.output_price,u.cost_status").Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS).Where("u.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+	rows, err := db.Rows()
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func (r *Statistics) StreamUsage(ctx context.Context, q statistics_dto.Statistic
 			return err
 		}
 		var row reporting_do.Usage
-		if err := db.ScanRows(rows, &row); err != nil {
+		if err := rows.Scan(&row.SessionKey, &row.ContributionID, &row.Position, &row.ObservedAtMS, &row.Model, &row.InputTokens, &row.CachedTokens, &row.CacheWriteTokens, &row.OutputTokens, &row.ReasoningTokens, &row.TotalTokens, &row.CostMicroUSD, &row.ReportedChargeMicroUSD, &row.PricingVersion, &row.PricingMode, &row.InputPrice, &row.CachedPrice, &row.CacheWritePrice, &row.OutputPrice, &row.CostStatus); err != nil {
 			return err
 		}
 		if err := visit(row); err != nil {
@@ -93,8 +93,8 @@ func (r *Statistics) StreamUsage(ctx context.Context, q statistics_dto.Statistic
 	return rows.Err()
 }
 func (r *Statistics) StreamInvocations(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Invocation) error) error {
-	db := r.engine.DB(ctx).Table("pulse_invocations AS i").Select("i.*").Where("i.observed_at_ms >= ? AND i.observed_at_ms < ?", q.StartAtMS, q.EndAtMS).Where("i.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
-	rows, err := db.Order("i.session_key,i.observed_at_ms,i.invocation_id").Rows()
+	db := r.engine.DB(ctx).Table("pulse_invocations AS i").Select("i.session_key,i.invocation_id,i.observed_at_ms,i.kind,i.tool_name,i.outcome,i.duration_ms").Where("i.observed_at_ms >= ? AND i.observed_at_ms < ?", q.StartAtMS, q.EndAtMS).Where("i.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+	rows, err := db.Rows()
 	if err != nil {
 		return err
 	}
@@ -104,7 +104,7 @@ func (r *Statistics) StreamInvocations(ctx context.Context, q statistics_dto.Sta
 			return err
 		}
 		var row reporting_do.Invocation
-		if err := db.ScanRows(rows, &row); err != nil {
+		if err := rows.Scan(&row.SessionKey, &row.InvocationID, &row.ObservedAtMS, &row.Kind, &row.ToolName, &row.Outcome, &row.DurationMS); err != nil {
 			return err
 		}
 		if err := visit(row); err != nil {
@@ -139,8 +139,8 @@ func (r *Statistics) StreamSources(ctx context.Context, q statistics_dto.Statist
 }
 
 func (r *Statistics) StreamUntimed(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Usage) error) error {
-	db := r.engine.DB(ctx).Table("pulse_usage AS u").Select("u.*").Where("u.observed_at_ms IS NULL").Where("u.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
-	rows, err := db.Order("u.session_key,u.position").Rows()
+	db := r.engine.DB(ctx).Table("pulse_usage AS u").Select("u.session_key,u.contribution_id,u.model").Where("u.observed_at_ms IS NULL").Where("u.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+	rows, err := db.Rows()
 	if err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func (r *Statistics) StreamUntimed(ctx context.Context, q statistics_dto.Statist
 			return err
 		}
 		var row reporting_do.Usage
-		if err := db.ScanRows(rows, &row); err != nil {
+		if err := rows.Scan(&row.SessionKey, &row.ContributionID, &row.Model); err != nil {
 			return err
 		}
 		if err := visit(row); err != nil {

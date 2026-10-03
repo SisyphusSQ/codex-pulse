@@ -60,3 +60,7 @@ Provider 构成和执行设备构成的 Token/成本与范围 totals 对账。�
 会话列表、项目内会话与详情新增 cache_hit_rate：unit=basis_points，basis=lifetime_cached_input，basis_points/input_tokens/cached_input_tokens 为 nullable 十进制字符串。计算整段已索引 cached/input，缓存是输入子集；共享 Go 精确 HALF-UP 至万分比，Web 格式化一位小数。日期、模型、分页和最近 TPS 轮次不改变比例，定价未知不影响它。副本不相加，来源筛选用自身快照。
 
 input>0/cache=0 返回真实零，input=cache>0 返回 10000；零输入 not_applicable、缺失/非法 unavailable、其他 Provider unsupported_provider、旧设备 not_reported。受限历史 history_filtered 不泄漏范围外总量。status=complete/partial/unavailable，reason 为有限枚举；source_client_id 与 conflict 保留已接受来源和完整证据冲突。沿原一致只读事务与页 ID 预算查询，无 DDL。
+
+## 中心查询投影 v4
+
+全局读取来源元数据，不传输完整 Session payload；Session 指标读取可重建 capsule，同事实来源冲突与定价口径不变。按采集机筛选仍保留完整来源仲裁。全年热力图只累计全年总量、每日明细及覆盖，避免同时生成未使用的全年模型/小时/工具分布。结构 v4 新增投影表，首次升级后台分批补建；缺失时使用原有读取逻辑。较大统计、Session、项目只读响应可 gzip 压缩，路径鉴权与响应契约不变。

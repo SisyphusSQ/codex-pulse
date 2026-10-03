@@ -27,12 +27,17 @@ export function installReviewApi(scenario:ReviewScenario) {
    if(path==='/api/v1/statistics/usage')return response(usage());
    if(path==='/api/v1/devices/status')return response(reviewDevices);
    if(path==='/api/v1/clients')return response({clients});
-   if(path==='/api/v1/quotas'||path==='/api/v1/quotas/pace'){
+   if(path==='/api/v1/quotas'||path==='/api/v1/quotas/pace'||path==='/api/v1/quotas/accounts'){
     const data=path.endsWith('/pace')?reviewPace(scenario):reviewQuota(scenario);
     const match=(a:{provider:string;account_key:string|null})=>(!filter.provider||a.provider===filter.provider)&&(!url.searchParams.get('account_key')||a.account_key===url.searchParams.get('account_key'));
-    if('credits' in data){data.windows=data.windows.filter(match);data.credits=data.credits.filter(match);}
-    else data.windows=data.windows.filter(match);
+    const matchWindow=(w:{provider:string;account_key:string|null;key:string})=>match(w)&&(!url.searchParams.get('window_key')||w.key===url.searchParams.get('window_key'));
+    if('credits' in data){data.windows=data.windows.filter(matchWindow);data.credits=data.credits.filter(match);}
+    else data.windows=data.windows.filter(matchWindow);
     data.accounts=data.accounts.filter(a=>(!filter.provider||a.provider===filter.provider)&&(!url.searchParams.get('account_key')||a.key===url.searchParams.get('account_key')));
+    if('credits' in data){
+     if(path.endsWith('/accounts')){data.windows=[];data.credits=[];}
+     for(const w of data.windows){w.observation_count=w.observations.length;if(url.searchParams.get('view')==='summary'){delete w.observation_count;w.observations=[];w.cycles=[];}else if(url.searchParams.get('view')==='evidence'){const page=Number(url.searchParams.get('page')??1),limit=Number(url.searchParams.get('limit')??20);w.observations=w.observations.slice((page-1)*limit,page*limit);}}
+    }
     return response(data);
    }
    if(path==='/api/v1/sessions')return response(recordPage(reviewSessions));

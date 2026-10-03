@@ -3,6 +3,7 @@ debug: true
 contextTimeout: 10s
 
 server:
+    quotaMaintenance: false # 显式启用后，启动及每小时精简额度至四周期；先备份数据库
     metrics: true
     metricsTokenFile: "" # Prometheus 专用只读 Token 文件，权限 0600；空值仅保留浏览器授权采集
     readinessTimeout: 2s

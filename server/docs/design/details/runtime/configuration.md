@@ -10,6 +10,7 @@ Viper 严格解码，未知字段拒绝启动。环境变量以 `APP_` 开头，
 | server.trustedProxies | 仅可信 TLS 终止代理的精确 CIDR，默认空。普通 forwarded header 不影响入口身份 |
 | server.corsOrigins | 默认 `["*"]`，不允许跨域凭据；精确 HTTP(S) Origin 列表允许跨域凭据，显式 `[]` 跳过 CORS。Web 内嵌并使用同源 API，Cookie 写操作仍须同源 Origin/CSRF |
 | server.maxBodyBytes | 当前上报请求上限 8 MiB；配对/管理请求另限 4 KiB，超预算明确拒绝 |
+| server.quotaMaintenance | 默认 false；备份后开启，中心启动与每小时精简额度至四个已观测周期，保留最后有效值；不是请求触发接口 |
 | database.enabled | 中心 HTTP 与 db CLI 要求数据库开启 |
 | database.migrationTimeout | 启动自动迁移整体预算，默认 2 分钟，可用 APP_DATABASE_MIGRATIONTIMEOUT 覆盖；普通请求仍由 contextTimeout 控制 |
 | database.driver / path | sqlite 开发 dialect；父目录 0700、文件 0600，独立于本机库 |

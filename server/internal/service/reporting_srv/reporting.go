@@ -210,6 +210,13 @@ func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, s
 	if err := s.repository.SaveSource(ctx, reporting_do.SessionSource{ID: id, SessionKey: sessionKey, ClientID: p.ID, HomeID: snapshot.HomeID, SourceKind: snapshot.SourceKind, Revision: snapshot.Revision, CollectedAtMS: snapshot.CollectedAtMS, Digest: hash, Payload: string(payload)}); err != nil {
 		return err
 	}
+	capsule, err := sessionCapsule("source", id, sessionKey, p.ID, snapshot)
+	if err != nil {
+		return err
+	}
+	if err = s.repository.SaveCapsule(ctx, capsule); err != nil {
+		return err
+	}
 	projectID := reportingv1.Key(p.ID, snapshot.Provider, snapshot.ProjectID)
 	project, err := s.repository.Project(ctx, projectID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -291,6 +298,13 @@ func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, s
 	calls := make([]reporting_do.Invocation, 0, len(chosen.Invocations))
 	for _, i := range chosen.Invocations {
 		calls = append(calls, reporting_do.Invocation{SessionKey: sessionKey, InvocationID: i.ID, ObservedAtMS: i.ObservedAtMS, Kind: i.Kind, ToolName: i.Name, Outcome: i.Outcome, DurationMS: i.DurationMS})
+	}
+	capsule, err = sessionCapsule("canonical", sessionKey, sessionKey, "", chosen)
+	if err != nil {
+		return err
+	}
+	if err = s.repository.SaveCapsule(ctx, capsule); err != nil {
+		return err
 	}
 	return s.repository.SaveCanonical(ctx, meta, reporting_do.CanonicalSnapshot{SessionKey: sessionKey, Payload: string(encoded)}, usage, calls)
 }

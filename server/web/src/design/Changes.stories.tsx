@@ -17,6 +17,7 @@ function ChangeIndex(){
   ['unknown-quota','无有效额度观测','未知仍为未知，不根据套餐价格生成虚假的用量。'],
   ['conflicted-quota','来源冲突','保留真实冲突提示，不伪装成新观测。'],
   ['pricing','相关模型与 API 参考折算','复用正式 Pricing 页面，一行一个模型、发布时间倒排；特殊条件和历史证据展开查看。'],
+  ['bounded-quota','四周期与按需详情','首屏读取摘要；节奏只加载选中窗口；来源证据展开后分页，最后有效值保留。'],
  ];
  return <Studio page="overview" hideToolbar reviewContent={<div className="ds-stack"><div className="ds-review-banner"><strong>TOO-523 · 本轮全部改动</strong><span>正式页面组件 + 合成 API 样本；后端与原生功能单列说明。</span></div><div className="ds-review-grid">{changes.map(([id,title,text])=><Card key={id}><h3><a href={`/?path=/story/too-523-updates--${id}`}>{title} →</a></h3><p>{text}</p></Card>)}<Card><h3><a href="/?path=/story/subscription-plans--codex">订阅分类样稿 →</a></h3><p>参考官方购买页，按平台及个人/团队分类；本次待评审样稿，未替换正式订阅页。</p></Card></div></div>}/>;
 }
@@ -35,3 +36,4 @@ export const FullSync:Story={name:'08 原生增量与全量补传',render:()=> <
 export const Pricing:Story={name:'09 相关模型与 API 参考折算',args:{initialPath:'/pricing'}};
 export const Metrics:Story={name:'10 Prometheus 指标说明',render:()=> <MetricsDesign/>};
 export const Favicon:Story={name:'11 SVG 浏览器图标',render:()=> <FaviconDesign/>};
+export const BoundedQuota:Story={name:'12 四周期与按需详情',args:{initialPath:'/quota',scenario:'current'}};

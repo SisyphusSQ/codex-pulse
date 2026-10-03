@@ -48,17 +48,20 @@ type Cycle struct {
 	LinkedHistory  bool     `json:"linked_history"`
 }
 type Window struct {
-	Key           string        `json:"key"`
-	Provider      string        `json:"provider"`
-	AccountKey    *string       `json:"account_key"`
-	IdentityState string        `json:"identity_state"`
-	LimitID       string        `json:"limit_id"`
-	WindowKind    string        `json:"window_kind"`
-	WindowMinutes *int64        `json:"window_minutes"`
-	Current       Current       `json:"current"`
-	Cycles        []Cycle       `json:"cycles"`
-	Observations  []Observation `json:"observations"`
-	Coverage      string        `json:"coverage"`
+	ObservationCount int64         `json:"observation_count,omitzero"`
+	ObservationPage  int           `json:"observation_page,omitzero"`
+	ObservationLimit int           `json:"observation_limit,omitzero"`
+	Key              string        `json:"key"`
+	Provider         string        `json:"provider"`
+	AccountKey       *string       `json:"account_key"`
+	IdentityState    string        `json:"identity_state"`
+	LimitID          string        `json:"limit_id"`
+	WindowKind       string        `json:"window_kind"`
+	WindowMinutes    *int64        `json:"window_minutes"`
+	Current          Current       `json:"current"`
+	Cycles           []Cycle       `json:"cycles"`
+	Observations     []Observation `json:"observations"`
+	Coverage         string        `json:"coverage"`
 }
 type CreditExpiry struct {
 	ExpiresAtMS *int64 `json:"expires_at_ms"`

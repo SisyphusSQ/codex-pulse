@@ -88,6 +88,20 @@ func (s *Reporting) acceptAccountFacts(ctx context.Context, p access_dto.Princip
 		if accountKey != nil && row.HistoryOrigin == "pending_association" {
 			row.HistoryOrigin = "confirmed"
 		}
+		retired, retireErr := s.repository.RetiredObservation(ctx, id)
+		if retireErr != nil && !errors.Is(retireErr, gorm.ErrRecordNotFound) {
+			return retireErr
+		}
+		if retired.ID != "" {
+			digest, err := reporting_do.ObservationDigest(row)
+			if err != nil {
+				return err
+			}
+			if digest != retired.Digest {
+				return utils.ErrConflict
+			}
+			continue
+		}
 		previous, err := s.repository.Observation(ctx, id)
 		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err

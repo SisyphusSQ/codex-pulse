@@ -12,7 +12,7 @@
 - legacy/linked history 单独计算并只进入历史周期；不影响当前值、freshness 或预测。退役 Codex 专用 limit 遵循本机明确名单，不影响 Cursor/Grok。
 - Credits 按账号选择最新可信原观测，三机库存不相加；失败记录保留旧库存和原时间并变 stale。`observed_inventory` 是源观测库存；只有 fresh、无冲突且完整到期分布时 `available_inventory` 扣除已知到期数量。`next_expires_at_ms` 与 `next_reset_at_ms` 独立，不从到期推 reset。库存采用十进制字符串。
 
-一次读取的所有表共用只读 snapshot。最多 100,000 条 quota、100,000 条 Credits、10,000 个账号/客户端；超出返回 413，建议使用账号、Provider、来源筛选，不截断后伪装成功。两种数据库沿用同一 read adapter；真实 MySQL 运行尚待环境。
+一次读取的所有表共用只读 snapshot。原先全局 100,000 条观测预算改为窗口摘要与四周期读取；账号/客户端最多 10,000，逻辑窗口最多 4,096，单窗口摘要证据最多 100,000。超预算仍返回 413，不伪装完整。Credits 读取各账号最近有效值与最近失败证据，同时间副本保留冲突判断。两种数据库沿用同一 read adapter；SeekDB 结果与独立 MySQL 8.4 验收分别记录。
 
 实现与验证入口：[中心配额设计](../docs/design/details/quota/README.md)、[开发验证](../../docs/test/multi-machine-reporting.md)。
 
@@ -31,3 +31,11 @@
 ## Web 展示约定
 
 Web 按原始账号键筛选，不使用邮箱作唯一键；quota/pace 分别返回自己的评估时间，页面不得宣称两次请求同快照。30 秒轮询只读取已收到事实，不触发采集端刷新。reset_remaining_ms 以中心确认时快照展示，不能用旧 reset 在前端推测新周期或重置 used。实际采样只画离散点，历史 band 虚线注明计算网格；下降保留，不按缺口补线或追加当前时刻。
+
+## 四周期与按需读取
+
+新增 `GET /api/v1/quotas/accounts` 只读取账号目录，沿用管理员鉴权。`/quotas` 支持 `view=summary`：只返回 current/Credits，观测与周期数组为空，首屏不统计历史数量。
+
+`window_key=<64位十六进制>` 限定一个窗口，仍受到已验证管理员身份和 provider/account/client 筛选约束。`view=evidence` 必须提供 window_key；page 为 1..100000，limit 为 1..100（默认 20），返回 observation_count/page/limit 与分页观测，不携带完整周期 ID 列表。没有可识别周期时仅加载最近 100 条证据；有周期时保留四周期及有限最近异常证据。后端在选中窗口内完成仲裁后分页，不能宣称任意规模历史都下推到 SQL。
+
+Pace 接受 window_key，当前与历史每周期最多 512 个真实显示点，预测使用原有完整当前周期证据。四周期是当前/最后有效周期与之前三个已观测周期，不推断缺失周期。结束周期连续同状态保留首末，当前周期保持完整；`server.quotaMaintenance` 显式启用后台精简。无法可靠归入周期的异常事实保留，退役事实摘要保证原样补传不复活。详见[设计](../../docs/design/details/multi-machine-reporting/center-query-performance.md)。

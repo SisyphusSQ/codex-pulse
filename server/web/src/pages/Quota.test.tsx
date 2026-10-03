@@ -18,6 +18,18 @@ beforeEach(()=>{api.setSession({client_id:'synthetic-browser',name:'测试浏览
 afterEach(()=>vi.unstubAllGlobals());
 function mount(){render(<OperationNotifications><QueryClientProvider client={createQueryClient()}><MemoryRouter><Quota /></MemoryRouter></QueryClientProvider></OperationNotifications>);}
 describe('quota facts and pace',()=>{
+ it('loads summary and one selected pace window, and defers paged evidence until expansion',async()=>{
+  const data=quotaFixture();data.windows[0].observation_count=41;
+  fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(data));
+  mount();await screen.findByRole('button',{name:'节奏评估说明'});
+  const urls=()=>fetcher.mock.calls.map(([p])=>new URL(String(p),'http://localhost'));
+  expect(urls().some(u=>u.pathname==='/api/v1/quotas/accounts')).toBe(true);
+  expect(urls().some(u=>u.searchParams.get('view')==='summary')).toBe(true);
+  expect(urls().filter(u=>u.pathname.endsWith('/pace')).every(u=>u.searchParams.get('window_key')===data.windows[0].key)).toBe(true);
+  expect(urls().some(u=>u.searchParams.get('view')==='evidence')).toBe(false);
+  await userEvent.setup().click(screen.getByRole('tab',{name:'来源证据 (41)'}));
+  await waitFor(()=>expect(urls().some(u=>u.searchParams.get('view')==='evidence'&&u.searchParams.get('page')==='1'&&u.searchParams.get('limit')==='20')).toBe(true));
+ });
  it.each(['stale','expired_unknown'])('keeps the last snapshot and forecast when polling changes freshness to %s',async freshness=>{
   const quota=quotaFixture(),pace=paceFixture();
   quota.windows[0].current={...quota.windows[0].current,used_percent:70,remaining_percent:30};
@@ -52,7 +64,7 @@ describe('quota facts and pace',()=>{
  });
  it('preserves observed zero, sparse forecast and exact credits with separate reset/expiry',async()=>{
   fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(quotaFixture()));
-  mount();expect((await screen.findAllByText('0%')).length).toBeGreaterThan(0);await userEvent.setup().click(screen.getByRole('button',{name:'节奏评估说明'}));await screen.findByText('实际采样数量或跨度不足');
+  mount();expect((await screen.findAllByText('0%')).length).toBeGreaterThan(0);await userEvent.setup().click(await screen.findByRole('button',{name:'节奏评估说明'}));await screen.findByText('实际采样数量或跨度不足');
   await userEvent.setup().click(screen.getByText('库存来源与到期明细'));
   expect(screen.getByText('正值代表使用快于均匀节奏')).toBeInTheDocument();expect(screen.getByLabelText('节奏偏差（百分点）')).toHaveTextContent('10.00');
   expect(screen.queryByRole('tab',{name:'Reset Credits (1)'})).not.toBeInTheDocument();expect(screen.getByText('9,007,199,254,740,993')).toBeInTheDocument();
@@ -94,6 +106,9 @@ describe('quota facts and pace',()=>{
   const data=quotaFixture();data.windows=[];data.credits=[{...data.credits[0],account_key:'account-two',observed_inventory:'0',available_inventory:'0',snapshot_available_inventory:'0'},{...data.credits[0],key:'pending-credit',account_key:null,observed_inventory:'7',available_inventory:null,freshness:'unassigned'}];
   fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success({...paceFixture(),windows:[]}):success(data));
   mount();await screen.findByText('当前账号暂无已收到的额度窗口。');
+  await userEvent.setup().click(screen.getByRole('button',{name:'刷新额度'}));
+  await waitFor(()=>expect(fetcher.mock.calls.filter(([p])=>new URL(String(p),'http://localhost').searchParams.get('view')==='summary').length).toBeGreaterThan(1));
+  expect(fetcher.mock.calls.some(([p])=>new URL(String(p),'http://localhost').pathname.endsWith('/pace'))).toBe(false);
   let detail=document.querySelector('.quota-detail') as HTMLElement;expect(within(detail).getByText('原始账号 ID：raw-account-two')).toBeInTheDocument();expect(within(detail).getAllByText('0',{selector:'.metric-value'})).toHaveLength(2);expect(within(detail).queryByText('7',{selector:'.metric-value'})).not.toBeInTheDocument();
   await userEvent.setup().click(screen.getByRole('button',{name:'查看待关联观测'}));detail=document.querySelector('.quota-detail') as HTMLElement;
   expect(within(detail).getByText('以下观测各自展示，不视为同一账号，也不按邮箱或采集设备推断归属。')).toBeInTheDocument();expect(within(detail).getByText('7',{selector:'.metric-value'})).toBeInTheDocument();expect(within(detail).queryByText('原始账号 ID：raw-account-two')).not.toBeInTheDocument();

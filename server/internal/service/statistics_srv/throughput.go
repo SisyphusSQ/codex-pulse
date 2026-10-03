@@ -38,7 +38,7 @@ func throughputView(m reportingv1.ThroughputMeasures) statistics_vo.ThroughputVi
 }
 
 // attachThroughput 只读取返回页的生命周期 capsule；日期/模型不进入平均计算。
-func (s *Statistics) attachThroughput(ctx context.Context, q statistics_dto.StatisticsQuery, items []statistics_vo.StatisticsSession, metadata map[string]reporting_do.Session, recent bool) (statistics_vo.ThroughputTurnsView, error) {
+func (s *Statistics) attachLegacyThroughput(ctx context.Context, q statistics_dto.StatisticsQuery, items []statistics_vo.StatisticsSession, metadata map[string]reporting_do.Session, recent bool) (statistics_vo.ThroughputTurnsView, error) {
 	limit := q.ThroughputLimit
 	if limit == 0 {
 		limit = 20

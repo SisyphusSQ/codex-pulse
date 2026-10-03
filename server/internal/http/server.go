@@ -6,6 +6,7 @@ import (
 	"net"
 	stdhttp "net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	prom "github.com/labstack/echo-contrib/v5/echoprometheus"
@@ -91,6 +92,10 @@ func NewServer(lifecycle fx.Lifecycle, cfg config.Config, registry *health.Regis
 	}
 	// Metrics 在最外层观察已完成的响应，包含鉴权拒绝和业务错误。
 	e.Use(m.Logger, m.Recover, m.Deadline, m.CORS, middleware.BodyLimit(cfg.Server.MaxBodyBytes), m.Auth)
+	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{MinLength: 1024, Level: 1, Skipper: func(c *echo.Context) bool {
+		path := c.Request().URL.Path
+		return c.Request().Method != stdhttp.MethodGet || !(strings.HasPrefix(path, "/api/v1/statistics/") || path == "/api/v1/quotas" || strings.HasPrefix(path, "/api/v1/quotas/") || path == "/api/v1/catalog" || path == "/api/v1/sessions" || strings.HasPrefix(path, "/api/v1/sessions/") || path == "/api/v1/projects" || strings.HasPrefix(path, "/api/v1/projects/"))
+	}}))
 	e.GET("/health", func(c *echo.Context) error { return vo.CommSuccResp(c, map[string]string{"status": "alive"}) })
 	e.GET("/ready", func(c *echo.Context) error {
 		ctx, cancel := context.WithTimeout(c.Request().Context(), cfg.Server.ReadinessTimeout)
