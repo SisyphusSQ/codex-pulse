@@ -74,6 +74,20 @@ bash scripts/mysql-backup.sh restore /private/mysql-client.cnf pulse_center_rest
 bin/codex-pulse-server --config /private/mysql-restored-server.yml db check
 ```
 
+### 大快照的数据库包大小
+
+v0.15.1 分片传输的单个 HTTP 请求仍不超过 8 MiB，收齐后会把完整来源与 canonical 快照写入数据库；完整快照上限为 64 MiB。因此 MySQL 协议实例的 `max_allowed_packet` 应配置为至少 128 MiB，为完整值和协议开销留出空间，不能只按 HTTP 分片大小配置。该变量由数据库管理员设置，影响该实例的新连接；应用业务凭证不因此获得全局管理权限。按数据库自身机制持久化配置，并在新连接及数据库维护重启后读回；不要为刷新中心连接而重启共享数据库。
+
+```sql
+SHOW GLOBAL VARIABLES LIKE 'max_allowed_packet';
+-- 仅由数据库管理员执行；变更前记录原值与影响实例。
+SET GLOBAL max_allowed_packet = 134217728;
+-- 重新连接后再读回；中心重启刷新自身连接池。
+SHOW SESSION VARIABLES LIKE 'max_allowed_packet';
+```
+
+2026-10-03 正式部署发现 SeekDB 的原上限为 16 MiB，一份已暂存 21,135,425 字节的真实快照在最后分片到齐后返回 HTTP 500/数据库连接 EOF。调整到 128 MiB 并只重启生产中心后，原队列自动重试成功，完整接收 23,238 条贡献和 41,221 条调用，暂存归零；未清队列或扩大上报 contract 预算。变量属性参考 [OceanBase 官方说明](https://en.oceanbase.com/docs/common-oceanbase-database-10000000003681766)。
+
 使用 MySQL 8.0+ `mysql`/`mysqldump`、`shasum` 和 GNU `timeout`；缺少 GNU timeout 时使用部署包内 Python 3 超时入口，不安装工具。MySQL 8.0 的隐式登录文件通过独立不存在的 `MYSQL_TEST_LOGIN_FILE` 隔离，不沿用个人 `.mylogin.cnf`；dump 关闭 column statistics，兼容已验证的 SeekDB。客户端配置复制自 `deploy/mysql-client.example.cnf` 到 0600 私有文件，密码不进入 argv。仅处理自己的受信任备份，不接受上传 SQL；恢复凭据限制为指定新库，禁止全局权限。备份单事务/quick/hex-blob/no-tablespaces/GTID OFF，不与 DDL 并行；输出与错误日志私有，整体 10 分钟截止。恢复先校验摘要并检查目标空库，不使用 `--force`，禁 LOCAL 文件导入和非交互客户端命令，恢复后撤销旧授权。MySQL DDL/导入失败可能留下部分新库：保留诊断，不启动、不切换、不假装事务回滚；修复后另建新空库重试。
 
 恢复后读回 schema/checksum、表结构、业务数量/来源/NULL/零、quota/reset/TPS、收据幂等和授权撤销；再 bootstrap、浏览器及三设备重配、核对真实数据，才可切换。**DEV 已完成数据库连接、自动初始化、上传与重启读回；上述备份/恢复命令尚未在实际数据库演练。** DEV 已使用 MySQL 8.0 与 Python 超时入口完成真实 dump/临时空库恢复演练；独立 MySQL 8.4 与生产恢复切换仍需单独验收。
@@ -123,6 +137,6 @@ macOS 常驻命令与权限、版本目录及回滚说明见[部署 README](../.
 
 先部署中心 Server/Web（schema 3），再更新 Mac App/内嵌 Helper；旧客户端可以继续向新中心发送原格式事实。新客户端的分片/状态字段不应先发往旧中心。中心与 Mac 发行产物使用同一冻结 commit，Web 不单独部署。
 
-启用指标后，采集器以专用 Bearer Token 读取 `/metrics`。配置 `server.metricsTokenFile` 指向部署机器私有普通文件（0600，32–256 位非空白字符），不复用浏览器/设备凭证；只读 Token 不能调用业务 API。DEV 与生产分别生成凭证，不写入配置样例、发布包或日志。生产抓取 target 使用现场确认的 Tailscale 入口，凭证经采集器私有文件读取，不放 URL。指标反映运维、连接池和设备最近同步状态，不暴露账号、标题、用量金额或原始内容。
+启用指标后，采集器以专用 Bearer Token 读取 `/metrics`。同时设置 `server.metrics:true`，并配置 `server.metricsTokenFile` 指向部署机器私有普通文件（0600，32–256 位非空白字符），不复用浏览器/设备凭证；只读 Token 不能调用业务 API。DEV 与生产分别生成凭证，不写入配置样例、发布包或日志。生产抓取 target 使用现场确认的 Tailscale 入口，凭证经采集器私有文件读取，不放 URL。指标反映运维、连接池和设备最近同步状态，不暴露账号、标题、用量金额或原始内容。
 
 启动前保留一致备份和原配置/发行目录，升级后读回 schema、实际版本、ready、既有事实及授权。v3 不能直接用 v0.15.0 二进制回滚；需要旧快照时恢复到新库并重新配对，保留原库供备份后事实对账。
