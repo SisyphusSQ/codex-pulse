@@ -72,8 +72,13 @@ jobs:
 
       - name: Install pinned protobuf toolchain
         run: |
-          brew install protobuf@34
-          echo "$(brew --prefix protobuf@34)/bin" >>"$GITHUB_PATH"
+          protoc_archive="$RUNNER_TEMP/protoc-34.1.zip"
+          curl --fail --location --silent --show-error \
+            https://github.com/protocolbuffers/protobuf/releases/download/v34.1/protoc-34.1-osx-universal_binary.zip \
+            --output "$protoc_archive"
+          echo "5c6057638aa382542e75f1c5a0802893e2311ad0c8b689e635dd4ac3c9eb8169  $protoc_archive" | shasum -a 256 -c -
+          unzip -q "$protoc_archive" -d "$RUNNER_TEMP/protoc-34.1"
+          echo "$RUNNER_TEMP/protoc-34.1/bin" >>"$GITHUB_PATH"
 
       - name: Run unified verification
         run: make verify
