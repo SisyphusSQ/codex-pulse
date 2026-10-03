@@ -8,6 +8,6 @@ Dockerfile 保留为可选构建描述，本阶段不安装或运行 Docker。�
 
 部署包包含二进制、两套公开 `config/*.example.yml`、启动 README、运维说明和 deploy/scripts 示例；不包含 `*.local.yml`、外置 Web 或本机证据。运行配置由部署机器自行填写，`package-center` 拒绝覆盖已有包。
 
-`/health` 仅存活，`/ready` 数据库就绪；`/metrics` 管理授权保护。日志和 SIGINT/SIGTERM 沿用 Fx 生命周期，详细边界见运行说明。
+`/health` 仅存活，`/ready` 数据库就绪；`/metrics` 由管理员会话或独立只读 Bearer Token 保护。采集器使用私有 `server.metricsTokenFile`，该 Token 无业务读取或写入权限。日志和 SIGINT/SIGTERM 沿用 Fx 生命周期，详细边界见运行说明。
 
 macOS 使用 `scripts/macos-service.py` 管理两套独立用户 LaunchAgent，安装/启动/停止/重启/status/remove 说明见[部署 README](../../../../deploy/README.md#macos-常驻)。该服务只托管中心，不改变本机 App/Helper 生命周期。
