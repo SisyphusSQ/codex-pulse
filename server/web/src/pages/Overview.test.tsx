@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -53,7 +53,7 @@ describe('overview facts',()=>{
   it('does not turn a failed initial query into an empty range',async()=>{
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):new Response('',{status:503}));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
-    await screen.findByText('数据未能读取');expect(screen.queryByText('当前范围 Token 总量')).not.toBeInTheDocument();
+    await screen.findAllByText('数据未能读取');expect(screen.queryByText('当前范围 Token 总量')).not.toBeInTheDocument();
   });
   it('keeps annual activity first before summary and new activity while preserving independent Server annual metrics',async()=>{
     const fixture=summaryFixture();
@@ -76,5 +76,92 @@ describe('overview facts',()=>{
     expect(activity.compareDocumentPosition(added)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     for(const title of ['平台 / 模型明细','采集来源','平台分布','模型分布'])expect(screen.getByText(title)).toBeInTheDocument();
     expect(screen.queryByText('工具与技能')).not.toBeInTheDocument();
+  });
+});
+
+describe('overview independent and deferred loading', () => {
+  let observers: { callback: IntersectionObserverCallback; target?: Element; disconnect: () => void }[];
+  beforeEach(() => {
+    observers = [];
+    vi.stubGlobal('IntersectionObserver', class {
+      record: (typeof observers)[number];
+      constructor(callback: IntersectionObserverCallback) {
+        this.record = { callback, disconnect: vi.fn() };
+        observers.push(this.record);
+      }
+      observe(target: Element) { this.record.target = target; }
+      disconnect() { this.record.disconnect(); }
+    });
+  });
+  const enter = (title: string) => {
+    const observer = observers.find(o => o.target?.getAttribute('aria-label') === title)!;
+    act(() => observer.callback([{ isIntersecting: true, target: observer.target! } as IntersectionObserverEntry], {} as IntersectionObserver));
+    return observer;
+  };
+  const mount = () => render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
+  const response = (path: RequestInfo | URL) => String(path).includes('/devices/status') ? success([])
+    : String(path).includes('/source-usage') ? success({ range: summaryFixture().range, items: [], scope: 'collector_copies_may_overlap' })
+    : success(String(path).includes('/usage') ? usageFrom(summaryFixture()) : summaryFixture());
+  it('shows usage totals before summary and defers charts and machine requests', async () => {
+    let finish!: (value: Response) => void;
+    fetcher.mockImplementation(path => String(path).includes('/summary') ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(response(path)));
+    mount();
+    await screen.findByText('当前范围 Token 总量');
+    expect(screen.getByText('正在读取全年活动…')).toBeInTheDocument();
+    expect(screen.getByText('采集来源', { selector: '.ant-card-head-title' })).toBeInTheDocument();
+    expect(fetcher.mock.calls.some(([path]) => String(path).includes('/source-usage'))).toBe(false);
+    expect(screen.queryByRole('img', { name: '按自然日的用量趋势' })).not.toBeInTheDocument();
+    enter('模型用量趋势');
+    await screen.findByRole('img', { name: '按自然日的用量趋势' });
+    expect(fetcher.mock.calls.filter(([path]) => String(path).includes('/statistics/usage'))).toHaveLength(1);
+    enter('各机器采集的 Codex 用量');
+    await waitFor(() => expect(fetcher.mock.calls.filter(([path]) => String(path).includes('/source-usage'))).toHaveLength(1));
+    await act(async () => finish(success(summaryFixture())));
+    await screen.findByText('近 365 天 Token 总量');
+  });
+  it('refreshes machines only after activation and supports keyboard activation', async () => {
+    fetcher.mockImplementation(path => Promise.resolve(response(path)));
+    mount();
+    await screen.findByText('当前范围 Token 总量');
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole('button', { name: '刷新' })).not.toHaveAttribute('aria-busy', 'true'));
+    await user.click(screen.getByRole('button', { name: '刷新' }));
+    await waitFor(() => expect(fetcher.mock.calls.filter(([path]) => String(path).includes('/statistics/usage'))).toHaveLength(2));
+    expect(fetcher.mock.calls.some(([path]) => String(path).includes('/source-usage'))).toBe(false);
+    const button = screen.getByRole('button', { name: '加载各机器采集的 Codex 用量' });
+    button.focus(); await user.keyboard('{Enter}');
+    await screen.findByText('机器', { selector: '.ant-table-cell' });
+    await waitFor(() => expect(screen.getByLabelText('刷新', { selector: 'button' })).not.toHaveAttribute('aria-busy', 'true'));
+    await user.click(screen.getByLabelText('刷新', { selector: 'button' }));
+    await waitFor(() => expect(fetcher.mock.calls.filter(([path]) => String(path).includes('/source-usage'))).toHaveLength(2));
+    expect(observers.find(o => o.target?.getAttribute('aria-label') === '各机器采集的 Codex 用量')?.disconnect).toHaveBeenCalled();
+  });
+  it('keeps usage usable on summary failure and cancels the old filter request', async () => {
+    let oldSignal: AbortSignal | undefined;
+    fetcher.mockImplementation((path, options) => {
+      const url = new URL(String(path), 'http://localhost');
+      if (url.pathname.endsWith('/summary')) return Promise.resolve(new Response('', { status: 503 }));
+      if (url.pathname.endsWith('/usage') && !url.searchParams.has('provider')) {
+        oldSignal = options?.signal ?? undefined;
+        return new Promise((_resolve, reject) => oldSignal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))));
+      }
+      return Promise.resolve(response(path));
+    });
+    mount();
+    await screen.findAllByText('数据未能读取');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('combobox', { name: 'Provider' }));
+    await user.click(await screen.findByText('Cursor', { selector: '.ant-select-item-option-content' }));
+    await screen.findByText('当前范围 Token 总量');
+    expect(oldSignal?.aborted).toBe(true);
+    expect(fetcher.mock.calls.some(([path]) => String(path).includes('/statistics/usage') && new URL(String(path), 'http://localhost').searchParams.get('provider') === 'cursor')).toBe(true);
+  });
+  it('preserves summary totals when model usage cannot be read', async () => {
+    fetcher.mockImplementation(path => Promise.resolve(String(path).includes('/statistics/usage')
+      ? new Response('', { status: 413 }) : response(path)));
+    mount();
+    await screen.findByText('当前范围 Token 总量');
+    expect(screen.getByText('模型用量未能读取，范围汇总使用已取得的概览数据')).toBeInTheDocument();
+    expect(document.querySelector('.summary-band')).toHaveTextContent('90071992.5亿');
   });
 });
