@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Alert, Button, Modal, Select, Table, Tabs, Typography } from 'antd';
+import { Button, Modal, Select, Table, Tabs, Typography } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { associateProjects, getProject, getProjects, type ListFilter, type ProjectRecord } from '../api/records';
@@ -8,6 +8,7 @@ import { initialListFilter, ListFilters, RecordSearchControls, sameRecordScope }
 import { EmptyState, ErrorState, LoadingState } from '../components/QueryState';
 import { RecordTrend, SessionPanel, SessionTable, TotalsLine } from '../components/RecordViews';
 import { RecordWorkspace } from '../components/RecordWorkspace';
+import {useOperationNotifications} from '../components/OperationNotifications';
 import { dateTime, dollars, integer, tokens } from '../format';
 
 function ProjectPanel({id,filter,onClose}:{id:string;filter:ListFilter;onClose():void}){
@@ -31,9 +32,10 @@ function ProjectPanel({id,filter,onClose}:{id:string;filter:ListFilter;onClose()
 export default function Projects(){
  const [filter,setFilter]=useState(initialListFilter),[detail,setDetail]=useState<string>(),[selected,setSelected]=useState<ProjectRecord[]>([]),[operation,setOperation]=useState<'link'|'unlink'>(),[target,setTarget]=useState('');
  const client=useQueryClient();
+ const notify=useOperationNotifications();
  const query=useQuery({queryKey:['projects','list',filter],queryFn:({signal})=>getProjects(filter,signal)});
  const ids=[...new Set(selected.flatMap(r=>r.members))];
- const mutation=useMutation({mutationFn:()=>associateProjects(ids,operation==='link'?target:''),onSuccess:async()=>{setOperation(undefined);setSelected([]);setDetail(undefined);await Promise.all([client.invalidateQueries({queryKey:['projects']}),client.invalidateQueries({queryKey:['sessions']}),client.invalidateQueries({queryKey:['statistics']})]);}});
+ const mutation=useMutation({mutationFn:()=>associateProjects(ids,operation==='link'?target:''),onError:error=>notify.error('项目关联未完成',error.message),onSuccess:async()=>{notify.success(operation==='link'?'项目已关联':'项目关联已解除');setOperation(undefined);setSelected([]);setDetail(undefined);await Promise.all([client.invalidateQueries({queryKey:['projects']}),client.invalidateQueries({queryKey:['sessions']}),client.invalidateQueries({queryKey:['statistics']})]);}});
  function change(v:ListFilter){setFilter(v);if(!sameRecordScope(v,filter)){setDetail(undefined);setSelected([]);}}
  function open(mode:'link'|'unlink'){mutation.reset();setTarget(selected[0]?.members[0]??'');setOperation(mode);}
  return <section><ListFilters value={filter} onChange={change} refresh={()=>void query.refetch()} busy={query.isFetching} />
@@ -48,6 +50,5 @@ export default function Projects(){
  <Modal title={operation==='link'?'确认跨机器项目关联':'确认解除项目关联'} open={!!operation} onCancel={()=>!mutation.isPending&&setOperation(undefined)} onOk={()=>mutation.mutate()} confirmLoading={mutation.isPending} okButtonProps={{disabled:operation==='link'&&!target}} okText="确认执行" cancelText="取消" closable={{'aria-label':'关闭项目关联确认'}}>
   <Typography.Paragraph>{operation==='link'?'所选成员将加入目标项目组。来源上报不会覆盖这个显式关系，后续可以解除。':'所选成员将各自恢复独立项目身份；原始统计事实保留。'}</Typography.Paragraph><ul>{selected.map(r=><li key={r.id}>{r.name} · {r.id.slice(0,12)} · {r.members.length} 个成员</li>)}</ul>
   {operation==='link'&&<Select aria-label="目标项目组" style={{width:'100%'}} value={target} onChange={setTarget} options={selected.map(r=>({value:r.members[0],label:`${r.name} · ${r.id.slice(0,12)}`}))} />}
-  {mutation.error&&<Alert className="section-card" type="error" showIcon title="项目关联未完成" description={mutation.error.message} />}
  </Modal></section>;
 }

@@ -380,3 +380,36 @@ func TestStatisticsSessionCostRetainsNativeRangeRoundingAndToolWhitelist(t *test
 		t.Fatal("model filter guessed invocation attribution")
 	}
 }
+
+func TestAnnualTotalsStayIndependentAndKeepHistoricalCost(t *testing.T) {
+	stats, r, admin, clients := statisticsFixture(t)
+	snap := centerfixture.Snapshot()
+	at := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+	snap.CreatedAtMS = new(at)
+	snap.LastActiveAtMS = new(at)
+	snap.Contributions[0].ObservedAtMS = new(at)
+	snap.Contributions[0].CostStatus = "known"
+	snap.Contributions[0].CostMicroUSD = new(int64(1234567))
+	snap.Contributions[0].PricingVersion = new("historical-only")
+	snap.Contributions[0].PricingMode = "event_cost"
+	snap.Contributions[0].ID = reportingv1.ContributionID(snap.Provider, snap.SessionID, snap.Contributions[0], 0)
+	centerfixture.SendSnapshot(t, r, clients[0], snap)
+	q := statisticsTestQuery(t, url.Values{"start_date": {"2026-10-01"}, "end_date_exclusive": {"2026-10-02"}})
+	first, err := stats.Summary(t.Context(), admin, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decimal(t, first.HeatmapTotals.TotalTokens, "100")
+	decimal(t, first.HeatmapTotals.CostMicroUSD, "1234567")
+	q.StartAtMS -= 7 * 24 * 60 * 60 * 1000
+	second, err := stats.Summary(t.Context(), admin, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.HeatmapRange != second.HeatmapRange || *first.HeatmapTotals.CostMicroUSD != *second.HeatmapTotals.CostMicroUSD || first.HeatmapTotals.CostStatus != "known" {
+		t.Fatal("annual totals depend on selected range")
+	}
+	if first.Totals.TotalTokens != nil && *first.Totals.TotalTokens != "0" {
+		t.Fatal("selected range contains annual tokens")
+	}
+}

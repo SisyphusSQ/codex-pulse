@@ -20,7 +20,7 @@ describe('overview facts',()=>{
   it('requests the seven-day range and opens a real date picker for custom dates',async()=>{
     fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):success(String(path).includes('/usage')?usageFrom(summaryFixture()):summaryFixture()));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
-    await screen.findByText('Token 总量');const user=userEvent.setup();
+    await screen.findByText('当前范围 Token 总量');const user=userEvent.setup();
     await user.click(screen.getByText('7天',{selector:'.ant-segmented-item-label'}));
     await waitFor(()=>expect(fetcher.mock.calls.some(([path])=>{const u=new URL(String(path),'http://localhost');return u.pathname.endsWith('/summary')&&dayjs(u.searchParams.get('end_date_exclusive')).diff(dayjs(u.searchParams.get('start_date')),'day')===7;})).toBe(true));
     await user.click(screen.getByRole('button',{name:'自定义'}));
@@ -53,13 +53,15 @@ describe('overview facts',()=>{
   it('does not turn a failed initial query into an empty range',async()=>{
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):new Response('',{status:503}));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
-    await screen.findByText('数据未能读取');expect(screen.queryByText('Token 总量')).not.toBeInTheDocument();
+    await screen.findByText('数据未能读取');expect(screen.queryByText('当前范围 Token 总量')).not.toBeInTheDocument();
   });
   it('places annual activity above summary and trend while keeping independent Server annual metrics',async()=>{
     const fixture=summaryFixture();
+    fixture.heatmap_totals={...fixture.totals,total_tokens:'999999999999999999',cost_micro_usd:'9876543210',cost_status:'partial'};
     fixture.heatmap_activity={total_tokens:'999999999999999999',peak_daily_tokens:'100000',active_days:'15',current_streak_days:null,longest_streak_days:'4',observed_days:22,unknown_days:343};
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):success(String(path).includes('/usage')?usageFrom(fixture):fixture));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
+    await screen.findByText('近 365 天 API 等价成本');expect(screen.getByText('$9,876.54')).toBeInTheDocument();expect(document.querySelector('.annual-totals')).toHaveTextContent('10000000000亿');
     await userEvent.setup().click(await screen.findByRole('button',{name:/年度活动统计/}));
     expect(await screen.findByText('10000000000亿',{selector:'strong'})).toBeInTheDocument();
     expect(screen.getByText('当前连续天数').parentElement).toHaveTextContent('未知');
@@ -67,7 +69,7 @@ describe('overview facts',()=>{
     await screen.findByRole('img',{name:'按自然日的用量趋势'});
     const activity=screen.getByText('全年活动').closest('.ant-card')!;
     const trend=screen.getByText('模型用量趋势').closest('.ant-card')!;
-    const summary=screen.getByText('Token 总量').closest('.summary-band')!;
+    const summary=screen.getByText('当前范围 Token 总量').closest('.summary-band')!;
     expect(activity.compareDocumentPosition(summary)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(activity.compareDocumentPosition(trend)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

@@ -1,6 +1,9 @@
 package reporting_do
 
 type DeviceStatus struct {
+	SyncState       string `gorm:"->;-:migration"`
+	SyncCheckedAtMS *int64 `gorm:"->;-:migration"`
+	FullSyncState   string `gorm:"->;-:migration"`
 	ClientID        string `gorm:"primaryKey"`
 	Provider        string `gorm:"primaryKey"`
 	Version         string

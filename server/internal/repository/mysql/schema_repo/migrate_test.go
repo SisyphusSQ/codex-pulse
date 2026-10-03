@@ -35,7 +35,7 @@ func TestAutomaticMigrationInitializesUpgradesAndPreservesData(t *testing.T) {
 		t.Fatal("automatic v1 upgrade", err)
 	}
 	var marker schema_do.SchemaVersion
-	if err := db.Take(&marker).Error; err != nil || marker.Version != 2 {
+	if err := db.Take(&marker).Error; err != nil || marker.Version != 3 {
 		t.Fatal("upgrade marker", err)
 	}
 	if err := s.Migrate(t.Context()); err != nil {

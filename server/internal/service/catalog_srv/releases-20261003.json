@@ -1,0 +1,516 @@
+[
+  {
+    "models": [
+      "gpt-6.1-sol"
+    ],
+    "released_on": "2026-09-29",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-6-sol",
+      "gpt-6-luna"
+    ],
+    "released_on": "2026-09-22",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-live-1"
+    ],
+    "released_on": "2026-09-10",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-image-2.5-sunburst",
+      "gpt-image-2.5-flare"
+    ],
+    "released_on": "2026-09-08",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-6-astra"
+    ],
+    "released_on": "2026-09-03",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-5.6-cyber",
+      "Daybreak Blue",
+      "Daybreak Red"
+    ],
+    "released_on": "2026-08-07",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-transcribe",
+      "gpt-live-transcribe"
+    ],
+    "released_on": "2026-07-28",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gpt-5.6"
+    ],
+    "released_on": "2026-07-09",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-realtime-2.1",
+      "gpt-realtime-2.1-mini"
+    ],
+    "released_on": "2026-07-06",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-realtime-2"
+    ],
+    "released_on": "2026-05-07",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-5.5",
+      "gpt-5.5-pro"
+    ],
+    "released_on": "2026-04-24",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-image-2",
+      "GPT-Image-2 (text)",
+      "GPT-Image-2 (image)"
+    ],
+    "released_on": "2026-04-21",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-5.4-mini",
+      "gpt-5.4-nano"
+    ],
+    "released_on": "2026-03-17",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-5.4",
+      "gpt-5.4-pro"
+    ],
+    "released_on": "2026-03-05",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-5.3-codex"
+    ],
+    "released_on": "2026-02-24",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-realtime-1.5",
+      "gpt-audio-1.5"
+    ],
+    "released_on": "2026-02-23",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-5.2-codex"
+    ],
+    "released_on": "2026-01-14",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-image-1.5",
+      "chatgpt-image-latest"
+    ],
+    "released_on": "2025-12-16",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-5.2",
+      "gpt-5.2-pro"
+    ],
+    "released_on": "2025-12-11",
+    "source_url": "https://openai.com/index/introducing-gpt-5-2/"
+  },
+  {
+    "models": [
+      "gpt-5.1-codex-max"
+    ],
+    "released_on": "2025-12-04",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-5.1",
+      "gpt-5.1-codex",
+      "gpt-5.1-codex-mini"
+    ],
+    "released_on": "2025-11-13",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-5-pro",
+      "gpt-realtime-mini",
+      "gpt-audio-mini",
+      "gpt-image-1-mini"
+    ],
+    "released_on": "2025-10-06",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-5-codex"
+    ],
+    "released_on": "2025-09-23",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-realtime"
+    ],
+    "released_on": "2025-08-28",
+    "source_url": "https://openai.com/index/introducing-gpt-realtime/"
+  },
+  {
+    "models": [
+      "gpt-5",
+      "gpt-5-mini",
+      "gpt-5-nano",
+      "GPT-5 Fast"
+    ],
+    "released_on": "2025-08-07",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "o3-pro"
+    ],
+    "released_on": "2025-06-10",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-image-1"
+    ],
+    "released_on": "2025-04-23",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "o3",
+      "o4-mini"
+    ],
+    "released_on": "2025-04-16",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-4.1",
+      "gpt-4.1-mini",
+      "gpt-4.1-nano"
+    ],
+    "released_on": "2025-04-14",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-4o-transcribe",
+      "gpt-4o-mini-transcribe",
+      "gpt-4o-mini-tts"
+    ],
+    "released_on": "2025-03-20",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "o1-pro"
+    ],
+    "released_on": "2025-03-19",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "o3-mini"
+    ],
+    "released_on": "2025-01-31",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "o1"
+    ],
+    "released_on": "2024-12-17",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-4o-mini"
+    ],
+    "released_on": "2024-07-18",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-4o",
+      "gpt-4o-2024-05-13"
+    ],
+    "released_on": "2024-05-13",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-4-turbo-2024-04-09"
+    ],
+    "released_on": "2024-04-09",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-3.5-turbo-0125"
+    ],
+    "released_on": "2024-02-01",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "text-embedding-3-large",
+      "text-embedding-3-small"
+    ],
+    "released_on": "2024-01-25",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-3.5-turbo-1106",
+      "tts-1",
+      "tts-1-hd"
+    ],
+    "released_on": "2023-11-06",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  },
+  {
+    "models": [
+      "gpt-rosalind-research"
+    ],
+    "released_on": "2026-04-16",
+    "source_url": "https://openai.com/zh-Hans-CN/index/introducing-gpt-rosalind/"
+  },
+  {
+    "models": [
+      "gpt-5.5-cyber"
+    ],
+    "released_on": "2026-06-22",
+    "source_url": "https://openai.com/index/daybreak-securing-the-world/"
+  },
+  {
+    "models": [
+      "Claude Sonnet 5.5",
+      "claude-sonnet-5-5"
+    ],
+    "released_on": "2026-09-28",
+    "source_url": "https://platform.claude.com/docs/en/release-notes/overview"
+  },
+  {
+    "models": [
+      "Claude Opus 5.5",
+      "claude-opus-5-5"
+    ],
+    "released_on": "2026-09-22",
+    "source_url": "https://platform.claude.com/docs/en/release-notes/overview"
+  },
+  {
+    "models": [
+      "Claude Fable 5.1",
+      "claude-fable-5-1"
+    ],
+    "released_on": "2026-09-01",
+    "source_url": "https://platform.claude.com/docs/en/release-notes/overview"
+  },
+  {
+    "models": [
+      "Claude Opus 4.8",
+      "claude-opus-4-8"
+    ],
+    "released_on": "2026-05-28",
+    "source_url": "https://www.anthropic.com/claude/opus"
+  },
+  {
+    "models": [
+      "Claude 4.7 Opus",
+      "Claude Opus 4.7 (fast mode)",
+      "claude-opus-4.7-fast"
+    ],
+    "released_on": "2026-04-16",
+    "source_url": "https://www.anthropic.com/claude/opus"
+  },
+  {
+    "models": [
+      "Composer 2.5",
+      "Composer 2.5 (Fast)"
+    ],
+    "released_on": "2026-05-18",
+    "source_url": "https://cursor.com/changelog/composer-2-5"
+  },
+  {
+    "models": [
+      "Gemini 3.8 Flash"
+    ],
+    "released_on": "2026-09-02",
+    "source_url": "https://ai.google.dev/gemini-api/docs/deprecations"
+  },
+  {
+    "models": [
+      "Gemini 3.7 Flash"
+    ],
+    "released_on": "2026-08-13",
+    "source_url": "https://ai.google.dev/gemini-api/docs/deprecations"
+  },
+  {
+    "models": [
+      "Gemini 3.6 Flash"
+    ],
+    "released_on": "2026-07-21",
+    "source_url": "https://ai.google.dev/gemini-api/docs/deprecations"
+  },
+  {
+    "models": [
+      "Gemini 3.5 Flash"
+    ],
+    "released_on": "2026-05-19",
+    "source_url": "https://ai.google.dev/gemini-api/docs/deprecations"
+  },
+  {
+    "models": [
+      "Gemini 3.1 Pro"
+    ],
+    "released_on": "2026-02-19",
+    "source_url": "https://ai.google.dev/gemini-api/docs/deprecations"
+  },
+  {
+    "models": [
+      "Gemini 3 Flash"
+    ],
+    "released_on": "2025-12-17",
+    "source_url": "https://ai.google.dev/gemini-api/docs/deprecations"
+  },
+  {
+    "models": [
+      "Gemini 3 Pro Image Preview"
+    ],
+    "released_on": "2025-11-20",
+    "source_url": "https://ai.google.dev/gemini-api/docs/deprecations"
+  },
+  {
+    "models": [
+      "Gemini 3 Pro"
+    ],
+    "released_on": "2025-11-18",
+    "source_url": "https://ai.google.dev/gemini-api/docs/deprecations"
+  },
+  {
+    "models": [
+      "Gemini 2.5 Flash"
+    ],
+    "released_on": "2025-06-17",
+    "source_url": "https://ai.google.dev/gemini-api/docs/deprecations"
+  },
+  {
+    "models": [
+      "Muse Spark 1.3"
+    ],
+    "released_on": "2026-09-02",
+    "source_url": "https://ai.meta.com/tools/muse/"
+  },
+  {
+    "models": [
+      "grok-4.7",
+      "Grok 4.7 (Fast)",
+      "Grok 4.7 500k",
+      "Grok 4.7 500k (Fast)",
+      "grok-4.7 (long context ≥200k)",
+      "grok-4.7 (Fast) (long context ≥200k)"
+    ],
+    "released_on": "2026-09-21",
+    "source_url": "https://docs.x.ai/developers/release-notes"
+  },
+  {
+    "models": [
+      "grok-4.6",
+      "Grok 4.6 (Fast)",
+      "grok-4.6 (long context ≥200k)"
+    ],
+    "released_on": "2026-08-12",
+    "source_url": "https://docs.x.ai/developers/release-notes"
+  },
+  {
+    "models": [
+      "grok-4.5",
+      "Grok 4.5 (Fast)",
+      "grok-4.5 (long context ≥200k)"
+    ],
+    "released_on": "2026-07-08",
+    "source_url": "https://docs.x.ai/developers/release-notes"
+  },
+  {
+    "models": [
+      "grok-build-0.1",
+      "grok-build-0.1 (long context ≥200k)"
+    ],
+    "released_on": "2026-05-19",
+    "source_url": "https://docs.x.ai/developers/release-notes"
+  },
+  {
+    "models": [
+      "grok-imagine-video-1.5"
+    ],
+    "released_on": "2026-06-16",
+    "source_url": "https://x.ai/news/grok-imagine-video-1-5"
+  },
+  {
+    "models": [
+      "babbage-002",
+      "davinci-002"
+    ],
+    "released_on": "2023-08-22",
+    "source_url": "https://openai.com/index/gpt-3-5-turbo-fine-tuning-and-api-updates/"
+  },
+  {
+    "models": [
+      "text-embedding-ada-002"
+    ],
+    "released_on": "2022-12-15",
+    "source_url": "https://openai.com/index/new-and-improved-embedding-model/"
+  },
+  {
+    "models": [
+      "gpt-4-0613"
+    ],
+    "released_on": "2023-06-13",
+    "source_url": "https://openai.com/index/function-calling-and-other-api-updates/"
+  },
+  {
+    "models": [
+      "gpt-3.5-turbo"
+    ],
+    "released_on": "2023-03-01",
+    "source_url": "https://openai.com/index/introducing-chatgpt-and-whisper-apis/"
+  }
+]

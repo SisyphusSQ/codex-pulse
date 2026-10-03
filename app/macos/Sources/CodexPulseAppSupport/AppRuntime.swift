@@ -888,6 +888,9 @@ public actor AppRuntime {
     public func syncReportingNow() async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
         try await performMutation { try await $0.syncReportingNow() }
     }
+    public func fullSyncReporting() async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        try await performMutation { try await $0.fullSyncReporting() }
+    }
 
     public func updateSettings(
         _ request: Codexpulse_Core_V1_UpdateSettingsRequest

@@ -307,3 +307,106 @@ macOS 常驻入口使用独立用户 LaunchAgent 与不可覆盖的发行目录�
 Pass：MySQL 8.0.46 实际 dump 成功，修复不支持的 `--no-login-paths` 与 dump connect-timeout 参数，隔离隐式登录文件、关闭 column statistics，Python 有界执行超时返回 124。DEV 恢复到本轮新建的专用空库后，14 张业务表逐行比较一致（含收据/原确认时间），版本/摘要保持，旧客户端及未消费设备码均失效，db check 通过。隔离 macOS LaunchAgent install/stop/start/restart/ready 和 remove 流程通过；remove 保留文件/数据，不删除业务库。
 
 本地开发补验完成后进入提交和发版收尾，按协作约定不重复执行测试；后续 CI 与正式部署结果分别读回。当前已确认采用中心 SQMC04 Tailscale 私网 HTTP、正式端口 18090，客户端在 SQMC05 由 clean main 发布 v0.15.0/build 63。私有配置迁入主仓库前先同步忽略规则；现有主仓库设计草稿备份后与已实现文档逐项对账，旧草稿不覆盖最终实现。
+
+## 2026-10-03：TOO-523 七项优化开发验证
+
+范围：统一操作 Notification、Prometheus 运维/同步指标、自然日柱状图、年度 Token/API 等价成本、同步阻塞修复、当前范围全量补传、SVG favicon。分支 suqing/too-523-center-web-sync-improvements；未提交、推送或部署。
+
+只读诊断确认：某个 Codex Session 含 20,032 条 timed Token 事实和 16,691 条调用事实，超过旧单快照 20,000 上限，导出返回 source_budget_exceeded；旧调度在账号历史/设备状态导出前退出。本机有新鲜当前额度，但中心仅收到旧 linked_history；不把历史升级成当前额度。未写入真实 Home、上报队列或生产中心。
+
+开发 Pass：
+
+- Reporting contract / Helper reporting / Store reporting 的聚焦场景，Core/Helper 握手与 RPC 场景通过。新增完整大快照分片、重启后不可变正文、全部确认才推进 revision、全量重发保留队列/单调版本/任务进度、来源错误不阻塞最新额度与其他 Provider、来源不可用时不误报全量完成、完成状态及时上报。
+- 中心 reporting/statistics/http/schema/config 受影响包通过。新增乱序与重复片段、完整摘要损坏拒绝且旧投影保持、完整调用数保留、独立指标 Token 只能读 /metrics、原生 CoreService/UDS/HTTP 的 full resend RPC/撤销/退出闭环（synthetic Home）、年度范围独立与历史金额、SQLite v1/v2 升级保留既有数据。分片接收只在收齐后读取全部正文；中途使用索引元数据和服务端字节计数，不反复加载之前所有片段。
+- Web 7 个受影响文件 26 场景通过；设备同步状态展示调整后 2 文件 4 场景通过。构建通过，AntD lint 0 问题。NULL 日桶/真实零、模型堆叠、部分费用、年度独立值、通知成功/冲突后表单保留均有证据。
+- Mac reporting-only 可执行测试通过；Mac App 编译通过；CoreClient 确定性测试按 make verify-swift-client 的取消探针入口通过。首次直接启动 CoreClient 测试缺少 CODEX_PULSE_CANCEL_PROBE，失败输出未当作通过证据。
+- Chrome 独立 loopback 合成 SQLite 副本：右上 Notification 保存成功、内联成功提示 0；390×844 顶部通知、年度汇总无页面横向溢出（documentWidth 375）。年度 5792.6万/$24.01 切到 7 天保持，当前范围变成 581.1万/$2.30；模型柱可见。SVG 资源匿名 GET 为 200/image/svg+xml，构建 /assets 引用正确。Chrome error/warn 列表为空，临时视口已恢复。截图仅 ignored .artifacts/too-523/；合成预览已停止。
+
+安全自查：指标独立只读鉴权、采集资源域和同客户端事务锁、白名单字段与稳定 ID、分片/快照/队列预算、原子投影及已确认历史口径保留；diff 未加入秘密或 raw error/正文，未移除既有 Origin/CSRF/权限校验。
+
+Not Run：真实三机升级/账号恢复/全量补传、生产 Prometheus 抓取、MySQL v3 DDL/锁/备份恢复、真实 Home App GUI、CI、长测、签名、公证与发版。先升级 Server 后升级 App；SQLite / Chrome 合成证明仅为开发证据。
+
+
+## 2026-10-03：TOO-523 账号最后更新展示补充
+
+用户确认“账号订阅”指账号页的额度与用量，要求有效数据持续指向最后一次更新。只读核对当前 Chrome 页面与仲裁/VO/UI：FreshForMS 为 10 分钟，reset 后为 expired_unknown；后端保留有效 UsedPercent/ObservedAtMS，但 Web 隐藏主额度与曲线。Credits 的 current available 同样受 freshness 门槛影响；Pace 曾混用当前时间进度与旧额度。
+
+实现：Web 主额度、进度条和观测周期曲线持续显示，常驻原更新时间；Credits 以最后观测库存为主。Server 用 snapshot_at_ms 对应的最后观测时刻复用既有 Pace 算法，周期进度、偏差、历史同进度对比和推算统一截止；reset 静态间隔、Credits 当次可用量/最近到期均由 Server 返回。Current freshness、原接收/采集时间、真实冲突、可疑和关联历史边界保留，Native 算法与持久化结构没有新增修改。无有效观测时保持未知；异常库存没有 valid last observation 时不作为主值发布。
+
+开发 Pass：
+
+- Server quota/http 聚焦 Quota/Pace/Unassigned 场景，以及新增无有效快照和无有效 Credits 观测场景通过。推进时钟到 10 分钟后、reset 后、reset 后 30 天，快照时间、曲线、进度/偏差、历史对比和耗尽推算保持一致；Current freshness 未升级。真实新观测推进快照；过期与失败保留库存和原时间。
+- Web Quota.test.tsx 的 10 个场景通过，包含 stale/expired 刷新保留主额度、图、推算、精确库存与更新时间，未知/冲突/账号隔离/零/失败缓存边界。类型、最终构建及 AntD lint 0 问题；Server 嵌入构建通过。
+- 独立 loopback 18103、原合成 SQLite 新副本升级到 v3：读取时为 10 月 3 日，两个窗口 reset 已过，仍显示最后观测剩余 30%/80%、70% 使用、80% 周期进度、-10.00 pp、2 个历史周期、原曲线/推算；全部截止 10 月 2 日 00:45。Credits 库存 3、当次可用 2、当次最近到期保持。刷新不改变原时间，详情静态 reset 间隔为 1 小时。390×844 documentWidth=375 无页面横向溢出；浏览器 error/warn 空，视口已恢复。截图 .artifacts/too-523/quota-last-update-desktop.jpg 与 quota-last-update-mobile.jpg。
+
+安全自查：管理员鉴权与账号资源域保留，新增值由服务端有效观测计算，冲突/未知未伪装为新观测，未加入秘密、危险 HTML 或新的外部请求。生产中心未改动；生产部署、真实三机账号恢复/补传、MySQL/CI 与真实 Home App GUI 未执行。临时预览验证后停止。
+
+## 2026-10-03：TOO-523 价目表发布时间排序补充
+
+用户要求全部模型按发布时间从新到旧排列。Server 增加独立的官方型号/API 发布记录，当前 66 组、118 个明确型号/别名；为公开、历史和已观测目录统一附加 released_at_ms 与 release_source_url，按发布日期倒序，同日稳定排序，日期未确认置后。Web 移除近期已使用优先排序，新增发布时间列和可展开的发布来源，保留近30天已使用与平台/搜索/价格版本/单位/历史目录筛选。价格核对日、生效边界和历史计价不被发布时间覆盖；没有数据库或上报契约变更。
+
+开发 Pass：
+
+- Server catalog/http 的 Catalog/Subscription 聚焦场景通过，覆盖日期倒序、同日稳定排序、未知日期置后、明确别名复用和历史费率/价格日期独立。
+- Web Pricing.test.tsx 的 3 个场景通过，新增完整目录保留服务端顺序、近期使用不改变排序、发布日期/来源展开、近30天筛选。类型检查和生产构建通过，AntD lint 0 问题；最终 Server 内嵌 Web 构建通过。
+- Chrome 独立 loopback 18103 合成 SQLite 预览：完整美元目录 286 条，顶部为 gpt-6.1-sol（2026-09-29）、Claude Sonnet 5.5（2026-09-28）、Claude Opus 5.5（2026-09-22）。搜索 Grok 后 44 条保持 4.7（2026-09-21）、4.6（2026-08-12）顺序；清空搜索恢复完整目录。展开发布来源为官方 changelog，发布时间 2026-09-29 与价格核对日 2026-10-02 分开展示。浏览器 error/warn 空；桌面 viewport 1027、documentWidth 1012，无页面横向溢出。截图仅保存于 ignored .artifacts/too-523/pricing-release-order-desktop.jpg。
+
+安全自查：管理员鉴权保持，发布来源使用现有 HTTPS 域名白名单与 noopener/noreferrer；发布元数据来自受控内嵌 JSON，不新增外部请求或秘密，不改写历史消耗。开发验证完成后停止临时合成预览。生产部署、CI、长测、真实三机与原生 App 验收未执行。
+
+## 2026-10-03：TOO-523 Storybook 追加与订阅分类样稿
+
+用户要求所有本轮改动追加进Storybook，订阅与额度参考官方购买页、先按平台与套餐类别做样稿；另明确要求停止旧6007。当前分支新增订阅4条、优化12条，保留原22条，静态index实际读回共38条。
+
+本轮优化使用正式PulseApp与页面/图表/通知组件，合成适配器截获全部 `/api/`，未配置路径返回501。覆盖年度汇总、自然日模型柱状图、Notification、额度reset后保留最后有效值和原时间、最新额度恢复、未知/冲突、设备同步、价目发布时间排序；后端指标和原生补传另列说明与模拟交互，不冒充真实运行。订阅样稿按Codex/Cursor/Grok、个人/团队分组，档位选择、参考价格和能力层级取自官方购买页。Grok购买页与原中心目录不同的套餐单列其他来源；正式目录与订阅页未替换。
+
+开发 Pass：最终TypeScript检查、Storybook静态构建；新增AntD用法lint为0问题。Chrome实际检查平台/个人团队切换、Cursor团队组、Codex Pro键盘选择$500后示例在用标签消失、失败Notification及重试入口、全量确认后进入进行中/暂停且计数保留、正式概览年度汇总与价目顶部日期、reset后额度30%/已用70%与Credits库存3/观测时可用2仍显示原10月2日09:00。390×844样稿documentWidth=375，没有页面横向溢出，视口已恢复。页面console error为空；Storybook manager有一条PopoverProvider的未来版本ariaLabel提示，构建另有既有大chunk与Node弃用提示，未表述为无警告。
+
+当前6007读回无监听；6008由本分支的Storybook运行并留给用户查看。订阅入口 `/?path=/story/subscription-plans--grok`，改动目录 `/?path=/story/too-523-updates--index`。截图 `.artifacts/too-523/subscriptions-grok-desktop.jpg`、`subscriptions-grok-mobile.jpg` 和最终静态构建 `.artifacts/too-523/storybook/` 均ignored；没有读取真实Home、数据库或上报队列。
+
+安全自查：正式鉴权与服务配置未改；预览API不透传，操作只改合成内存，公开购买页链接为固定HTTPS且使用noopener/noreferrer，不提交订单、不签发有效凭证。没有新增依赖、生产部署、CI、长测或真实三机/原生App验收。
+
+### 订阅样稿保留模型价格入口修正
+
+用户指出首版订阅样稿缺少模型价格入口。修正为同一价目表的“模型价格 / 订阅与额度”两个主标签，平台/个人团队分类只在订阅内。Storybook通过PricingReview的合成适配器与路由复用正式Pricing模型页，模型搜索、完整/已使用目录、版本、历史证据、USD/Credits、发布时间排序、发布来源和用量链接保留；业务页的默认模型入口与原订阅渲染保持。新增“05 模型价格与订阅切换”，当前合计39条。
+
+Pass：Pricing既有3场景、TypeScript检查、最终Storybook构建；Pricing和design两次独立AntD lint均0问题。Chrome同一Grok订阅故事进入模型价格，搜索grok-4.7得到2条短/长上下文参考价格；进入订阅后Grok分类仍选中，再返回模型搜索仍为grok-4.7。新模型故事默认展示模型价格，USD合成目录284条，顶部gpt-6.1-sol及发布日期列可见，两个主标签同时在页面中。截图 `.artifacts/too-523/pricing-tabs-restored.jpg`。热更新阶段Storybook输出act环境提示，未据此宣称控制台无错误；页面内容和切换/搜索均已实际读回。
+
+安全自查：业务API权限、字段和价格口径未改；订阅替换内容仅由Storybook传入React节点，业务入口不导入设计数据，合成请求不透传。6008保留供评审，生产部署与正式订阅页替换仍未执行。
+
+### 价目精简、API参考折算与正式前端接入
+
+用户批准价目围绕实际工具与模型收窄，并授权先更新Storybook，再同步正式前端。先检查独立的新价目组件预览，随后在正式`Pricing`模型标签接入同一`ModelPriceCatalog`；最终新增“06 相关模型与 API 参考折算”，40条故事已从静态index读回。
+
+默认一平台内一个型号一行，基础文本美元参考价与发布时间常驻，Fast/长上下文、缓存写入、Credits、历史证据在模型内展开。Codex默认集合依据官方模型说明于2026-10-03核对；Cursor/Grok保留现有文本型号，普通API完整目录及Batch/Flex不再铺满主表。实际使用的旧型号、非文本型号与未知参考价保留；非文本型号明确自身计价单位。历史版本深链、原始Cursor Fast/500k用量型号、公开费率与历史费用计算未被改写。
+
+Pass：Pricing 6个聚焦测试覆盖未知值/XSS、金额与来源白名单、发布时间顺序、模式合并与Standard主价、订阅标签切换、实际Fast型号跳转、历史版本深链和非Token计价单位。最终Web/Storybook构建通过，相关AntD用法检查0问题；正式构建不包含设计样本。初轮新增测试的英文展开按钮定位及Segmented原生input不可直接点击问题已修正后通过。
+
+Chrome合成预览：全平台主表30个模型，Codex筛选9个（7个默认参考、1个已使用旧型号、1个未定价观测），日期倒排；gpt-6.1-sol主价$2/$0.10/$10，Fast与长上下文展开可见，Batch未铺入。搜索后切到订阅，再返回仍为单个搜索型号；历史计价可读openai-api-2026-09-29合成证据。390×844的documentWidth=375，表格920px内容在317px容器内局部滚动，视口已恢复。
+
+截图`.artifacts/too-523/pricing-focused-desktop.jpg`和`pricing-focused-mobile.jpg`、构建日志与静态产物均ignored。旧草稿组件移除时曾有Vite热更新失效，重新加载后正式组件与切换恢复；Storybook保留既有act环境与PopoverProvider提示记录，构建有既有chunk/Node提示，不宣称控制台完全无警告。
+
+安全自查：仅前端价目展示和合成预览变更，同源API、管理员鉴权、Origin/CSRF与来源HTTPS白名单保留；普通文本默认转义，无新增外部请求、依赖或秘密。6008预览保留供用户检查，中心服务部署、正式订阅样稿替换、CI、长测及真实账号验收未执行。
+
+### TOO-523 真实 DEV 部署（2026-10-03）
+
+用户明确授权部署 DEV 供人工检查。本轮仅更新已有 development LaunchAgent，发行目录为 `dev-too523-20261003-164949`；生产服务、配置、数据库和发行链接保持原状。此前各段“未部署”为各自开发阶段的证据边界，本段补充真实 DEV 结果。
+
+Pass：`make package-center` 构建成功，部署包不含私有配置。先对 DEV v2 库备份，并在新建演练库中恢复、升级到 v3；演练 ready 200、db check 通过。实际切换前停止 DEV 并再做一致备份，随后升级原 DEV 库，结构版本 3、18 张表。升级前后、新浏览器配对前，15 张既有业务表的行数与 SHA-256 一致，包含原客户端撤销标记和配对消费状态；745 个会话及历史事实保留。运行数据库是原有 SeekDB 的 MySQL 协议入口，这不构成独立 MySQL 8.4 验收。
+
+真实 DEV ready 200，Prometheus 独立 Token 鉴权为匿名 401、授权 200。Token 仅保存在本机 0600 私有文件，运行目录 0700。生产进程、配置摘要与发行链接读回未变。Chrome 正在被用户使用后，改用 Codex 侧栏独立浏览器完成正常配对，避免同主机不同端口共用 Cookie 覆盖生产登录；真实价目页显示“相关模型 / 近30天已使用 / 历史计价”、输入/缓存输入/输出参考价、发布时间倒排，以及新 DEV 版本与结构 3。页面保留供用户检查。
+
+临时演练 Server 已停止，演练数据库、两次备份和旧 DEV 发行目录保留。截图、部署日志、数据指纹和运行读回仅保存在 ignored `.artifacts/too-523/dev-deploy-20261003-164949/`，消费后的配对码临时文件已移除。复用此前 Pricing 6 场景等开发测试证据，本轮未重复运行单元测试或长测。
+
+安全自查：未扩大监听或权限，既有 Origin/CSRF/用途鉴权保留，指标仅允许独立凭证只读访问；秘密未进入源码、交付包或回写内容。未部署生产、未安装新版原生 App、未完成真实三机补传验收；订阅分类购买页样稿仍在 Storybook，正式订阅布局尚未替换，等待用户检查后续范围。
+
+### v0.15.1 开发收尾与真实 Home 定向补传
+
+用户批准 v0.15.1 / build 64 发版、先中心后 Mac、Mac 在 SQMC05 构建发布。正式订阅页新增平台及个人/团队/地区渠道分类，套餐档位复用已有目录，未知价、币种、年付、来源和核对日期保留，未把样稿价格或在用标签写入产品。Storybook 新增“07 正式订阅分类与目录证据”。
+
+开发 Pass：Pricing 7 场景通过，新场景覆盖档位合并、年付切换、印度币种/地区、其他来源和未知价；Web 最终类型与构建通过，两个新增/受影响组件 AntD 用法检查 0 问题。初轮 Select 虚拟无障碍 option 及键盘模拟定位未更新真实选项，改为可见选项点击后通过；实际浏览器键盘切换读回 Business 年付 $20.00、每席位/月（年付）及相应目录证据。初轮类型检查的测试 locator 参数及故事 required prop 已修正。保留 jsdom pseudo-element 与既有构建告警，不宣称全无警告。
+
+本机 DEV App 复用此前已确认的真实 Home 与 0700 runtime，启动后分别读回 preferences 物理路径/inode、App/Helper 环境、父子关系和 Helper 数据库参数。原 DEV 授权已在此前验收撤销；正常重配后需明确保存启用，600 秒与原全部已索引历史范围保持，旧授权分区的 1 个未确认批次保留。通过原生全量补传确认入口，747 个完整快照、786 个批次确认，三个 Provider 均 ready/completed；当前分区排空，旧分区未清除。中心会话由 745 变为 748（本轮新事实），分片暂存归零；收到新的 Codex app_server/confirmed/accepted 额度，Cursor 保持 pending_association 边界。此 runtime 最大已接收贡献/调用数为 1471/3561，不能替代超 20000 大会话的真实验收；该场景已有开发分片测试，后续正式客户端升级另读回实际大快照。
+
+本轮开发 App 已停止，其 runtime/历史/授权保留；真实生产 App 与中心未因此停止。截图和日志位于 ignored `.artifacts/releases/v0.15.1/development/`。进入提交发版收尾后复用已有证据，不再重复测试；真实三机更新和生产部署证据后续逐项补充。
+
+安全自查：正式订阅只读取同源管理员目录，默认文本转义与来源白名单保留；真实 Home 上报仍为既有 typed 白名单，配对码只在页面内存和原生安全输入中使用，未进入日志/截图/源码。

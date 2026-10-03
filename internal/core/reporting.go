@@ -85,3 +85,18 @@ func (s *Service) SyncReportingNow(ctx context.Context) (reporting.Status, error
 	out, err := c.SyncNow(ctx)
 	return out, reportingFailure(err)
 }
+
+func (s *Service) FullSyncReporting(ctx context.Context) (reporting.Status, error) {
+	c, err := s.reportingControl()
+	if err != nil {
+		return reporting.Status{}, err
+	}
+	full, ok := c.(interface {
+		FullSync(context.Context) (reporting.Status, error)
+	})
+	if !ok {
+		return reporting.Status{}, reportingFailure(reporting.ErrUnavailable)
+	}
+	out, err := full.FullSync(ctx)
+	return out, reportingFailure(err)
+}

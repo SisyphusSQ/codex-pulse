@@ -1,3 +1,4 @@
+import {OperationNotifications} from '../components/OperationNotifications';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -10,7 +11,7 @@ const fetcher=vi.fn<typeof fetch>(),success=(data:unknown)=>new Response(JSON.st
 const browser={client_id:'browser-one',name:'合成管理浏览器',purpose:'admin',csrf:'synthetic-csrf',expires_at_ms:Date.now()+86400000};
 const client={id:'device-one',purpose:'collector',name:'<img src=x onerror=alert(1)>',created_at_ms:Date.now(),expires_at_ms:null,revoked_at_ms:null,last_received_at_ms:null};
 beforeEach(()=>{fetcher.mockReset();vi.stubGlobal('fetch',fetcher);});afterEach(()=>vi.unstubAllGlobals());
-function mount(){render(<QueryClientProvider client={createQueryClient()}><SessionProvider><Devices /></SessionProvider></QueryClientProvider>);}
+function mount(){render(<OperationNotifications><QueryClientProvider client={createQueryClient()}><SessionProvider><Devices /></SessionProvider></QueryClientProvider></OperationNotifications>);}
 function base(path:RequestInfo|URL){const p=String(path);if(p.endsWith('/session'))return success(browser);if(p.endsWith('/clients'))return success({clients:[client]});if(p.endsWith('/devices/status'))return success([{id:client.id,name:client.name,revoked_at_ms:null,last_received_at_ms:null,providers:[]}]);return success({applied:true});}
 describe('device management',()=>{
  it('gives rename its own labeled field and writes only the name through the authenticated endpoint',async()=>{

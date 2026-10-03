@@ -4,6 +4,9 @@ package reportingv1
 const Version = 1
 const MaxBodyBytes = 8 << 20
 const MaxContributions = 20000
+const MaxSnapshotFacts = 200000
+const MaxSnapshotBytes = 64 << 20
+const MaxSnapshotChunks = 256
 const MaxTimestampMS int64 = 9007199254740991
 
 // Batch 是不可变的事务单元；身份只来自鉴权凭证，不在 body 中自称设备归属。
@@ -20,6 +23,7 @@ type Batch struct {
 
 // SessionSnapshot 是同一来源的完整替换快照，revision 跨进程重启单调递增。
 type SessionSnapshot struct {
+	Chunk            *SnapshotChunk     `json:"chunk,omitempty"`
 	CacheUsage       *CacheUsageCapsule `json:"cache_usage,omitempty"`
 	Throughput       *ThroughputCapsule `json:"throughput,omitempty"`
 	Provider         string             `json:"provider"`
@@ -39,6 +43,15 @@ type SessionSnapshot struct {
 	HistoryStartAtMS int64              `json:"history_start_at_ms"`
 	Contributions    []Contribution     `json:"contributions"`
 	Invocations      []Invocation       `json:"invocations,omitempty"`
+}
+
+// SnapshotChunk 标识完整快照的一个片段；收齐并验证摘要后才替换中心投影。
+type SnapshotChunk struct {
+	Index         int    `json:"index"`
+	Count         int    `json:"count"`
+	Digest        string `json:"digest"`
+	Contributions int    `json:"contributions"`
+	Invocations   int    `json:"invocations"`
 }
 
 // Contribution 保留来源 Token 口径；大整数用十进制字符串，避免浏览器精度损失。
@@ -126,6 +139,9 @@ type ResetCredits struct {
 
 // DeviceStatus 的新鲜度与覆盖独立于在线状态，不接收 raw error。
 type DeviceStatus struct {
+	SyncState       string `json:"sync_state,omitempty"`
+	SyncCheckedAtMS *int64 `json:"sync_checked_at_ms,omitempty"`
+	FullSyncState   string `json:"full_sync_state,omitempty"`
 	Provider        string `json:"provider"`
 	Version         string `json:"version"`
 	CollectedAtMS   *int64 `json:"collected_at_ms"`

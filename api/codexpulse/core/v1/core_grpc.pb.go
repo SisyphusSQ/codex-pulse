@@ -61,6 +61,7 @@ const (
 	CoreService_PairReporting_FullMethodName                  = "/codexpulse.core.v1.CoreService/PairReporting"
 	CoreService_ConfigureReporting_FullMethodName             = "/codexpulse.core.v1.CoreService/ConfigureReporting"
 	CoreService_SyncReportingNow_FullMethodName               = "/codexpulse.core.v1.CoreService/SyncReportingNow"
+	CoreService_FullSyncReporting_FullMethodName              = "/codexpulse.core.v1.CoreService/FullSyncReporting"
 	CoreService_Settings_FullMethodName                       = "/codexpulse.core.v1.CoreService/Settings"
 	CoreService_UpdateSettings_FullMethodName                 = "/codexpulse.core.v1.CoreService/UpdateSettings"
 	CoreService_PlanHomeSwitch_FullMethodName                 = "/codexpulse.core.v1.CoreService/PlanHomeSwitch"
@@ -126,6 +127,7 @@ type CoreServiceClient interface {
 	PairReporting(ctx context.Context, in *PairReportingRequest, opts ...grpc.CallOption) (*ReportingStatusResponse, error)
 	ConfigureReporting(ctx context.Context, in *ConfigureReportingRequest, opts ...grpc.CallOption) (*ReportingStatusResponse, error)
 	SyncReportingNow(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ReportingStatusResponse, error)
+	FullSyncReporting(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ReportingStatusResponse, error)
 	Settings(ctx context.Context, in *SettingsRequest, opts ...grpc.CallOption) (*SettingsResponse, error)
 	UpdateSettings(ctx context.Context, in *UpdateSettingsRequest, opts ...grpc.CallOption) (*SettingsUpdateReceipt, error)
 	PlanHomeSwitch(ctx context.Context, in *PlanHomeSwitchRequest, opts ...grpc.CallOption) (*HomeSwitchPlanReceipt, error)
@@ -562,6 +564,16 @@ func (c *coreServiceClient) SyncReportingNow(ctx context.Context, in *Empty, opt
 	return out, nil
 }
 
+func (c *coreServiceClient) FullSyncReporting(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ReportingStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReportingStatusResponse)
+	err := c.cc.Invoke(ctx, CoreService_FullSyncReporting_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *coreServiceClient) Settings(ctx context.Context, in *SettingsRequest, opts ...grpc.CallOption) (*SettingsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SettingsResponse)
@@ -778,6 +790,7 @@ type CoreServiceServer interface {
 	PairReporting(context.Context, *PairReportingRequest) (*ReportingStatusResponse, error)
 	ConfigureReporting(context.Context, *ConfigureReportingRequest) (*ReportingStatusResponse, error)
 	SyncReportingNow(context.Context, *Empty) (*ReportingStatusResponse, error)
+	FullSyncReporting(context.Context, *Empty) (*ReportingStatusResponse, error)
 	Settings(context.Context, *SettingsRequest) (*SettingsResponse, error)
 	UpdateSettings(context.Context, *UpdateSettingsRequest) (*SettingsUpdateReceipt, error)
 	PlanHomeSwitch(context.Context, *PlanHomeSwitchRequest) (*HomeSwitchPlanReceipt, error)
@@ -926,6 +939,9 @@ func (UnimplementedCoreServiceServer) ConfigureReporting(context.Context, *Confi
 }
 func (UnimplementedCoreServiceServer) SyncReportingNow(context.Context, *Empty) (*ReportingStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SyncReportingNow not implemented")
+}
+func (UnimplementedCoreServiceServer) FullSyncReporting(context.Context, *Empty) (*ReportingStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FullSyncReporting not implemented")
 }
 func (UnimplementedCoreServiceServer) Settings(context.Context, *SettingsRequest) (*SettingsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Settings not implemented")
@@ -1734,6 +1750,24 @@ func _CoreService_SyncReportingNow_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CoreService_FullSyncReporting_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CoreServiceServer).FullSyncReporting(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CoreService_FullSyncReporting_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CoreServiceServer).FullSyncReporting(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _CoreService_Settings_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SettingsRequest)
 	if err := dec(in); err != nil {
@@ -2185,6 +2219,10 @@ var CoreService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SyncReportingNow",
 			Handler:    _CoreService_SyncReportingNow_Handler,
+		},
+		{
+			MethodName: "FullSyncReporting",
+			Handler:    _CoreService_FullSyncReporting_Handler,
 		},
 		{
 			MethodName: "Settings",

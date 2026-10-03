@@ -17,7 +17,7 @@ func (s *Quota) Pace(ctx context.Context, principal access_dto.Principal, q quot
 	if err != nil {
 		return
 	}
-	out = quota_vo.PaceResponse{EvaluatedAtMS: current.EvaluatedAtMS, RuleVersion: "center-pace-v1/" + quotaengine.PaceContractVersion, Accounts: current.Accounts, Windows: []quota_vo.PaceWindow{}, Coverage: current.Coverage}
+	out = quota_vo.PaceResponse{EvaluatedAtMS: current.EvaluatedAtMS, RuleVersion: "center-pace-v2/snapshot/" + quotaengine.PaceContractVersion, Accounts: current.Accounts, Windows: []quota_vo.PaceWindow{}, Coverage: current.Coverage}
 	for _, window := range current.Windows {
 		pace, buildErr := paceWindow(window, current.EvaluatedAtMS)
 		if buildErr != nil {
@@ -34,7 +34,16 @@ func paceWindow(window quota_vo.Window, now int64) (quota_vo.PaceWindow, error) 
 		out.Forecast.UnknownReason = out.UnknownReason
 		return out, nil
 	}
-	current := store.QuotaCurrent{AccountScope: window.Key, WindowKind: store.QuotaWindowKind(window.WindowKind), LimitID: window.LimitID, EffectiveUsedPercent: window.Current.UsedPercent, WindowMinutes: window.WindowMinutes, ResetsAtMS: window.Current.ResetsAtMS, WindowGeneration: window.Current.ResetsAtMS, FreshnessState: store.QuotaCurrentFreshness(window.Current.Freshness), ConflictState: store.QuotaConflictNone, LastSuccessAtMS: window.Current.ObservedAtMS, EvaluatedAtMS: now}
+	freshness := store.QuotaCurrentFreshness(window.Current.Freshness)
+	if window.Current.ObservedAtMS != nil && window.Current.UsedPercent != nil {
+		out.SnapshotAtMS = window.Current.ObservedAtMS
+		now = *out.SnapshotAtMS
+		// 按最后有效观测的时刻评估历史快照，保留响应中的当前 freshness。
+		if freshness == store.QuotaCurrentStale || freshness == store.QuotaCurrentExpiredUnknown {
+			freshness = store.QuotaCurrentFresh
+		}
+	}
+	current := store.QuotaCurrent{AccountScope: window.Key, WindowKind: store.QuotaWindowKind(window.WindowKind), LimitID: window.LimitID, EffectiveUsedPercent: window.Current.UsedPercent, WindowMinutes: window.WindowMinutes, ResetsAtMS: window.Current.ResetsAtMS, WindowGeneration: window.Current.ResetsAtMS, FreshnessState: freshness, ConflictState: store.QuotaConflictNone, LastSuccessAtMS: window.Current.ObservedAtMS, EvaluatedAtMS: now}
 	if window.Current.Source != nil {
 		current.SelectedSource = new(quotaSource(*window.Current.Source))
 	}
@@ -63,8 +72,12 @@ func paceWindow(window quota_vo.Window, now int64) (quota_vo.PaceWindow, error) 
 		return out, err
 	}
 	out.ElapsedPercent, out.PaceDeltaPP = pace.ElapsedPercent, pace.PaceDeltaPP
-	out.Forecast = quota_vo.Forecast{State: string(pace.Forecast.State), Method: string(pace.Forecast.Method), ExhaustAtMS: pace.Forecast.ExhaustAtMS, LeadBeforeResetMS: pace.Forecast.LeadBeforeResetMS, EvidenceCount: pace.Forecast.EvidenceCount, EvidenceSpanMS: pace.Forecast.EvidenceSpanMS, UnknownReason: paceReason(pace.Forecast.UnknownReason)}
 	out.UnknownReason = paceReason(pace.UnknownReason)
+	if pace.Forecast.State != "" {
+		out.Forecast = quota_vo.Forecast{State: string(pace.Forecast.State), Method: string(pace.Forecast.Method), ExhaustAtMS: pace.Forecast.ExhaustAtMS, LeadBeforeResetMS: pace.Forecast.LeadBeforeResetMS, EvidenceCount: pace.Forecast.EvidenceCount, EvidenceSpanMS: pace.Forecast.EvidenceSpanMS, UnknownReason: paceReason(pace.Forecast.UnknownReason)}
+	} else {
+		out.Forecast.UnknownReason = out.UnknownReason
+	}
 	// 纯计算入口只返回真实采样，避免把显示延伸端点当成新事实。
 	for _, p := range pace.CurrentPoints {
 		out.CurrentPoints = append(out.CurrentPoints, pacePoint(p))

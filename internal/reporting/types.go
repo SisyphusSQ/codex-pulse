@@ -24,18 +24,22 @@ const QueueBatchBudget = 2048
 
 // Status is the local RPC whitelist; service credentials and pairing codes are excluded.
 type Status struct {
-	Endpoint         string `json:"endpoint"`
-	ClientID         string `json:"clientId"`
-	Enabled          bool   `json:"enabled"`
-	AllowHTTP        bool   `json:"allowHttp"`
-	IntervalSeconds  int64  `json:"intervalSeconds"`
-	HistoryStartAtMS int64  `json:"historyStartAtMs"`
-	State            string `json:"state"`
-	PendingBatches   int64  `json:"pendingBatches"`
-	PendingBytes     int64  `json:"pendingBytes"`
-	RetainedBatches  int64  `json:"retainedBatches"`
-	LastAttemptAtMS  *int64 `json:"lastAttemptAtMs"`
-	LastSuccessAtMS  *int64 `json:"lastSuccessAtMs"`
+	FullSyncState               string `json:"fullSyncState"`
+	FullSyncStartedAtMS         *int64 `json:"fullSyncStartedAtMs"`
+	FullSyncExportedSessions    int64  `json:"fullSyncExportedSessions"`
+	FullSyncAcknowledgedBatches int64  `json:"fullSyncAcknowledgedBatches"`
+	Endpoint                    string `json:"endpoint"`
+	ClientID                    string `json:"clientId"`
+	Enabled                     bool   `json:"enabled"`
+	AllowHTTP                   bool   `json:"allowHttp"`
+	IntervalSeconds             int64  `json:"intervalSeconds"`
+	HistoryStartAtMS            int64  `json:"historyStartAtMs"`
+	State                       string `json:"state"`
+	PendingBatches              int64  `json:"pendingBatches"`
+	PendingBytes                int64  `json:"pendingBytes"`
+	RetainedBatches             int64  `json:"retainedBatches"`
+	LastAttemptAtMS             *int64 `json:"lastAttemptAtMs"`
+	LastSuccessAtMS             *int64 `json:"lastSuccessAtMs"`
 }
 type PairRequest struct {
 	Endpoint  string `json:"endpoint"`

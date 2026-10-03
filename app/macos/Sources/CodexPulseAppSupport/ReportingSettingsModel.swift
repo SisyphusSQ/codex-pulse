@@ -7,8 +7,14 @@ public protocol ReportingSettingsServing: Sendable {
     func pairReporting(_ request: Codexpulse_Core_V1_PairReportingRequest) async throws -> Codexpulse_Core_V1_ReportingStatusResponse
     func configureReporting(_ request: Codexpulse_Core_V1_ConfigureReportingRequest) async throws -> Codexpulse_Core_V1_ReportingStatusResponse
     func syncReportingNow() async throws -> Codexpulse_Core_V1_ReportingStatusResponse
+    func fullSyncReporting() async throws -> Codexpulse_Core_V1_ReportingStatusResponse
 }
 
+public extension ReportingSettingsServing {
+    func fullSyncReporting() async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        throw AppRuntimeError.unavailable
+    }
+}
 extension AppRuntime: ReportingSettingsServing {}
 
 // UI 仅持有 CoreService 的安全状态和短暂配对码；不保存或接触设备凭证。
@@ -93,6 +99,12 @@ public final class ReportingSettingsModel: ObservableObject {
     public func syncNow() async {
         await apply(success: "已请求本机增量补传，确认时间以状态读回为准。", failure: "未能开始补传，请确认已启用同步；撤销或协议拒绝后需要重新配对或更新服务。") {
             try await self.service.syncReportingNow()
+        }
+    }
+
+    public func fullSync() async {
+        await apply(success: "已请求全量补传当前范围的已索引事实；退出 App 后暂停，下次启动续传。", failure: "未能开始全量补传，请确认同步已启用且中心支持分片协议。") {
+            try await self.service.fullSyncReporting()
         }
     }
 

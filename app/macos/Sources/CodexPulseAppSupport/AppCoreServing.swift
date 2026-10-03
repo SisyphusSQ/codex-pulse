@@ -6,6 +6,7 @@ public protocol AppCoreServing: Sendable {
     func pairReporting(_ request: Codexpulse_Core_V1_PairReportingRequest) async throws -> Codexpulse_Core_V1_ReportingStatusResponse
     func configureReporting(_ request: Codexpulse_Core_V1_ConfigureReportingRequest) async throws -> Codexpulse_Core_V1_ReportingStatusResponse
     func syncReportingNow() async throws -> Codexpulse_Core_V1_ReportingStatusResponse
+    func fullSyncReporting() async throws -> Codexpulse_Core_V1_ReportingStatusResponse
     func handshake(
         clientName: String,
         clientVersion: String,
@@ -213,6 +214,9 @@ public extension AppCoreServing {
         throw AppRuntimeError.unavailable
     }
     func syncReportingNow() async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        throw AppRuntimeError.unavailable
+    }
+    func fullSyncReporting() async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
         throw AppRuntimeError.unavailable
     }
 	func listCodexAccountQuotas(

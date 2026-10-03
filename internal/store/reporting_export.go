@@ -124,10 +124,10 @@ func exportReportingCodex(db *gorm.DB, source ReportingSource, after string, pag
 				ModelSource                                                   string
 				InputTokens, CachedInputTokens, OutputTokens, ReasoningTokens int64
 			}
-			if err := db.Table("light_token_timed").Select("observed_at_ms,model_key,model_source,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens").Where("session_id = ? AND generation = ?", row.SessionID, row.ActiveTokenGeneration).Order("source_offset").Limit(reportingv1.MaxContributions + 1).Find(&timed).Error; err != nil {
+			if err := db.Table("light_token_timed").Select("observed_at_ms,model_key,model_source,input_tokens,cached_input_tokens,output_tokens,reasoning_tokens").Where("session_id = ? AND generation = ?", row.SessionID, row.ActiveTokenGeneration).Order("source_offset").Limit(reportingv1.MaxSnapshotFacts + 1).Find(&timed).Error; err != nil {
 				return err
 			}
-			if len(timed) > reportingv1.MaxContributions {
+			if len(timed) > reportingv1.MaxSnapshotFacts {
 				return ErrReportingBudget
 			}
 			var sums [4]int64
@@ -190,7 +190,7 @@ func exportReportingCodex(db *gorm.DB, source ReportingSource, after string, pag
 		if source.StartAtMS > 0 {
 			s.CacheUsage.InputTokens, s.CacheUsage.CachedInputTokens, s.CacheUsage.Reason = nil, nil, "history_filtered"
 		}
-		if len(s.Contributions) > reportingv1.MaxContributions {
+		if len(s.Contributions) > reportingv1.MaxSnapshotFacts {
 			return ErrReportingBudget
 		}
 		page.Sessions = append(page.Sessions, s)
@@ -303,7 +303,7 @@ func exportReportingAgent(db *gorm.DB, provider string, source ReportingSource, 
 				return err
 			}
 		}
-		if len(s.Contributions) > reportingv1.MaxContributions {
+		if len(s.Contributions) > reportingv1.MaxSnapshotFacts {
 			return ErrReportingBudget
 		}
 		if err := exportReportingInvocations(db, provider, id, 0, source.StartAtMS, &s); err != nil {
@@ -324,11 +324,11 @@ func exportReportingAgentUsage(db *gorm.DB, provider, id string, s *reportingv1.
 		InputTokens, OutputTokens, CachedReadTokens, CacheCreationTokens, ReasoningTokens, TotalTokens int64
 		ReportedCostMicros                                                                             *int64
 	}
-	query := db.Table(provider+"_usage_events").Where("external_session_id = ?", id).Order("occurred_at_ms,event_id").Limit(reportingv1.MaxContributions + 1)
+	query := db.Table(provider+"_usage_events").Where("external_session_id = ?", id).Order("occurred_at_ms,event_id").Limit(reportingv1.MaxSnapshotFacts + 1)
 	if err := query.Find(&rows).Error; err != nil {
 		return err
 	}
-	if len(rows) > reportingv1.MaxContributions {
+	if len(rows) > reportingv1.MaxSnapshotFacts {
 		return ErrReportingBudget
 	}
 	for _, r := range rows {
@@ -369,10 +369,10 @@ func exportReportingCursorDashboard(db *gorm.DB, id string, s *reportingv1.Sessi
 		s.Title = "未关联会话的用量"
 		s.Complete = false
 	}
-	if err := query.Order("occurred_at_ms,event_fingerprint").Limit(reportingv1.MaxContributions + 1).Find(&rows).Error; err != nil {
+	if err := query.Order("occurred_at_ms,event_fingerprint").Limit(reportingv1.MaxSnapshotFacts + 1).Find(&rows).Error; err != nil {
 		return err
 	}
-	if len(rows) > reportingv1.MaxContributions {
+	if len(rows) > reportingv1.MaxSnapshotFacts {
 		return ErrReportingBudget
 	}
 	for _, r := range rows {
@@ -449,10 +449,10 @@ func exportReportingInvocations(db *gorm.DB, provider, sessionID string, generat
 	} else {
 		query = db.Table(provider+"_tool_events").Select("occurred_at_ms AS observed_at_ms,'tool' AS kind,tool_name AS name,outcome").Where("external_session_id = ?", sessionID).Order("occurred_at_ms,event_id")
 	}
-	if err := query.Limit(reportingv1.MaxContributions + 1).Find(&rows).Error; err != nil {
+	if err := query.Limit(reportingv1.MaxSnapshotFacts + 1).Find(&rows).Error; err != nil {
 		return err
 	}
-	if len(rows) > reportingv1.MaxContributions {
+	if len(rows) > reportingv1.MaxSnapshotFacts {
 		return ErrReportingBudget
 	}
 	ordinal := make(map[string]int64)
@@ -465,7 +465,7 @@ func exportReportingInvocations(db *gorm.DB, provider, sessionID string, generat
 			s.Invocations = append(s.Invocations, i)
 		}
 	}
-	if len(s.Contributions)+len(s.Invocations) > reportingv1.MaxContributions {
+	if len(s.Contributions)+len(s.Invocations) > reportingv1.MaxSnapshotFacts {
 		return ErrReportingBudget
 	}
 	return nil

@@ -43,3 +43,23 @@ bin/codex-pulse-server --config "$PWD/config/development.local.yml" db bootstrap
 完整授权步骤见[首次浏览器授权](../README.md#首次浏览器授权与访问恢复)。日常升级只替换二进制并重启；保留常规数据库备份。`db check`、`db init` 与 `db upgrade` 保留为诊断和受控运维入口。
 
 `server/.gitignore` 忽略 `config/*.local.*`，包括本地配置副本；镜像构建上下文也排除这些文件。真实地址、账密和环境配置不要写回 `*.example.yml` 或提交到 Git。DEV 数据库与跨机验证结果见[验证记录](../../docs/test/multi-machine-reporting.md)，正式环境是否上线须单独验收。
+
+## Prometheus 采集
+
+`server.metrics: true` 开启 `/metrics`。使用 `server.metricsTokenFile`（或 `APP_SERVER_METRICSTOKENFILE`）指定本机私有的普通文件，权限 0600，内容为 32–256 位高熵 Token；部署时从密钥管理配置，不写进 YAML、仓库或日志。无有效文件时不能使用 Bearer 采集，仅已有管理员浏览器 Cookie 可读；配置文件不可读、权限不符或长度不符会阻止服务启动。此专用凭据只能 GET/HEAD `/metrics`，不能读取管理数据、提交事实或使用采集设备 API。改 Token 文件后重启加载；Cookie 授权和设备凭证保持独立。
+
+Prometheus 配置示例（目标替换为真实私网/HTTPS 入口，Token 文件位于采集器所在机器）：
+
+```yaml
+scrape_configs:
+  - job_name: codex-pulse-center
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets: ["pulse.internal:18090"]
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/codex-pulse-center-token
+```
+
+HTTPS 入口配置 `scheme: https` 并使用正确 CA，不关闭证书校验。暴露 HTTP 请求/错误/时延、Go/process、数据库连接池与等待、上传请求/失败/时延，以及每个设备 Provider 的最后接收/原采集时间、待传快照和同步健康。设备健康仅在最近 15 分钟收到 ready 同步检查时为 1；旧 App 缺少检查时间时保持 0。抓取只扫描最多 3,000 条设备状态，不读取用量历史；数据库查询失败用 `pulse_metrics_database_up 0` 显示。标签不含邮箱、标题、路径或凭据，HTTP 路径与方法归一化。计数是上传请求数，包含幂等重试，不是新增用量。Token/费用/账号额度业务指标未纳入本次运维指标范围。

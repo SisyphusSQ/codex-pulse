@@ -2,7 +2,11 @@ package http
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -22,9 +26,11 @@ import (
 )
 
 type EchoMiddleware struct {
-	config  config.Config
-	access  *access_srv.Access
-	pairing *pairingLimiter
+	config            config.Config
+	access            *access_srv.Access
+	pairing           *pairingLimiter
+	metricsDigest     [32]byte
+	metricsCredential bool
 }
 
 var validRequestID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
@@ -107,6 +113,14 @@ func (e *EchoMiddleware) Auth(next echo.HandlerFunc) echo.HandlerFunc {
 		if (request.Method == http.MethodGet || request.Method == http.MethodHead) && (c.Path() == "/" || c.Path() == "/assets/*") {
 			return next(c)
 		}
+		if e.config.Server.Metrics && request.URL.Path == "/metrics" && (request.Method == http.MethodGet || request.Method == http.MethodHead) && request.Header.Get("Authorization") != "" {
+			credential, ok := strings.CutPrefix(request.Header.Get("Authorization"), "Bearer ")
+			digest := sha256.Sum256([]byte(credential))
+			if !ok || !e.metricsCredential || subtle.ConstantTimeCompare(digest[:], e.metricsDigest[:]) != 1 {
+				return utils.ErrUnauthorized
+			}
+			return next(c)
+		}
 		origin, err := RequestOrigin(request, e.config)
 		if err != nil {
 			return err
@@ -170,4 +184,27 @@ func (e *EchoMiddleware) ErrorHandler(c *echo.Context, err error) {
 		log.FromContext(c.Request().Context()).Errorw("request failed", "status", status)
 	}
 	_ = c.JSON(status, vo.Response{Code: status, Message: message, RequestID: requestinfo.ID(c.Request().Context())})
+}
+
+// loadMetricsCredential 只加载专用只读采集密钥，绝不复用设备或浏览器凭据。
+func (e *EchoMiddleware) loadMetricsCredential() error {
+	path := e.config.Server.MetricsTokenFile
+	if !e.config.Server.Metrics || path == "" {
+		return nil
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() > 4096 {
+		return fmt.Errorf("metrics credential requires a private regular file")
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read metrics credential file failed")
+	}
+	token := strings.TrimSpace(string(body))
+	if len(token) < 32 || len(token) > 256 || strings.ContainsAny(token, " \r\n\t") {
+		return fmt.Errorf("metrics credential requires 32-256 non-whitespace characters")
+	}
+	e.metricsDigest = sha256.Sum256([]byte(token))
+	e.metricsCredential = true
+	return nil
 }

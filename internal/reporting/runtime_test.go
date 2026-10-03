@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -139,7 +140,11 @@ func TestDisableCancelsInflightUploadWithoutDroppingQueue(t *testing.T) {
 			close(started)
 		}
 		<-req.Context().Done()
-		close(released)
+		select {
+		case <-released:
+		default:
+			close(released)
+		}
 	}))
 	defer server.Close()
 	runtime := Start(state, source)
@@ -174,6 +179,18 @@ func TestRevocationPausesAndHomeMismatchNeverUploads(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				if req.URL.Path == "/api/v1/pair" {
 					testPairResponse(w)
+					return
+				}
+				if mismatch {
+					var batch reportingv1.Batch
+					if err := json.NewDecoder(req.Body).Decode(&batch); err != nil {
+						w.WriteHeader(400)
+						return
+					}
+					if len(batch.Sessions) > 0 {
+						uploads.Add(1)
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": reportingv1.Receipt{Version: 1, BatchID: batch.ID, ReceivedAtMS: 3000}})
 					return
 				}
 				uploads.Add(1)
@@ -316,5 +333,144 @@ func TestQuotaSyncLostReceiptKeepsAAfterAccountSwitchToB(t *testing.T) {
 	defer mu.Unlock()
 	if bodies["raw-a"][0] != bodies["raw-a"][1] {
 		t.Fatal("old A queue was rewritten after switch")
+	}
+}
+
+type blockedSessionSource struct{ quotaSyncSource }
+
+func (s *blockedSessionSource) Page(_ context.Context, provider, after string, _ int64) (ExportPage, error) {
+	if provider == "codex" {
+		return ExportPage{}, store.ErrReportingBudget
+	}
+	if provider == "cursor" && after == "" {
+		snap := testSnapshot()
+		snap.Provider = "cursor"
+		snap.SessionID = "cursor-session"
+		snap.Contributions[0].ID = reportingv1.ContributionID(snap.Provider, snap.SessionID, snap.Contributions[0], 0)
+		return ExportPage{Sessions: []reportingv1.SessionSnapshot{snap}, Next: snap.SessionID}, nil
+	}
+	return ExportPage{}, store.ErrReportingSource
+}
+func (s *blockedSessionSource) CurrentFacts(ctx context.Context, provider string, start int64) (ExportFactsPage, error) {
+	return s.Facts(ctx, provider, "", start)
+}
+func TestSessionFailureDoesNotBlockCurrentQuotaAndStatus(t *testing.T) {
+	state, _ := testState(t)
+	source := &blockedSessionSource{}
+	source.account.Store("confirmed-current")
+	var mu sync.Mutex
+	var received []reportingv1.Batch
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		var b reportingv1.Batch
+		if err := json.NewDecoder(req.Body).Decode(&b); err != nil {
+			w.WriteHeader(400)
+			return
+		}
+		mu.Lock()
+		received = append(received, b)
+		mu.Unlock()
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": reportingv1.Receipt{Version: 1, BatchID: b.ID, ReceivedAtMS: 3000}})
+	}))
+	defer server.Close()
+	runtime := &Runtime{state: state, source: source, ctx: t.Context(), version: "test"}
+	cfg := credentialSettings{ID: 1, Endpoint: server.URL, ClientID: "client", Credential: strings.Repeat("c", 43), AllowHTTP: true, Enabled: true, IntervalSeconds: 60}
+	if _, err := runtime.cycle(t.Context(), cfg); !errors.Is(err, store.ErrReportingBudget) {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	quota, status, otherProvider := false, false, false
+	for _, b := range received {
+		for _, snap := range b.Sessions {
+			if snap.Provider == "cursor" {
+				otherProvider = true
+			}
+		}
+		if len(b.Quotas) > 0 && b.Quotas[0].AccountID != nil && *b.Quotas[0].AccountID == "confirmed-current" {
+			quota = true
+		}
+		for _, st := range b.Status {
+			if st.Provider == "codex" && st.SyncState == "source_budget_exceeded" && st.SyncCheckedAtMS != nil {
+				status = true
+			}
+		}
+	}
+	if !quota || !status || !otherProvider || len(received[0].Quotas) == 0 {
+		t.Fatal("latest quota/status starved behind session", quota, status)
+	}
+}
+
+type fullTaskSource struct {
+	fakeSource
+	unavailable bool
+}
+
+func (s *fullTaskSource) Page(ctx context.Context, provider, after string, start int64) (ExportPage, error) {
+	if s.unavailable {
+		return ExportPage{}, store.ErrReportingSource
+	}
+	return s.fakeSource.Page(ctx, provider, after, start)
+}
+func (s *fullTaskSource) Status(_ context.Context, provider string, _ int64) (reportingv1.DeviceStatus, error) {
+	state := "ready"
+	if provider != "codex" {
+		state = "disabled"
+	}
+	return reportingv1.DeviceStatus{Provider: provider, Status: state}, nil
+}
+func TestFullTaskWaitsForAvailableSourceAndReportsCompletion(t *testing.T) {
+	for _, unavailable := range []bool{true, false} {
+		t.Run(fmt.Sprint(unavailable), func(t *testing.T) {
+			state, _ := testState(t)
+			source := &fullTaskSource{unavailable: unavailable}
+			var completed bool
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				var b reportingv1.Batch
+				if err := json.NewDecoder(req.Body).Decode(&b); err != nil {
+					w.WriteHeader(400)
+					return
+				}
+				for _, st := range b.Status {
+					if st.FullSyncState == "completed" {
+						completed = true
+					}
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": reportingv1.Receipt{Version: 1, BatchID: b.ID, ReceivedAtMS: 3000}})
+			}))
+			defer server.Close()
+			cfg := credentialSettings{ID: 1, Endpoint: server.URL, ClientID: "client", Credential: strings.Repeat("c", 43), AllowHTTP: true, Enabled: true, IntervalSeconds: 60}
+			if err := state.saveSettings(t.Context(), cfg); err != nil {
+				t.Fatal(err)
+			}
+			if err := state.startFullSync(t.Context(), cfg.partition()); err != nil {
+				t.Fatal(err)
+			}
+			runtime := &Runtime{state: state, source: source, ctx: t.Context(), version: "test"}
+			for range 4 {
+				again, err := runtime.cycle(t.Context(), cfg)
+				if unavailable {
+					if !errors.Is(err, store.ErrReportingSource) {
+						t.Fatal("partial source did not retain task", err)
+					}
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !again {
+					break
+				}
+			}
+			status, err := state.Status(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if unavailable && (status.FullSyncState != "running" || completed) {
+				t.Fatal("incomplete task marked complete")
+			}
+			if !unavailable && (status.FullSyncState != "completed" || !completed) {
+				t.Fatal("completion not delivered to center")
+			}
+		})
 	}
 }

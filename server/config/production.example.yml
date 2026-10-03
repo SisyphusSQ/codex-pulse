@@ -5,6 +5,7 @@ contextTimeout: 10s
 
 server:
     metrics: false
+    metricsTokenFile: "" # Prometheus 专用只读 Token 文件，权限 0600；空值仅保留浏览器授权采集
     readinessTimeout: 2s
     address: "127.0.0.1:18090"
     readHeaderTimeout: 5s

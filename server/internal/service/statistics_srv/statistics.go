@@ -420,6 +420,7 @@ func (s *Statistics) Summary(ctx context.Context, p access_dto.Principal, q stat
 		result.HeatmapRange = statisticsRange(h)
 		result.HeatmapCoverage = annual.coverage(now)
 		annualTotals, _ := annual.total.finish(len(annual.providerSeen) > 0)
+		result.HeatmapTotals = annualTotals
 		result.HeatmapActivity = statisticsActivity(result.Heatmap, annualTotals.TotalTokens)
 		return nil
 	})

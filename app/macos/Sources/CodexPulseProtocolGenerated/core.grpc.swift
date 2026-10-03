@@ -553,6 +553,19 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
                 type: .unary
             )
         }
+        /// Namespace for "FullSyncReporting" metadata.
+        public enum FullSyncReporting: Sendable {
+            /// Request type for "FullSyncReporting".
+            public typealias Input = Codexpulse_Core_V1_Empty
+            /// Response type for "FullSyncReporting".
+            public typealias Output = Codexpulse_Core_V1_ReportingStatusResponse
+            /// Descriptor for "FullSyncReporting".
+            public static let descriptor = GRPCCore.MethodDescriptor(
+                service: GRPCCore.ServiceDescriptor(fullyQualifiedService: "codexpulse.core.v1.CoreService"),
+                method: "FullSyncReporting",
+                type: .unary
+            )
+        }
         /// Namespace for "Settings" metadata.
         public enum Settings: Sendable {
             /// Request type for "Settings".
@@ -804,6 +817,7 @@ public enum Codexpulse_Core_V1_CoreService: Sendable {
             PairReporting.descriptor,
             ConfigureReporting.descriptor,
             SyncReportingNow.descriptor,
+            FullSyncReporting.descriptor,
             Settings.descriptor,
             UpdateSettings.descriptor,
             PlanHomeSwitch.descriptor,
@@ -1615,6 +1629,25 @@ extension Codexpulse_Core_V1_CoreService {
         ///       hasn't already finished.
         /// - Returns: The result of `handleResponse`.
         func syncReportingNow<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_Empty>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_Empty>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_ReportingStatusResponse>,
+            options: GRPCCore.CallOptions,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_ReportingStatusResponse>) async throws -> Result
+        ) async throws -> Result where Result: Sendable
+
+        /// Call the "FullSyncReporting" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_Empty` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_Empty` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_ReportingStatusResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        func fullSyncReporting<Result>(
             request: GRPCCore.ClientRequest<Codexpulse_Core_V1_Empty>,
             serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_Empty>,
             deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_ReportingStatusResponse>,
@@ -3177,6 +3210,36 @@ extension Codexpulse_Core_V1_CoreService {
             )
         }
 
+        /// Call the "FullSyncReporting" method.
+        ///
+        /// - Parameters:
+        ///   - request: A request containing a single `Codexpulse_Core_V1_Empty` message.
+        ///   - serializer: A serializer for `Codexpulse_Core_V1_Empty` messages.
+        ///   - deserializer: A deserializer for `Codexpulse_Core_V1_ReportingStatusResponse` messages.
+        ///   - options: Options to apply to this RPC.
+        ///   - handleResponse: A closure which handles the response, the result of which is
+        ///       returned to the caller. Returning from the closure will cancel the RPC if it
+        ///       hasn't already finished.
+        /// - Returns: The result of `handleResponse`.
+        public func fullSyncReporting<Result>(
+            request: GRPCCore.ClientRequest<Codexpulse_Core_V1_Empty>,
+            serializer: some GRPCCore.MessageSerializer<Codexpulse_Core_V1_Empty>,
+            deserializer: some GRPCCore.MessageDeserializer<Codexpulse_Core_V1_ReportingStatusResponse>,
+            options: GRPCCore.CallOptions = .defaults,
+            onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_ReportingStatusResponse>) async throws -> Result = { response in
+                try response.message
+            }
+        ) async throws -> Result where Result: Sendable {
+            try await self.client.unary(
+                request: request,
+                descriptor: Codexpulse_Core_V1_CoreService.Method.FullSyncReporting.descriptor,
+                serializer: serializer,
+                deserializer: deserializer,
+                options: options,
+                onResponse: handleResponse
+            )
+        }
+
         /// Call the "Settings" method.
         ///
         /// - Parameters:
@@ -4677,6 +4740,31 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
         }
     ) async throws -> Result where Result: Sendable {
         try await self.syncReportingNow(
+            request: request,
+            serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_Empty>(),
+            deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_ReportingStatusResponse>(),
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "FullSyncReporting" method.
+    ///
+    /// - Parameters:
+    ///   - request: A request containing a single `Codexpulse_Core_V1_Empty` message.
+    ///   - options: Options to apply to this RPC.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func fullSyncReporting<Result>(
+        request: GRPCCore.ClientRequest<Codexpulse_Core_V1_Empty>,
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_ReportingStatusResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        try await self.fullSyncReporting(
             request: request,
             serializer: GRPCProtobuf.ProtobufSerializer<Codexpulse_Core_V1_Empty>(),
             deserializer: GRPCProtobuf.ProtobufDeserializer<Codexpulse_Core_V1_ReportingStatusResponse>(),
@@ -6270,6 +6358,35 @@ extension Codexpulse_Core_V1_CoreService.ClientProtocol {
             metadata: metadata
         )
         return try await self.syncReportingNow(
+            request: request,
+            options: options,
+            onResponse: handleResponse
+        )
+    }
+
+    /// Call the "FullSyncReporting" method.
+    ///
+    /// - Parameters:
+    ///   - message: request message to send.
+    ///   - metadata: Additional metadata to send, defaults to empty.
+    ///   - options: Options to apply to this RPC, defaults to `.defaults`.
+    ///   - handleResponse: A closure which handles the response, the result of which is
+    ///       returned to the caller. Returning from the closure will cancel the RPC if it
+    ///       hasn't already finished.
+    /// - Returns: The result of `handleResponse`.
+    public func fullSyncReporting<Result>(
+        _ message: Codexpulse_Core_V1_Empty,
+        metadata: GRPCCore.Metadata = [:],
+        options: GRPCCore.CallOptions = .defaults,
+        onResponse handleResponse: @Sendable @escaping (GRPCCore.ClientResponse<Codexpulse_Core_V1_ReportingStatusResponse>) async throws -> Result = { response in
+            try response.message
+        }
+    ) async throws -> Result where Result: Sendable {
+        let request = GRPCCore.ClientRequest<Codexpulse_Core_V1_Empty>(
+            message: message,
+            metadata: metadata
+        )
+        return try await self.fullSyncReporting(
             request: request,
             options: options,
             onResponse: handleResponse

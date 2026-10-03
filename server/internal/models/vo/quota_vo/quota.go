@@ -9,18 +9,19 @@ type Account struct {
 	CollectedAtMS int64   `json:"collected_at_ms"`
 }
 type Current struct {
-	UsedPercent           *float64 `json:"used_percent"`
-	RemainingPercent      *float64 `json:"remaining_percent"`
-	WindowStartAtMS       *int64   `json:"window_start_at_ms"`
-	ResetsAtMS            *int64   `json:"resets_at_ms"`
-	ResetRemainingMS      *int64   `json:"reset_remaining_ms"`
-	ObservedAtMS          *int64   `json:"observed_at_ms"`
-	Freshness             string   `json:"freshness"`
-	Conflict              bool     `json:"conflict"`
-	Reason                string   `json:"reason"`
-	SelectedObservationID *string  `json:"selected_observation_id"`
-	SelectedClientID      *string  `json:"selected_client_id"`
-	Source                *string  `json:"source"`
+	UsedPercent              *float64 `json:"used_percent"`
+	RemainingPercent         *float64 `json:"remaining_percent"`
+	WindowStartAtMS          *int64   `json:"window_start_at_ms"`
+	ResetsAtMS               *int64   `json:"resets_at_ms"`
+	ResetRemainingMS         *int64   `json:"reset_remaining_ms"`
+	SnapshotResetRemainingMS *int64   `json:"snapshot_reset_remaining_ms"`
+	ObservedAtMS             *int64   `json:"observed_at_ms"`
+	Freshness                string   `json:"freshness"`
+	Conflict                 bool     `json:"conflict"`
+	Reason                   string   `json:"reason"`
+	SelectedObservationID    *string  `json:"selected_observation_id"`
+	SelectedClientID         *string  `json:"selected_client_id"`
+	Source                   *string  `json:"source"`
 }
 type Observation struct {
 	ID                 string   `json:"id"`
@@ -64,19 +65,21 @@ type CreditExpiry struct {
 	Count       int64  `json:"count,string"`
 }
 type Credits struct {
-	Key                string         `json:"key"`
-	Provider           string         `json:"provider"`
-	AccountKey         *string        `json:"account_key"`
-	ClientID           string         `json:"client_id"`
-	ObservedAtMS       int64          `json:"observed_at_ms"`
-	ObservedInventory  *int64         `json:"observed_inventory,string"`
-	AvailableInventory *int64         `json:"available_inventory,string"`
-	DetailsStatus      string         `json:"details_status"`
-	Freshness          string         `json:"freshness"`
-	Conflict           bool           `json:"conflict"`
-	NextResetAtMS      *int64         `json:"next_reset_at_ms"`
-	NextExpiresAtMS    *int64         `json:"next_expires_at_ms"`
-	ExpirySchedule     []CreditExpiry `json:"expiry_schedule"`
+	Key                        string         `json:"key"`
+	Provider                   string         `json:"provider"`
+	AccountKey                 *string        `json:"account_key"`
+	ClientID                   string         `json:"client_id"`
+	ObservedAtMS               int64          `json:"observed_at_ms"`
+	ObservedInventory          *int64         `json:"observed_inventory,string"`
+	AvailableInventory         *int64         `json:"available_inventory,string"`
+	SnapshotAvailableInventory *int64         `json:"snapshot_available_inventory,string"`
+	SnapshotNextExpiresAtMS    *int64         `json:"snapshot_next_expires_at_ms"`
+	DetailsStatus              string         `json:"details_status"`
+	Freshness                  string         `json:"freshness"`
+	Conflict                   bool           `json:"conflict"`
+	NextResetAtMS              *int64         `json:"next_reset_at_ms"`
+	NextExpiresAtMS            *int64         `json:"next_expires_at_ms"`
+	ExpirySchedule             []CreditExpiry `json:"expiry_schedule"`
 }
 type Response struct {
 	EvaluatedAtMS int64     `json:"evaluated_at_ms"`

@@ -16,8 +16,10 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	nativeapp "github.com/SisyphusSQ/codex-pulse/internal/app"
@@ -157,10 +159,15 @@ func TestNativeCoreReportingPairUploadRevokeAndClose(t *testing.T) {
 	if !confirmed {
 		t.Fatal("center did not record collector confirmation")
 	}
+	full, err := client.FullSyncReporting(ctx, &corev1.Empty{})
+	if err != nil || full.FullSyncState != "running" || full.HistoryStartAtMs != paired.HistoryStartAtMs {
+		t.Fatal("full resend RPC", full, err)
+	}
 	if got := request(server, "POST", origin, "/api/v1/clients/"+paired.ClientId+"/revoke", "{}", &browser, true); got.Code != 200 {
 		t.Fatal(got.Code)
 	}
-	if _, err := client.SyncReportingNow(ctx, &corev1.Empty{}); err != nil {
+	// The asynchronous upload may already have observed revocation before this command.
+	if _, err := client.SyncReportingNow(ctx, &corev1.Empty{}); err != nil && status.Code(err) != codes.Unavailable {
 		t.Fatal(err)
 	}
 	after := waitForStatus(func(value *corev1.ReportingStatusResponse) bool { return value.State == "reconnect_required" })

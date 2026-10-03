@@ -1,12 +1,27 @@
 package quota_srv
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
 	quota_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/quota_dto"
+	quota_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/quota_vo"
 )
+
+func TestCenterPaceWithoutConfirmedCurrentDoesNotInventSnapshot(t *testing.T) {
+	for _, identity := range []string{"confirmed", "unassigned"} {
+		window := quota_vo.Window{Key: "synthetic-window", IdentityState: identity, LimitID: "codex", WindowKind: "primary", Current: quota_vo.Current{Freshness: "never_loaded"}}
+		p, err := paceWindow(window, quotaNow)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if p.SnapshotAtMS != nil || p.Current.UsedPercent != nil || p.ElapsedPercent != nil || p.Forecast.State != "unavailable" || p.Forecast.UnknownReason == nil || len(p.CurrentPoints) != 0 {
+			t.Fatalf("missing quota became a snapshot: %#v", p)
+		}
+	}
+}
 
 func TestCenterPaceMatchesNativeForecastAndLegacyBaselineWithoutSyntheticSamples(t *testing.T) {
 	s, reporting, admin, clients := quotaFixture(t)
@@ -48,13 +63,36 @@ func TestCenterPaceMatchesNativeForecastAndLegacyBaselineWithoutSyntheticSamples
 	if len(p.CurrentPoints) != 4 || p.CurrentPoints[3].ObservedAtMS != base+10200000 || p.CurrentPoints[3].UsedPercent != 70 {
 		t.Fatal("legacy overrode confirmed point or invented now sample")
 	}
-	s.now = func() time.Time { return time.UnixMilli(quotaNow + 1) }
-	stale, err := s.Pace(t.Context(), admin, quota_dto.Query{})
+	if p.SnapshotAtMS == nil || *p.SnapshotAtMS != base+10200000 || *p.ElapsedPercent != 10200000.0/18000000*100 {
+		t.Fatal("pace did not use the last observation time")
+	}
+	for _, at := range []int64{quotaNow + 1, reset + 1, reset + 30*86400000} {
+		s.now = func() time.Time { return time.UnixMilli(at) }
+		snapshot, err := s.Pace(t.Context(), admin, quota_dto.Query{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := snapshot.Windows[0]
+		if snapshot.EvaluatedAtMS != at || *got.SnapshotAtMS != *p.SnapshotAtMS ||
+			*got.ElapsedPercent != *p.ElapsedPercent || *got.PaceDeltaPP != *p.PaceDeltaPP ||
+			!reflect.DeepEqual(got.Forecast, p.Forecast) || !reflect.DeepEqual(got.CurrentPoints, p.CurrentPoints) ||
+			!reflect.DeepEqual(got.PreviousRemainingAtElapsed, p.PreviousRemainingAtElapsed) ||
+			!reflect.DeepEqual(got.HistoryMedianRemainingAtElapsed, p.HistoryMedianRemainingAtElapsed) {
+			t.Fatal("polling time changed the last observed snapshot")
+		}
+		if got.Current.Freshness == "fresh" || got.Current.ResetRemainingMS != nil {
+			t.Fatal("snapshot was incorrectly upgraded to a fresh current observation")
+		}
+	}
+	s.now = func() time.Time { return time.UnixMilli(quotaNow) }
+	newObservation := quotaFact("next-update", "raw-a", 75, quotaNow-300000, reset)
+	sendQuota(t, reporting, clients[0], reportingv1.Batch{Quotas: []reportingv1.QuotaObservation{newObservation}})
+	next, err := s.Pace(t.Context(), admin, quota_dto.Query{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stale.Windows[0].Forecast.State != "unavailable" || stale.Windows[0].Forecast.UnknownReason == nil || *stale.Windows[0].Forecast.UnknownReason != "evidence_stale" || len(stale.Windows[0].CurrentPoints) != 4 {
-		t.Fatal("stale forecast or erased curve")
+	if *next.Windows[0].SnapshotAtMS != newObservation.ObservedAtMS || *next.Windows[0].Current.UsedPercent != 75 || len(next.Windows[0].CurrentPoints) != 5 {
+		t.Fatal("new observation did not advance the snapshot")
 	}
 }
 func TestCenterPaceSparseConflictAndDecreasingCurve(t *testing.T) {

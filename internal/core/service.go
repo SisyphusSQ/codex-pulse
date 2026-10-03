@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	ContractVersion        = "core-rpc-v8"
+	ContractVersion        = "core-rpc-v9"
 	ProviderControlVersion = "provider-control-v1"
 )
 
@@ -369,6 +369,7 @@ var methodAllowlist = []MethodInfo{
 	{Name: "PairReporting", Kind: MethodCommand},
 	{Name: "ConfigureReporting", Kind: MethodCommand},
 	{Name: "SyncReportingNow", Kind: MethodCommand},
+	{Name: "FullSyncReporting", Kind: MethodCommand},
 	{Name: "Contracts", Kind: MethodQuery},
 	{Name: "AccountSnapshot", Kind: MethodQuery},
 	{Name: "ListCodexSubscriptionAccounts", Kind: MethodQuery},
@@ -429,7 +430,7 @@ func (service *Service) Contracts() ContractInfo {
 			ProviderControlVersion:           ProviderControlVersion,
 			Methods:                          append([]MethodInfo(nil), methodAllowlist...),
 			CommandMethods: []string{
-				"PairReporting", "ConfigureReporting", "SyncReportingNow",
+				"PairReporting", "ConfigureReporting", "SyncReportingNow", "FullSyncReporting",
 				"RequestQuotaRefresh", "RequestProviderRefresh", "UpdateAPICredential", "UpdateSettings", "PlanHomeSwitch", "ConfirmHomeSwitch",
 				"RecoverHomeSwitch", "RunRuntimeAction", "AnalyzeSessionIndexRepair",
 				"CreateCodexSubscriptionAccount", "UpdateCodexSubscriptionAccount", "DeleteCodexSubscriptionAccount", "LinkCodexSubscriptionAccount", "UnlinkCodexSubscriptionAccount",

@@ -1,6 +1,6 @@
 # 中心上报协议 v1
 
-这是独立的 HTTPS/私网 HTTP 白名单 contract。身份来自 Pulse 配对凭证，payload 不声明客户端 ID、角色或执行设备。CoreService 仍仅用于本机 Swift/Helper UDS，新增本机同步 RPC 后精确握手版本为 `core-rpc-v8`；中心上报保持独立协议 v1。
+这是独立的 HTTPS/私网 HTTP 白名单 contract。身份来自 Pulse 配对凭证，payload 不声明客户端 ID、角色或执行设备。CoreService 仍仅用于本机 Swift/Helper UDS，新增本机同步 RPC 后精确握手版本为 `core-rpc-v9`；中心上报保持独立协议 v1。
 
 `POST /api/v1/pair` 以一次性采集码换取凭证，`POST /api/v1/batches` 发送持久批次；响应使用 Server 的 `code/data/request_id` envelope。Receipt 的版本、batch_id 和接收时间必须全部有效，本机才推进确认进度。设备凭证只在 Authorization Header 使用。
 
@@ -32,11 +32,11 @@ Cursor/Grok 当前受支持配额链路没有可验证的原始账号关系，�
 
 Reset Credits 上传库存、详情状态、按到期时间汇总的 `expiry_schedule` 和 `next_expires_at_ms`；不含 raw credit ID、请求 ID、响应或 source file。到期时间与 `next_reset_at_ms` 分开，没有已知 reset 时保持 NULL；完整详情的可用数量必须与库存对账。
 
-账号资料与事实各自计算 checkpoint，整页变更在同一事务中打包入队。分区包含 Home、已确认关系和显式历史关联 revision；前后分区不一致则不推进游标。同步库 schema 2 显式升级 schema 1，保留盐、revision、游标、凭证及原队列。
+账号资料与事实各自计算 checkpoint，整页变更在同一事务中打包入队。分区包含 Home、已确认关系和显式历史关联 revision；前后分区不一致则不推进游标。同步库 schema 3 显式升级 schema 1/2，保留盐、revision、游标、凭证及原队列。
 
 ## 预算
 
-每请求最多 8 MiB；最多 32 个 Session 快照、32 个账号/关联、1,000 个配额观测、100 个 Reset Credits 记录、3 个 Provider 状态。每快照最多 20,000 条用量与调用事实之和。时间限制在 JavaScript 安全整数范围，Token/金额使用十进制字符串保留 int64 精度和 NULL/零差异。未知字段、重复字段与非法枚举由接收端拒绝，错误不回显内容。
+每请求最多 8 MiB；最多 32 个 Session 快照、32 个账号/关联、1,000 个配额观测、100 个 Reset Credits 记录、3 个 Provider 状态。每个传输片段最多 20,000 条用量与调用事实之和；完整快照最多 200,000 条事实 / 64 MiB（包括片段重复元数据），最多 256 个片段。时间限制在 JavaScript 安全整数范围，Token/金额使用十进制字符串保留 int64 精度和 NULL/零差异。未知字段、重复字段与非法枚举由接收端拒绝，错误不回显内容。
 
 本协议首次发布前仍与实现同时演进，当前版本没有已发布的跨版本兼容承诺；正式发布后改动须设计升级与版本拒绝语义。
 
@@ -65,3 +65,15 @@ Codex light_index 快照可选 throughput version 1 / basis closed_turn_lifetime
 Codex light_index 可选 cache_usage version=1 / basis=lifetime_cached_input，仅含整段 input_tokens/cached_input_tokens 的 nullable 十进制计数和有限缺失原因。已知计数与全部安全贡献对账；历史起点非零仅返回 history_filtered，不附范围外总量。无活动统计返回 rollup_missing。缓存大于输入保留计数，由中心显示不可用，不破坏其他事实。
 
 capsule-only 变化产生持久新 revision，重启续传相同正文；metadata fence 和 tombstone 均去掉指标。未知版本 426，未知字段 400，旧 Server 拒绝时队列保留。先升级中心，再升级 App；旧 App 未上报保持未知。参见 [设计](../../../../docs/design/details/multi-machine-reporting/cache-hit-rate.md)。
+
+## 大快照分片与全量补传（TOO-523）
+
+快照在保留全局 Contribution/Invocation ID 后拆分，所有片段使用相同来源、revision、采集时间与 capsule。`chunk` 携带从 0 开始的 index、count、完整 SHA-256、完整贡献/调用计数。Helper 按最多 1,000 条事实切片，原子预留整个 revision 与全部不可变批次；每个请求仍不超过 8 MiB。只有全部片段确认后才推进 acknowledged_revision。
+
+中心按已鉴权设备、来源与 revision 暂存片段；每设备暂存上限为 2,048 片 / 256 MiB，单快照 64 MiB。重复 batch 返回原确认；同片段不同内容、同版本不同清单返回 409。收齐后校验相同元数据、完整计数、摘要、稳定 ID 和完整 capsule，成功才在同一事务替换来源与投影并清理暂存。未收齐、损坏、乱序或进程重启不会暴露半份快照。新 revision 清理旧的未完成片段；过旧 revision 不覆盖当前事实。
+
+最新 quota/Credits 独立于历史游标提取，在队列中优先于历史和 Session；某个 Provider 的导出失败不阻塞其他 Provider、账号事实和状态上报。`sync_state` 仅传有限错误枚举，`sync_checked_at_ms` 保留真实检查时间；采集时间与中心接收时间不被混用，linked_history 仍不是当前额度。
+
+CoreService 新增 `FullSyncReporting(Empty)`，精确握手为 core-rpc-v9。手动全量补传重新导出当前已保存起点内的索引事实，清除本机去重摘要与导出游标，保留 revision、稳定事实 ID 和所有旧待传正文；不清空中心、不重扫 JSONL、不扩大范围。任务开始时间、排入快照数、确认批次数及 running/completed 持久保存在私有 reporting.db；关闭同步或退出 App 暂停，下次启用/启动续传。连续重复点击返回同一运行任务。状态中的 full_sync_state 供中心只读展示，无远程触发 API。
+
+先升级中心再升级 App。中心仍接收不带分片/同步扩展的 v1 旧批次；旧中心对未知字段返回 400 时，新 App 暂停并保留队列，不截断事实。中心结构 v3 的新增表与已确认 v1/v2 自动升级步骤随 Server 交付；生产升级与真实 MySQL 验证另行执行。

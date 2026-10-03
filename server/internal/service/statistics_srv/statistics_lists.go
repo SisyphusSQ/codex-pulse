@@ -282,7 +282,7 @@ func (s *Statistics) Devices(ctx context.Context, p access_dto.Principal) (out [
 				if st.ClientID != c.ID {
 					continue
 				}
-				view.Providers = append(view.Providers, statistics_vo.StatisticsDeviceProvider{Provider: st.Provider, Version: st.Version, CollectedAtMS: st.CollectedAtMS, CoverageStartMS: st.CoverageStartMS, CoverageEndMS: st.CoverageEndMS, PendingBatches: st.PendingBatches, Status: st.Status, ReceivedAtMS: st.ReceivedAtMS, Stale: st.CollectedAtMS == nil || now-*st.CollectedAtMS > int64(15*60*1000)})
+				view.Providers = append(view.Providers, statistics_vo.StatisticsDeviceProvider{SyncState: st.SyncState, SyncCheckedAtMS: st.SyncCheckedAtMS, FullSyncState: st.FullSyncState, Provider: st.Provider, Version: st.Version, CollectedAtMS: st.CollectedAtMS, CoverageStartMS: st.CoverageStartMS, CoverageEndMS: st.CoverageEndMS, PendingBatches: st.PendingBatches, Status: st.Status, ReceivedAtMS: st.ReceivedAtMS, Stale: st.CollectedAtMS == nil || now-*st.CollectedAtMS > int64(15*60*1000)})
 			}
 			out = append(out, view)
 		}

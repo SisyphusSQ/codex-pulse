@@ -28,7 +28,16 @@ func optionalText(value *string, max int) bool { return value == nil || text(*va
 func optionalID(value *string, max int) bool   { return value == nil || identifier(*value, max) }
 
 // Validate 固定业务字段的预算与语义，传输解码另行拒绝未知及重复字段。
-func (b Batch) Validate() error {
+func (b Batch) Validate() error { return b.validate(MaxContributions) }
+
+// ValidateSnapshot 校验收齐后的完整快照，片段仍受单批预算约束。
+func ValidateSnapshot(s SessionSnapshot) error {
+	if s.Chunk != nil {
+		return ErrInvalid
+	}
+	return (Batch{Version: Version, ID: "00000000-0000-0000-0000-000000000000", Sessions: []SessionSnapshot{s}}).validate(MaxSnapshotFacts)
+}
+func (b Batch) validate(factBudget int) error {
 	if b.Version != Version {
 		return ErrVersion
 	}
@@ -40,7 +49,10 @@ func (b Batch) Validate() error {
 	}
 	seen := make(map[string]bool)
 	for _, snapshot := range b.Sessions {
-		if !provider(snapshot.Provider) || !slices.Contains([]string{"", "light_index", "strict_index", "cursor_local", "cursor_dashboard", "grok_local"}, snapshot.SourceKind) || !slices.Contains([]string{"", "session", "unassigned_usage"}, snapshot.SessionKind) || !identifier(snapshot.HomeID, 128) || !identifier(snapshot.SessionID, 255) || snapshot.Revision <= 0 || !timestamp(snapshot.CollectedAtMS) || !timestamp(snapshot.HistoryStartAtMS) || !text(snapshot.Title, 512) || !identifier(snapshot.ProjectID, 255) || !text(snapshot.ProjectName, 255) || !optionalTimestamp(snapshot.CreatedAtMS) || !optionalTimestamp(snapshot.LastActiveAtMS) || len(snapshot.Contributions)+len(snapshot.Invocations) > MaxContributions {
+		if !provider(snapshot.Provider) || !slices.Contains([]string{"", "light_index", "strict_index", "cursor_local", "cursor_dashboard", "grok_local"}, snapshot.SourceKind) || !slices.Contains([]string{"", "session", "unassigned_usage"}, snapshot.SessionKind) || !identifier(snapshot.HomeID, 128) || !identifier(snapshot.SessionID, 255) || snapshot.Revision <= 0 || !timestamp(snapshot.CollectedAtMS) || !timestamp(snapshot.HistoryStartAtMS) || !text(snapshot.Title, 512) || !identifier(snapshot.ProjectID, 255) || !text(snapshot.ProjectName, 255) || !optionalTimestamp(snapshot.CreatedAtMS) || !optionalTimestamp(snapshot.LastActiveAtMS) || len(snapshot.Contributions)+len(snapshot.Invocations) > factBudget {
+			return ErrInvalid
+		}
+		if snapshot.Chunk != nil && !validChunk(snapshot) {
 			return ErrInvalid
 		}
 		key := Key(snapshot.Provider, snapshot.HomeID, snapshot.SessionID)
@@ -89,13 +101,13 @@ func (b Batch) Validate() error {
 		if snapshot.Throughput != nil && snapshot.Throughput.Version != 1 {
 			return ErrVersion
 		}
-		if !validThroughput(snapshot) {
+		if snapshot.Chunk == nil && !validThroughput(snapshot) {
 			return ErrInvalid
 		}
 		if snapshot.CacheUsage != nil && snapshot.CacheUsage.Version != 1 {
 			return ErrVersion
 		}
-		if !validCacheUsage(snapshot) {
+		if snapshot.Chunk == nil && !validCacheUsage(snapshot) {
 			return ErrInvalid
 		}
 	}
@@ -193,6 +205,9 @@ func (b Batch) Validate() error {
 			return ErrInvalid
 		}
 		statusSeen[s.Provider] = true
+		if !slices.Contains([]string{"", "ready", "partial", "source_budget_exceeded", "source_unavailable", "queue_full", "protocol_rejected", "storage_unavailable"}, s.SyncState) || !optionalTimestamp(s.SyncCheckedAtMS) || !slices.Contains([]string{"", "running", "completed"}, s.FullSyncState) {
+			return ErrInvalid
+		}
 		if !provider(s.Provider) || !text(s.Version, 64) || !optionalTimestamp(s.CollectedAtMS) || !optionalTimestamp(s.CoverageStartMS) || !optionalTimestamp(s.CoverageEndMS) || s.PendingBatches < 0 || !slices.Contains([]string{"ready", "partial", "disabled", "reconnect_required", "queue_full", "source_unavailable"}, s.Status) {
 			return ErrInvalid
 		}

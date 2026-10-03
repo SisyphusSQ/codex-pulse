@@ -10,9 +10,9 @@ import (
 )
 
 // Version 只在已交付结构发生有意升级时递增。
-const Version int64 = 2
+const Version int64 = 3
 
-//go:embed center_mysql.sql center_sqlite.sql
+//go:embed center_mysql.sql center_sqlite.sql v3_mysql.sql v3_sqlite.sql
 var files embed.FS
 
 // Definition 返回受控 dialect 的 SQL、摘要以及从 SQL 提取的表字段清单。
@@ -24,6 +24,11 @@ func Definition(driver string) ([]string, string, map[string][]string, error) {
 	if err != nil {
 		return nil, "", nil, err
 	}
+	addition, err := files.ReadFile("v3_" + driver + ".sql")
+	if err != nil {
+		return nil, "", nil, err
+	}
+	content = append(content, addition...)
 	sum := sha256.Sum256(content)
 	var lines []string
 	columns := make(map[string][]string)
