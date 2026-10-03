@@ -240,7 +240,8 @@ WORKFLOW="$REPO_ROOT/.github/workflows/ci.yml"
 grep -Eq '^  contents: read$' "$WORKFLOW" || fail CI-001 "$WORKFLOW" "workflow must be read-only"
 grep -Eq '^    runs-on: macos-15$' "$WORKFLOW" || fail CI-001 "$WORKFLOW" "workflow runner must be macos-15"
 grep -Eq '^        run: make verify$' "$WORKFLOW" || fail CI-001 "$WORKFLOW" "workflow must run make verify"
-if grep -Ein 'setup-node|npm |wails|sparkle|notarytool|gh release|git tag|contents: write|write-all|secrets\.|github\.token|GITHUB_TOKEN' "$WORKFLOW" >/dev/null; then
+# Node is required only by the independent embedded center Web build.
+if grep -Ein 'wails|sparkle|notarytool|gh release|git tag|contents: write|write-all|secrets\.|github\.token|GITHUB_TOKEN' "$WORKFLOW" >/dev/null; then
   fail CI-001 "$WORKFLOW" "workflow contains removed UI tooling or privileged/publishing behavior"
 fi
 
