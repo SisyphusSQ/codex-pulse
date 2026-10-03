@@ -1,0 +1,24 @@
+# Server 镜像只接收模块与构建资源，排除运行材料和原生打包产物。
+**
+!go.mod
+!go.sum
+!api/
+!api/**
+!internal/
+!internal/**
+!server/
+!server/**
+**/.artifacts/**
+**/.runtime/**
+**/node_modules/**
+**/web/dist/**
+**/bin/**
+**/logs/**
+**/*.log
+**/*.db*
+**/*.sqlite*
+**/.env*
+**/*local*.yml
+**/*test*.yml
+server/.agents/**
+server/config/*.local.*

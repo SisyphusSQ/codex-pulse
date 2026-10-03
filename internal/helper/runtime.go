@@ -12,12 +12,13 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+
 	"github.com/SisyphusSQ/codex-pulse/internal/app"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 )
 
 const (
@@ -161,6 +162,7 @@ func applicationConfig(
 	broker *core.InvalidationBroker,
 ) app.Config {
 	return app.Config{
+		HelperVersion:    config.HelperVersion,
 		Broker:           broker,
 		Store:            storesqlite.Config{Path: config.DatabasePath},
 		PreferencesPath:  config.PreferencesPath,

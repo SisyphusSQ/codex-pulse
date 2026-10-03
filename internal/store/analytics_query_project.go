@@ -3,9 +3,10 @@ package store
 import (
 	"context"
 	"errors"
-	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 
 	"gorm.io/gorm"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
 )
 
 const projectAnalyticsGroupSelect = `

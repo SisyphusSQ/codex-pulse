@@ -3,11 +3,12 @@ package store
 import (
 	"context"
 	"errors"
-	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	"sort"
 	"strings"
 
 	"gorm.io/gorm"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 )
 
 // HealthEvent 返回 fingerprint 聚合后的完整生命周期。

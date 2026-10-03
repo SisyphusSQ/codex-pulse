@@ -7,8 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 	"google.golang.org/protobuf/reflect/protoreflect"
+
+	corev1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/core/v1"
 )
 
 // 测试 CoreService contract 在迁移场景下暴露完整业务面，并排除桌面平台职责。
@@ -26,6 +27,8 @@ func TestCoreProtoExposesExactRPCSurface(t *testing.T) {
 	sort.Strings(got)
 	want := []string{
 		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "Bootstrap", "ConfirmHomeSwitch", "Contracts", "CreateCodexSubscriptionAccount", "DataHealth",
+		"ReportingStatus", "PairReporting", "ConfigureReporting", "SyncReportingNow",
+		"ListCodexAccountQuotas", "ClearCodexAccountQuotaHistory", "LinkLegacyQuotaHistory", "UnlinkLegacyQuotaHistory",
 		"DashboardSummary", "DeleteCodexSubscriptionAccount",
 		"Handshake", "Health", "HealthProjection", "InvocationUsage", "Job", "LinkCodexSubscriptionAccount", "ListCodexSubscriptionAccounts", "ListHealth", "ListJobs", "ListProjects",
 		"ListSessions", "ListSources", "MigrationRecoveryCancel", "MigrationRecoveryConfirm",

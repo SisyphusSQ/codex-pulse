@@ -20,6 +20,8 @@ HMAC-SHA256(安装级随机密钥, domain-separated accountId) → 64 位 lowerc
 
 原始 `accountId`、token、JWT、Reset Credit 原始 ID 和真实邮箱不得进入数据库、日志、错误、Proto 或测试产物。所有在线 schedule、claim、attempt、writer、query、Proto 和 Swift 组合都必须携带并校验 `(account_scope, binding_generation)`。进入 `pending` / `signed_out` / `identity_unavailable` 时先递增 generation，使旧请求永久失效。writer fence 在最终 SQLite 写事务内部执行。
 
+[多机中心服务最终方案](../multi-machine-reporting/README.md) 已记录用户允许上报原始账号 ID、邮箱及配额/reset 的数据边界；当前账号 scope 仍用于本机隔离。已实现的受保护同步队列、上报 DTO 与中心存储采用独立边界，不默认扩大本机 Proto 或日志白名单；账号 fence、last-known-good 与 Home 级用量口径继续保留。中心使用 confirmed 原始账号身份，不能把当前 HMAC scope 当作跨机器账号键。
+
 本地 Session、Token、项目、趋势和成本继续按当前 Codex Home 聚合，不增加账号级归因或筛选。这是两条不同口径：
 
 | 对象 | 口径 |

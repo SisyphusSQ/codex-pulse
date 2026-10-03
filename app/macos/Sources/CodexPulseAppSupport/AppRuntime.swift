@@ -873,6 +873,22 @@ public actor AppRuntime {
         try await performRead { try await $0.settings(retryPolicy: .transportDefault) }
     }
 
+    public func reportingStatus() async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        try await performRead { try await $0.reportingStatus(retryPolicy: .transportDefault) }
+    }
+
+    public func pairReporting(_ request: Codexpulse_Core_V1_PairReportingRequest) async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        try await performMutation { try await $0.pairReporting(request) }
+    }
+
+    public func configureReporting(_ request: Codexpulse_Core_V1_ConfigureReportingRequest) async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        try await performMutation { try await $0.configureReporting(request) }
+    }
+
+    public func syncReportingNow() async throws -> Codexpulse_Core_V1_ReportingStatusResponse {
+        try await performMutation { try await $0.syncReportingNow() }
+    }
+
     public func updateSettings(
         _ request: Codexpulse_Core_V1_UpdateSettingsRequest
     ) async throws -> Codexpulse_Core_V1_SettingsUpdateReceipt {

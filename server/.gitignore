@@ -1,0 +1,61 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+.idea
+.vscode
+.cursor
+
+*/logs/
+
+*.log
+
+bin/*
+# Base
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*.log
+logs/
+tmp/
+temp/
+**/output/
+
+# Project-local runtime summaries and execution records
+.agents/state/*
+!.agents/state/TEMPLATE.md
+.agents/runs/*
+!.agents/runs/TEMPLATE.md
+
+# Cursor project rules are commit-safe; other Cursor files stay local by default.
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/*.mdc
+
+# Go
+bin/
+/build/
+*.test
+*.out
+coverage.out
+coverage.html
+
+.runtime/
+# 含环境地址与 MySQL 账密的本地配置；只提交 *.example.yml 模板。
+/config/*.local.*
+web/node_modules/
+web/dist/

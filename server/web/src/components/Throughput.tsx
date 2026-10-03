@@ -1,0 +1,20 @@
+import { Alert, Card, Select, Statistic, Table, Tag, Tooltip, Typography } from 'antd';
+import type { ThroughputStats, ThroughputTurns } from '../api/records';
+import { dateTime, integer, tokens } from '../format';
+
+export const throughputReasons:Record<string,string>={not_reported:'来源尚未上报 TPS',unsupported_provider:'此 Provider 暂无同口径 TPS',index_pending:'等待本机增量补采',index_incomplete:'本机索引尚未追平',incomplete_coverage:'仅包含可计算轮次',source_conflict:'不同来源的 TPS 证据存在冲突',no_closed_turns:'尚无可计算的已结束轮次',missing_facts:'缺少可靠的输出或时间事实',open_turn:'轮次尚未结束',inherited_history:'继承历史，无法确认独立 TPS',state_limit:'超出支持的轮次预算',numeric_overflow:'指标超出定点数值范围',history_filtered:'上报历史范围受限，无法给出生命周期 TPS'};
+const durationSources:Record<string,string>={duration_ms:'日志毫秒耗时',log_timestamp:'毫秒起止时间',source_seconds:'秒级起止时间',mixed:'混合时间证据'};
+export function tps(value:string|null|undefined):string{if(value==null)return '--';const hundredths=(BigInt(value)+5n)/10n;return `${integer((hundredths/100n).toString())}.${(hundredths%100n).toString().padStart(2,'0')}`;}
+export function activeDuration(value:string|null|undefined):string{if(value==null)return '未知';const n=BigInt(value);return `${integer((n/1000n).toString())}.${(n%1000n).toString().padStart(3,'0')} 秒`;}
+export function ThroughputCell({value}:{value?:ThroughputStats|null}){return <Tooltip title={value?.reason?throughputReasons[value.reason]??'指标暂不可用':'整个会话活跃期间的平均输出速度'}><span className="numeric"><strong>{tps(value?.average_output_milli_tps)}{value?.average_output_milli_tps!=null?' TPS':''}</strong>{value?.status==='partial'&&<Tag color={value.conflict?'red':'gold'}>部分数据</Tag>}</span></Tooltip>;}
+export function ThroughputPanel({value,turns,zone,sourceName,onLimit}:{value?:ThroughputStats|null;turns?:ThroughputTurns;zone:string;sourceName?:string;onLimit(limit:number):void}){
+ return <Card title="会话活跃期间平均输出 TPS" className="section-card"><Typography.Paragraph type="secondary">整个会话的已结束轮次输出量 / 活跃区间并集秒数。轮间空闲不计入，轮内思考、工具与等待计入；日期、模型筛选及下方轮次条数不改变这个生命周期平均值。</Typography.Paragraph>
+ <div className="metric-grid"><div><div className="metric-label">平均输出 TPS</div><Statistic aria-label="average-output-tps" value={tps(value?.average_output_milli_tps)} suffix={value?.average_output_milli_tps!=null?'TPS':undefined} />{value?.status==='partial'&&<Tag color={value.conflict?'red':'gold'}>部分数据</Tag>}{value?.reason&&<div className="metric-note">{throughputReasons[value.reason]??'指标暂不可用'}</div>}</div><div><div className="metric-label">参与统计的输出 Token</div><Statistic value={tokens(value?.output_tokens)} /></div><div><div className="metric-label">活跃时长</div><Statistic value={activeDuration(value?.active_duration_ms)} /></div></div>
+ <Typography.Paragraph type="secondary">参与 {integer(value?.included_turns)} 轮 · 排除 {integer(value?.excluded_turns)} 轮 · 未结束 {integer(value?.open_turns)} 轮 · 无归属事件 {integer(value?.unattributed_events)} · {durationSources[value?.duration_source??'']??'暂无时间证据'}{sourceName?` · 采集来源：${sourceName}`:''}</Typography.Paragraph>
+ {value?.conflict&&<Alert type="warning" showIcon title="来源 TPS 证据不一致" description="当前保留已接受来源的统计和轮次摘要。可按采集来源筛选核对，不能把各设备平均相加。" />}
+ {value?.status==='unavailable'&&<Alert type="info" showIcon title={throughputReasons[value.reason]??'TPS 暂不可用'} />}
+ <div className="page-heading section-card"><Typography.Title level={4}>最近轮次</Typography.Title><Select aria-label="最近 TPS 轮次条数" value={turns?.limit??20} onChange={onLimit} options={[10,20,50].map(n=>({value:n,label:`最近 ${n} 条`}))} /></div>
+ <Typography.Paragraph type="secondary">全部轮次 {integer(turns?.total)} · {turns?.total==null?'尚无已知轮次覆盖':turns.truncated?'当前只显示最近子集，整体平均使用完整指标':'已返回当前可读轮次，覆盖见上方状态'} · 未结束轮次不以当前时间补时长。</Typography.Paragraph>
+ <Table size="small" rowKey="key" dataSource={turns?.items??[]} pagination={false} scroll={{x:660}} columns={[{title:'开始',render:(_,r)=>dateTime(r.started_at_ms,zone)},{title:'结束',render:(_,r)=>dateTime(r.ended_at_ms,zone)},{title:'输出 Token',align:'right',render:(_,r)=>tokens(r.throughput.output_tokens)},{title:'活跃时长',render:(_,r)=>activeDuration(r.throughput.active_duration_ms)},{title:'TPS',render:(_,r)=><ThroughputCell value={r.throughput} />}]} />
+ </Card>;
+}

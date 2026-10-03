@@ -29,6 +29,7 @@ const (
 	PaceUnknownEvidenceFlat       PaceUnknownReason = "evidence_flat"
 	PaceUnknownEvidenceInvalid    PaceUnknownReason = "evidence_invalid"
 	PaceUnknownBindingUnavailable PaceUnknownReason = "binding_unavailable"
+	PaceUnknownEvidenceBudget     PaceUnknownReason = "evidence_budget"
 )
 
 type PaceForecastState string
@@ -110,6 +111,30 @@ type PaceResponse struct {
 	Binding       *store.CodexAccountBinding `json:"binding,omitempty"`
 	Windows       []PaceWindow               `json:"windows"`
 	UnknownReason *PaceUnknownReason         `json:"unknownReason,omitempty"`
+}
+
+// ComputePaceWindow 仅计算一个经 adapter 提供的窗口，不访问本机 runtime、网络或存储。
+// 它返回实际采样曲线；本机显示使用的现在时刻延伸端点不作为网络事实。
+func ComputePaceWindow(facts store.QuotaCurrentWindowSnapshot, scope string, evaluatedAtMS int64) (PaceWindow, error) {
+	window, err := buildPaceWindow(facts, scope, evaluatedAtMS)
+	if err == nil && window.WindowStartAtMS != nil && window.ResetsAtMS != nil && facts.Current.SelectedSource != nil && evaluatedAtMS >= *window.WindowStartAtMS && evaluatedAtMS < *window.ResetsAtMS {
+		observations := paceObservationsAllowedByArbitration(facts.Observations, facts.Evidence)
+		associated := paceObservationsAllowedByArbitration(facts.AssociatedHistoryObservations, facts.AssociatedHistoryEvidence)
+		observations = append(append([]store.QuotaObservation(nil), observations...), associated...)
+		associatedScope := ""
+		if facts.AssociatedHistoryScope != nil {
+			associatedScope = *facts.AssociatedHistoryScope
+		}
+		if cycle, valid := buildPaceCycle(facts.Current, observations, *window.ResetsAtMS, *facts.Current.SelectedSource, associatedScope); valid {
+			window.CurrentPoints = cycle.Points
+		} else {
+			window.CurrentPoints = []PacePoint{}
+		}
+	}
+	if err == nil && window.Forecast.State == "" {
+		window.Forecast = PaceForecast{State: PaceForecastUnavailable, Method: PaceForecastMethodNone, UnknownReason: window.UnknownReason}
+	}
+	return window, err
 }
 
 func (service *CurrentQueryService) Pace(
@@ -746,6 +771,12 @@ func forecastPaceWindow(
 	spanMS := points[len(points)-1].atMS - points[0].atMS
 	forecast.EvidenceCount = int64(len(points))
 	forecast.EvidenceSpanMS = spanMS
+	// Theil-Sen 需要二次组合；保留完整曲线，只对超过资源预算的预测明确不可用。
+	if len(points) > 512 {
+		reason := PaceUnknownEvidenceBudget
+		forecast.UnknownReason = &reason
+		return forecast
+	}
 	if spanMS < minimumLookbackMS {
 		reason := PaceUnknownEvidenceSparse
 		forecast.UnknownReason = &reason

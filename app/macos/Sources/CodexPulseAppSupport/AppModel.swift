@@ -179,6 +179,13 @@ public final class AppModel: ObservableObject {
     @Published public private(set) var selectedHealthEventID: String?
 
     private let runtime: AppRuntime
+    private var reportingSettingsModel: ReportingSettingsModel?
+    public var reportingSettings: ReportingSettingsModel {
+        if let reportingSettingsModel { return reportingSettingsModel }
+        let model = ReportingSettingsModel(service: runtime)
+        reportingSettingsModel = model
+        return model
+    }
     private let observesUpdatePolicy: Bool
 	private let providerDefaults: UserDefaults
 	private let persistsProviderSelection: Bool
@@ -889,6 +896,7 @@ public final class AppModel: ObservableObject {
     }
 
     private func shutdown(reason: AppShutdownReason) async -> ShutdownOutcome {
+        reportingSettingsModel?.stop()
         startTask?.cancel()
         startTask = nil
         overviewRefreshTask?.cancel()

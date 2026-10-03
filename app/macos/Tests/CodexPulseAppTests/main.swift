@@ -13566,6 +13566,11 @@ private func testQuotaRefreshFailurePresentation() throws {
 @main
 struct CodexPulseAppTestMain {
     static func main() async throws {
+        if CommandLine.arguments.contains("--reporting-only") {
+            try await testReportingSettingsSafetyAndLateRead()
+            print("CodexPulseApp reporting settings tests passed")
+            return
+        }
         if CommandLine.arguments.contains("--cache-hit-rate-only") {
             try testSessionCacheHitRatePresentation()
             print("CodexPulseApp cache hit rate presentation tests passed")

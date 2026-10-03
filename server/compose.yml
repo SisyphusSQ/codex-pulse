@@ -1,0 +1,21 @@
+# 可选 MySQL 开发环境，不自动启动中心、初始化或发布。当前未运行。
+services:
+  mysql:
+    image: mysql:8.4
+    profiles: [mysql]
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-13306}:3306"
+    environment:
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+      MYSQL_DATABASE: pulse_center
+      MYSQL_USER: pulse_app
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?provide a private development password}"
+    healthcheck:
+      test: [CMD, mysqladmin, ping, --host=127.0.0.1, --silent]
+      interval: 2s
+      timeout: 3s
+      retries: 40
+    volumes:
+      - mysql-data:/var/lib/mysql
+volumes:
+  mysql-data:

@@ -3,9 +3,10 @@ package store
 import (
 	"context"
 	"errors"
-	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	"reflect"
 	"testing"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 )
 
 // 测试 PricingVersion immutable、半开生效区间和 deterministic model match。

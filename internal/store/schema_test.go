@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,6 +12,7 @@ import (
 
 	"gorm.io/gorm"
 
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 

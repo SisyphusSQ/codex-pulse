@@ -3,13 +3,14 @@ package store
 import (
 	"context"
 	"errors"
-	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
-	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"testing"
 	"time"
 
-	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 	"gorm.io/gorm"
+
+	storeretention "github.com/SisyphusSQ/codex-pulse/internal/store/retention"
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
+	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 func TestApplicationSchemaV11CreatesQuotaProjection(t *testing.T) {

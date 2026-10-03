@@ -851,3 +851,37 @@ func mustAccountBindingRuntime(
 	}
 	return runtime
 }
+
+func TestAccountBindingReportingCapturesOnlyConfirmedIdentityAndKeepsAHistory(t *testing.T) {
+	repository := openAccountBindingTestRepository(t)
+	key, scopeA, scopeB := accountBindingTestScopes(t, repository)
+	reader := &accountBindingScriptedReader{accountIDs: []string{"acct-test-a", "acct-test-b", "acct-test-b"}}
+	runtime, err := newAccountBindingRuntime(repository, reader, key, func() time.Time { return time.UnixMilli(quotaRuntimeNowMS) }, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	a, err := runtime.ReportingAccountIdentities(t.Context())
+	if err != nil || len(a) != 1 || a[0].LocalScope != scopeA || a[0].AccountID != "acct-test-a" {
+		t.Fatal("A identity not confirmed", err)
+	}
+	if err := runtime.HandleObservedScopeChange(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	both, err := runtime.ReportingAccountIdentities(t.Context())
+	if err != nil || len(both) != 2 {
+		t.Fatal("A history lost on B switch", err)
+	}
+	for _, identity := range both {
+		if identity.LocalScope == scopeA && identity.AccountID != "acct-test-a" || identity.LocalScope == scopeB && identity.AccountID != "acct-test-b" {
+			t.Fatal("raw account ID crossed scope")
+		}
+	}
+	runtime.Close()
+	closed, err := runtime.ReportingAccountIdentities(t.Context())
+	if err != nil || len(closed) != 0 {
+		t.Fatal("closed owner retained exportable identity", err)
+	}
+}

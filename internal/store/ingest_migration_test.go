@@ -2,10 +2,11 @@ package store
 
 import (
 	"context"
-	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	"testing"
 
 	"gorm.io/gorm"
+
+	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 )
 
 func TestEnsureCoreSchemaUsesCurrentTurnDDL(t *testing.T) {

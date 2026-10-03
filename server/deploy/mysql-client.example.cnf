@@ -1,0 +1,8 @@
+# 复制到仓库之外，目录 0700、文件 0600；password 只在私有副本填写。
+[client]
+host=mysql.example.internal
+port=3306
+user=pulse_backup
+password=
+ssl-mode=VERIFY_IDENTITY
+ssl-ca=/etc/codex-pulse/mysql-ca.pem

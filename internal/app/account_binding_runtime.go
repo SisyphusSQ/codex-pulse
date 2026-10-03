@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptiontier"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	"github.com/SisyphusSQ/codex-pulse/internal/reporting"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -56,12 +59,14 @@ type accountBindingRuntime struct {
 
 	transition chan struct{}
 
-	mu      sync.Mutex
-	active  *activeCodexAccount
-	display *accountDisplayCache
-	closed  bool
-	probeMu sync.Mutex
-	probe   *accountDisplayFlight
+	mu                  sync.Mutex
+	active              *activeCodexAccount
+	display             *accountDisplayCache
+	closed              bool
+	reportingCandidate  *reporting.AccountIdentity
+	reportingIdentities map[string]reporting.AccountIdentity
+	probeMu             sync.Mutex
+	probe               *accountDisplayFlight
 }
 
 func newAccountBindingRuntime(
@@ -137,6 +142,8 @@ func (runtime *accountBindingRuntime) Close() {
 	}
 	runtime.mu.Lock()
 	runtime.closed = true
+	runtime.reportingCandidate = nil
+	runtime.reportingIdentities = nil
 	runtime.mu.Unlock()
 }
 
@@ -451,12 +458,16 @@ func (runtime *accountBindingRuntime) probeAndLoadDisplay(ctx context.Context) (
 	}
 	beforeID := append([]byte(nil), sandwich.BeforeID...)
 	afterID := append([]byte(nil), sandwich.AfterID...)
+	rawBefore, rawAfter := string(beforeID), string(afterID)
 	beforeScope, beforeErr := accountbinding.DeriveScope(runtime.scopeKey, beforeID)
 	afterScope, afterErr := accountbinding.DeriveScope(runtime.scopeKey, afterID)
 	clearAccountID(beforeID)
 	clearAccountID(afterID)
 	clearAccountID(sandwich.BeforeID)
 	clearAccountID(sandwich.AfterID)
+	if beforeErr == nil && afterErr == nil && beforeScope == afterScope && rawBefore == rawAfter {
+		runtime.captureReportingCandidate(beforeScope, rawBefore, nil)
+	}
 	probeCount := 0
 	probe := func(probeCtx context.Context) (string, error) {
 		if err := probeCtx.Err(); err != nil {
@@ -484,8 +495,13 @@ func (runtime *accountBindingRuntime) discoverScope(ctx context.Context) (string
 		return "", err
 	}
 	accountID := append([]byte(nil), snapshot.AccountID...)
+	rawID := string(accountID)
 	clearAccountID(snapshot.AccountID)
-	return accountbinding.DeriveScope(runtime.scopeKey, accountID)
+	scope, err := accountbinding.DeriveScope(runtime.scopeKey, accountID)
+	if err == nil {
+		runtime.captureReportingCandidate(scope, rawID, snapshot.RateLimits.PlanType)
+	}
+	return scope, err
 }
 
 func (runtime *accountBindingRuntime) refreshDisplay(
@@ -500,10 +516,14 @@ func (runtime *accountBindingRuntime) refreshDisplay(
 		runtime.clearDisplay()
 		return nil, err
 	}
+	rawBefore, rawAfter := string(sandwich.BeforeID), string(sandwich.AfterID)
 	beforeScope, beforeErr := accountbinding.DeriveScope(runtime.scopeKey, append([]byte(nil), sandwich.BeforeID...))
 	afterScope, afterErr := accountbinding.DeriveScope(runtime.scopeKey, append([]byte(nil), sandwich.AfterID...))
 	clearAccountID(sandwich.BeforeID)
 	clearAccountID(sandwich.AfterID)
+	if beforeErr == nil && afterErr == nil && beforeScope == afterScope && rawBefore == rawAfter {
+		runtime.captureReportingCandidate(beforeScope, rawBefore, nil)
+	}
 	return runtime.refreshDisplayFromSandwich(ctx, active, sandwich, beforeScope, afterScope, beforeErr, afterErr)
 }
 
@@ -610,6 +630,7 @@ func (runtime *accountBindingRuntime) setActive(scope string, generation int64) 
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
 	runtime.active = &activeCodexAccount{Scope: scope, Generation: generation}
+	runtime.rememberReportingCandidateLocked(scope)
 	if runtime.display != nil &&
 		(runtime.display.Scope != scope || runtime.display.Generation != generation) {
 		runtime.display = nil
@@ -626,6 +647,17 @@ func (runtime *accountBindingRuntime) setDisplay(display *accountDisplayCache) {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
 	runtime.display = display
+	if display != nil {
+		if runtime.active != nil && runtime.active.Scope == display.Scope && runtime.active.Generation == display.Generation {
+			runtime.rememberReportingCandidateLocked(display.Scope)
+		}
+		if identity, ok := runtime.reportingIdentities[display.Scope]; ok && runtime.active != nil && runtime.active.Scope == display.Scope && runtime.active.Generation == display.Generation {
+			identity.Email = cloneOptionalString(display.Email)
+			identity.Plan = cloneOptionalString(display.PlanType)
+			identity.CollectedAtMS = max(identity.CollectedAtMS, runtime.clock().UnixMilli())
+			runtime.reportingIdentities[display.Scope] = identity
+		}
+	}
 }
 
 func (runtime *accountBindingRuntime) clearDisplay() {
@@ -655,4 +687,56 @@ func cloneOptionalString(value *string) *string {
 
 func cloneStringSlice(values []string) []string {
 	return append([]string(nil), values...)
+}
+
+// ReportingAccountIdentities 只读取既有 confirmed 读取结果，不发起账户或额度请求。
+func (runtime *accountBindingRuntime) ReportingAccountIdentities(ctx context.Context) ([]reporting.AccountIdentity, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	out := make([]reporting.AccountIdentity, 0, len(runtime.reportingIdentities))
+	if runtime.closed {
+		return out, nil
+	}
+	for _, identity := range runtime.reportingIdentities {
+		identity.Email = cloneOptionalString(identity.Email)
+		identity.Plan = cloneOptionalString(identity.Plan)
+		out = append(out, identity)
+	}
+	slices.SortFunc(out, func(a, b reporting.AccountIdentity) int { return strings.Compare(a.LocalScope, b.LocalScope) })
+	return out, nil
+}
+
+func (runtime *accountBindingRuntime) captureReportingCandidate(scope, rawID string, plan *string) {
+	now := runtime.clock().UnixMilli()
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.closed {
+		return
+	}
+	runtime.reportingCandidate = &reporting.AccountIdentity{Provider: "codex", LocalScope: scope, AccountID: rawID, Plan: cloneOptionalString(plan), ConfirmedAtMS: now, CollectedAtMS: now}
+}
+func (runtime *accountBindingRuntime) rememberReportingCandidateLocked(scope string) {
+	if runtime.closed {
+		return
+	}
+	if candidate := runtime.reportingCandidate; candidate != nil && candidate.LocalScope == scope {
+		if runtime.reportingIdentities == nil {
+			runtime.reportingIdentities = make(map[string]reporting.AccountIdentity)
+		}
+		value := *candidate
+		previous := runtime.reportingIdentities[scope]
+		if previous.AccountID != "" {
+			value.ConfirmedAtMS = min(value.ConfirmedAtMS, previous.ConfirmedAtMS)
+			if value.Email == nil {
+				value.Email = cloneOptionalString(previous.Email)
+			}
+			if value.Plan == nil {
+				value.Plan = cloneOptionalString(previous.Plan)
+			}
+		}
+		runtime.reportingIdentities[scope] = value
+	}
 }

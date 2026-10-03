@@ -20,6 +20,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	"github.com/SisyphusSQ/codex-pulse/internal/providerrefresh"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
+	"github.com/SisyphusSQ/codex-pulse/internal/reporting"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -858,4 +859,13 @@ func (coordinator *controlLifecycleCoordinator) SourceChanged(
 		return worker.coordinator.SourceChanged(ctx, eventID, manual)
 	}
 	return store.SchedulerLifecycle{}, nil
+}
+
+// ReportingAccountIdentities 只读当前受控 owner 已有的可信身份记录。
+func (runtime *applicationControlRuntime) ReportingAccountIdentities(ctx context.Context) ([]reporting.AccountIdentity, error) {
+	worker := runtime.currentWorker()
+	if worker == nil {
+		return []reporting.AccountIdentity{}, nil
+	}
+	return worker.ReportingAccountIdentities(ctx)
 }

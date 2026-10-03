@@ -1,0 +1,29 @@
+package repository
+
+import (
+	"context"
+
+	"go.uber.org/fx"
+
+	"github.com/SisyphusSQ/codex-pulse/server/config"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/access_repo"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/catalog_repo"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/quota_repo"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/reporting_repo"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/schema_repo"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/statistics_repo"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/subscription_repo"
+)
+
+func Module(cfg config.Config) fx.Option {
+	if !cfg.Database.Enabled {
+		return fx.Options()
+	}
+	return fx.Options(fx.Provide(schema_repo.NewSchema, access_repo.NewAccess, reporting_repo.NewReporting, statistics_repo.NewStatistics, quota_repo.NewQuota, subscription_repo.NewSubscription, catalog_repo.NewCatalog), fx.Invoke(func(lifecycle fx.Lifecycle, schema *schema_repo.Schema) {
+		lifecycle.Append(fx.Hook{OnStart: func(ctx context.Context) error {
+			ctx, cancel := context.WithTimeout(ctx, cfg.Database.MigrationTimeout)
+			defer cancel()
+			return schema.Migrate(ctx)
+		}})
+	}))
+}

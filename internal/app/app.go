@@ -14,6 +14,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
+	"github.com/SisyphusSQ/codex-pulse/internal/reporting"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -27,6 +28,7 @@ type Config struct {
 	Store            storesqlite.Config
 	PreferencesPath  string
 	DefaultCodexHome string
+	HelperVersion    string
 }
 
 // Runtime owns the business graph behind the RPC transport. It contains no
@@ -199,7 +201,22 @@ func openNormalRuntime(
 		return nil, err
 	}
 
+	// Reporting failure is visible through its status but never blocks local statistics.
+	reportingRuntime := &reporting.Runtime{}
+	reportingState, reportingErr := reporting.OpenState(ctx, filepath.Join(filepath.Dir(database.Config().Path), "reporting.db"))
+	if reportingErr == nil {
+		reportingRuntime = reporting.StartWithVersion(reportingState, reporting.NewExporter(factstore.NewRepository(database), preferenceStore, reportingState, controlRuntime), config.HelperVersion)
+	}
+	if err := core.BindDependencies(service, core.ServiceConfig{Reporting: reportingRuntime}); err != nil {
+		_ = reportingRuntime.Close(context.Background())
+		_ = retentionRuntime.Close(context.Background())
+		_ = healthRuntime.Close(context.Background())
+		closeNormalPartial(controlRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)
+		return nil, err
+	}
+
 	components := []shutdownComponent{
+		{Name: "center-reporting", Close: reportingRuntime.Close},
 		{Name: "scheduler-admission", Close: controlRuntime.BeginDrain},
 		{Name: "api-subscription-sampling", Close: apiSamplingRuntime.Close},
 		{Name: "invalidation", Close: func(context.Context) error { config.Broker.Close(); return nil }},
@@ -212,6 +229,7 @@ func openNormalRuntime(
 	}
 	shutdown, err := newApplicationShutdownCoordinator(components...)
 	if err != nil {
+		_ = reportingRuntime.Close(context.Background())
 		_ = retentionRuntime.Close(context.Background())
 		_ = healthRuntime.Close(context.Background())
 		closeNormalPartial(controlRuntime, apiSamplingRuntime, credentialStore, metricsRuntime, database)

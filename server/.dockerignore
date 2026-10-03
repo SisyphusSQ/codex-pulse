@@ -1,0 +1,17 @@
+.git
+.github
+.idea
+.vscode
+bin
+logs
+*.log
+*.out
+*.test
+.agents
+web/node_modules
+web/dist
+.env
+.env.*
+!.env.example
+config/*local*
+config/*test*

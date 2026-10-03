@@ -488,6 +488,7 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                ReportingSettingsSection(settings: model.reportingSettings)
             }
             .id(model.localization.preference.rawValue)
             .formStyle(.grouped)

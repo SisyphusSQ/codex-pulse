@@ -1,8 +1,7 @@
 package usagecost
 
 import (
-	"math/big"
-
+	"github.com/SisyphusSQ/codex-pulse/internal/cachehitrate"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
 
@@ -25,9 +24,5 @@ func mapCacheHitRate(totals UsageTotals) (basequery.NumericValue, error) {
 	if cached.Value == nil {
 		return basequery.UnknownNumeric(basequery.NumericBasisPoints, *cached.UnknownReason)
 	}
-	// JS-safe Token 总量乘以 10000 仍可能溢出 int64，使用精确整数并四舍五入。
-	numerator := new(big.Int).Mul(big.NewInt(*cached.Value), big.NewInt(10_000))
-	numerator.Add(numerator, big.NewInt(*input.Value/2))
-	numerator.Quo(numerator, big.NewInt(*input.Value))
-	return basequery.KnownNumeric(numerator.Int64(), basequery.NumericBasisPoints)
+	return basequery.KnownNumeric(*cachehitrate.BasisPoints(*input.Value, *cached.Value), basequery.NumericBasisPoints)
 }

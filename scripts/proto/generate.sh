@@ -34,6 +34,7 @@ protoc -I . \
   "$PROTO"
 
 for path in "${GENERATED[@]}"; do
+  go run ./scripts/go-imports --write "$TMP_ROOT/$path"
   if [ "$MODE" = "--write" ]; then
     cp "$TMP_ROOT/$path" "$REPO_ROOT/$path"
   elif ! cmp -s "$REPO_ROOT/$path" "$TMP_ROOT/$path"; then

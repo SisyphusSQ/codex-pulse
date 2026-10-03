@@ -9374,6 +9374,93 @@ public nonisolated struct Codexpulse_Core_V1_CursorUsagePoolSummary: Sendable {
   fileprivate var _cursorTokenFeeUsdMicros: Codexpulse_Core_V1_NumericValue? = nil
 }
 
+/// Optional center reporting stays inside the parent-owned Helper. Pulse credentials
+/// are never returned to Swift; only a transient pairing code crosses the local UDS.
+public nonisolated struct Codexpulse_Core_V1_PairReportingRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var endpoint: String = String()
+
+  public var allowHTTP: Bool = false
+
+  public var code: String = String()
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_ConfigureReportingRequest: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var enabled: Bool = false
+
+  public var intervalSeconds: Int64 = 0
+
+  public var historyStartAtMs: Int64 = 0
+
+  public var clearPending_p: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+}
+
+public nonisolated struct Codexpulse_Core_V1_ReportingStatusResponse: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var endpoint: String = String()
+
+  public var clientID: String = String()
+
+  public var enabled: Bool = false
+
+  public var allowHTTP: Bool = false
+
+  public var intervalSeconds: Int64 = 0
+
+  public var historyStartAtMs: Int64 = 0
+
+  public var state: String = String()
+
+  public var pendingBatches: Int64 = 0
+
+  public var pendingBytes: Int64 = 0
+
+  public var retainedBatches: Int64 = 0
+
+  public var lastAttemptAtMs: Int64 {
+    get {_lastAttemptAtMs ?? 0}
+    set {_lastAttemptAtMs = newValue}
+  }
+  /// Returns true if `lastAttemptAtMs` has been explicitly set.
+  public var hasLastAttemptAtMs: Bool {self._lastAttemptAtMs != nil}
+  /// Clears the value of `lastAttemptAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearLastAttemptAtMs() {self._lastAttemptAtMs = nil}
+
+  public var lastSuccessAtMs: Int64 {
+    get {_lastSuccessAtMs ?? 0}
+    set {_lastSuccessAtMs = newValue}
+  }
+  /// Returns true if `lastSuccessAtMs` has been explicitly set.
+  public var hasLastSuccessAtMs: Bool {self._lastSuccessAtMs != nil}
+  /// Clears the value of `lastSuccessAtMs`. Subsequent reads from it will return its default value.
+  public mutating func clearLastSuccessAtMs() {self._lastSuccessAtMs = nil}
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _lastAttemptAtMs: Int64? = nil
+  fileprivate var _lastSuccessAtMs: Int64? = nil
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate nonisolated let _protobuf_package = "codexpulse.core.v1"
@@ -22567,6 +22654,180 @@ nonisolated extension Codexpulse_Core_V1_CursorUsagePoolSummary: SwiftProtobuf.M
     if lhs._totals != rhs._totals {return false}
     if lhs._reportedUsdMicros != rhs._reportedUsdMicros {return false}
     if lhs._cursorTokenFeeUsdMicros != rhs._cursorTokenFeeUsdMicros {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_PairReportingRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PairReportingRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}endpoint\0\u{3}allow_http\0\u{1}code\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.endpoint) }()
+      case 2: try { try decoder.decodeSingularBoolField(value: &self.allowHTTP) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.code) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.endpoint.isEmpty {
+      try visitor.visitSingularStringField(value: self.endpoint, fieldNumber: 1)
+    }
+    if self.allowHTTP != false {
+      try visitor.visitSingularBoolField(value: self.allowHTTP, fieldNumber: 2)
+    }
+    if !self.code.isEmpty {
+      try visitor.visitSingularStringField(value: self.code, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_PairReportingRequest, rhs: Codexpulse_Core_V1_PairReportingRequest) -> Bool {
+    if lhs.endpoint != rhs.endpoint {return false}
+    if lhs.allowHTTP != rhs.allowHTTP {return false}
+    if lhs.code != rhs.code {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ConfigureReportingRequest: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ConfigureReportingRequest"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}enabled\0\u{3}interval_seconds\0\u{3}history_start_at_ms\0\u{3}clear_pending\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularBoolField(value: &self.enabled) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.intervalSeconds) }()
+      case 3: try { try decoder.decodeSingularInt64Field(value: &self.historyStartAtMs) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.clearPending_p) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.enabled != false {
+      try visitor.visitSingularBoolField(value: self.enabled, fieldNumber: 1)
+    }
+    if self.intervalSeconds != 0 {
+      try visitor.visitSingularInt64Field(value: self.intervalSeconds, fieldNumber: 2)
+    }
+    if self.historyStartAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.historyStartAtMs, fieldNumber: 3)
+    }
+    if self.clearPending_p != false {
+      try visitor.visitSingularBoolField(value: self.clearPending_p, fieldNumber: 4)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ConfigureReportingRequest, rhs: Codexpulse_Core_V1_ConfigureReportingRequest) -> Bool {
+    if lhs.enabled != rhs.enabled {return false}
+    if lhs.intervalSeconds != rhs.intervalSeconds {return false}
+    if lhs.historyStartAtMs != rhs.historyStartAtMs {return false}
+    if lhs.clearPending_p != rhs.clearPending_p {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_ReportingStatusResponse: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".ReportingStatusResponse"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}endpoint\0\u{3}client_id\0\u{1}enabled\0\u{3}allow_http\0\u{3}interval_seconds\0\u{3}history_start_at_ms\0\u{1}state\0\u{3}pending_batches\0\u{3}pending_bytes\0\u{3}retained_batches\0\u{3}last_attempt_at_ms\0\u{3}last_success_at_ms\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.endpoint) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.clientID) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.enabled) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self.allowHTTP) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self.intervalSeconds) }()
+      case 6: try { try decoder.decodeSingularInt64Field(value: &self.historyStartAtMs) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.state) }()
+      case 8: try { try decoder.decodeSingularInt64Field(value: &self.pendingBatches) }()
+      case 9: try { try decoder.decodeSingularInt64Field(value: &self.pendingBytes) }()
+      case 10: try { try decoder.decodeSingularInt64Field(value: &self.retainedBatches) }()
+      case 11: try { try decoder.decodeSingularInt64Field(value: &self._lastAttemptAtMs) }()
+      case 12: try { try decoder.decodeSingularInt64Field(value: &self._lastSuccessAtMs) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.endpoint.isEmpty {
+      try visitor.visitSingularStringField(value: self.endpoint, fieldNumber: 1)
+    }
+    if !self.clientID.isEmpty {
+      try visitor.visitSingularStringField(value: self.clientID, fieldNumber: 2)
+    }
+    if self.enabled != false {
+      try visitor.visitSingularBoolField(value: self.enabled, fieldNumber: 3)
+    }
+    if self.allowHTTP != false {
+      try visitor.visitSingularBoolField(value: self.allowHTTP, fieldNumber: 4)
+    }
+    if self.intervalSeconds != 0 {
+      try visitor.visitSingularInt64Field(value: self.intervalSeconds, fieldNumber: 5)
+    }
+    if self.historyStartAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.historyStartAtMs, fieldNumber: 6)
+    }
+    if !self.state.isEmpty {
+      try visitor.visitSingularStringField(value: self.state, fieldNumber: 7)
+    }
+    if self.pendingBatches != 0 {
+      try visitor.visitSingularInt64Field(value: self.pendingBatches, fieldNumber: 8)
+    }
+    if self.pendingBytes != 0 {
+      try visitor.visitSingularInt64Field(value: self.pendingBytes, fieldNumber: 9)
+    }
+    if self.retainedBatches != 0 {
+      try visitor.visitSingularInt64Field(value: self.retainedBatches, fieldNumber: 10)
+    }
+    try { if let v = self._lastAttemptAtMs {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 11)
+    } }()
+    try { if let v = self._lastSuccessAtMs {
+      try visitor.visitSingularInt64Field(value: v, fieldNumber: 12)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_ReportingStatusResponse, rhs: Codexpulse_Core_V1_ReportingStatusResponse) -> Bool {
+    if lhs.endpoint != rhs.endpoint {return false}
+    if lhs.clientID != rhs.clientID {return false}
+    if lhs.enabled != rhs.enabled {return false}
+    if lhs.allowHTTP != rhs.allowHTTP {return false}
+    if lhs.intervalSeconds != rhs.intervalSeconds {return false}
+    if lhs.historyStartAtMs != rhs.historyStartAtMs {return false}
+    if lhs.state != rhs.state {return false}
+    if lhs.pendingBatches != rhs.pendingBatches {return false}
+    if lhs.pendingBytes != rhs.pendingBytes {return false}
+    if lhs.retainedBatches != rhs.retainedBatches {return false}
+    if lhs._lastAttemptAtMs != rhs._lastAttemptAtMs {return false}
+    if lhs._lastSuccessAtMs != rhs._lastSuccessAtMs {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

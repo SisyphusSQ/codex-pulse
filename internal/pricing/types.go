@@ -1,6 +1,9 @@
 package pricing
 
-import "errors"
+import (
+	"errors"
+	"math/big"
+)
 
 const TokensPerMillion int64 = 1_000_000
 
@@ -52,6 +55,20 @@ type Usage struct {
 	CachedInputTokens *int64
 	OutputTokens      *int64
 	ReasoningTokens   *int64
+}
+
+// ExactUsage 用于跨会话汇总，避免在定价之前溢出 int64；输入不被修改。
+type ExactUsage struct {
+	InputTokens       *big.Int
+	CachedInputTokens *big.Int
+	OutputTokens      *big.Int
+	ReasoningTokens   *big.Int
+}
+
+type ExactCalculation struct {
+	Status             CostStatus
+	Reason             CostReason
+	EstimatedUSDMicros *big.Int
 }
 
 type CostStatus string

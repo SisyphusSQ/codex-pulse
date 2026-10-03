@@ -47,6 +47,16 @@ func DefaultQuotaArbitrationRule() QuotaArbitrationRule {
 	}
 }
 
+// ComputeQuotaWindow 只计算结构化事实，不读取存储或启动本机运行时。
+// 中心与其他 read adapter 使用同一 reset、异常隔离和 freshness 规则。
+func ComputeQuotaWindow(observations []QuotaObservation, evaluatedAtMS int64, rule QuotaArbitrationRule) (QuotaCurrentWindowSnapshot, error) {
+	projection, err := arbitrateQuotaWindow(observations, evaluatedAtMS, rule)
+	if err != nil {
+		return QuotaCurrentWindowSnapshot{}, err
+	}
+	return QuotaCurrentWindowSnapshot{Current: projection.Current, Evidence: projection.Evidence, Observations: observations}, nil
+}
+
 // QuotaResetsEquivalent reports whether two reset instants identify the same
 // logical quota generation after accounting for bounded source timestamp jitter.
 func QuotaResetsEquivalent(leftAtMS, rightAtMS int64) bool {

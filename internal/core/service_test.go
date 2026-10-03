@@ -51,6 +51,7 @@ func TestServiceExposesExactBusinessSurface(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
+		"ReportingStatus", "PairReporting", "ConfigureReporting", "SyncReportingNow",
 		"APICredentialStatus", "APISubscriptionsCurrent", "AccountSnapshot", "AnalyzeSessionIndexRepair", "ClearCodexAccountQuotaHistory", "ConfirmHomeSwitch", "Contracts", "CreateCodexSubscriptionAccount", "DashboardSummary", "DataHealth", "Health",
 		"HealthProjection", "InvocationUsage", "Job", "LinkCodexSubscriptionAccount", "LinkLegacyQuotaHistory", "ListCodexAccountQuotas", "ListCodexSubscriptionAccounts", "ListHealth", "ListJobs", "ListProjects", "ListSessions", "ListSources",
 		"PlanHomeSwitch", "PricingCatalogCurrent", "ProjectDetail", "QuotaCurrent", "QuotaPace", "RecoverHomeSwitch", "RequestProviderRefresh", "RequestQuotaRefresh",
@@ -357,7 +358,7 @@ func TestServiceContractsExposeUniqueCommandMethods(t *testing.T) {
 		t.Fatal(err)
 	}
 	contract := service.Contracts()
-	if contract.Version != "core-rpc-v7" ||
+	if contract.Version != "core-rpc-v8" ||
 		contract.UsageCostVersion != "usage-cost-v2" ||
 		contract.InvocationUsageVersion != "invocation-usage-v1" ||
 		contract.PricingCatalogVersion != "pricing-catalog-v1" ||

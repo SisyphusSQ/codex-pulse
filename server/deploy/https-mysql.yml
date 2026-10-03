@@ -1,0 +1,46 @@
+---
+debug: false
+contextTimeout: 10s
+
+server:
+    metrics: false
+    readinessTimeout: 2s
+    address: "127.0.0.1:18090"
+    readHeaderTimeout: 5s
+    readTimeout: 15s
+    writeTimeout: 15s
+    idleTimeout: 60s
+    shutdownTimeout: 10s
+    maxBodyBytes: 8388608
+    corsOrigins: ["*"] # 通配跨域不允许携带 Cookie；内嵌 Web 使用同源 API
+    origins: ["https://pulse.example.com"]
+    allowHTTP: false
+    trustedProxies: ["127.0.0.1/32"]
+database:
+    enabled: true
+    driver: "mysql"
+    host: "mysql.example.internal"
+    port: 3306
+    database: "pulse_center"
+    username: "pulse_app"
+    password: ""
+    maxIdleConns: 20
+    maxOpenConns: 100
+    connMaxLifetime: 5m
+    charset: "utf8mb4"
+    timeZone: "UTC"
+    name: "pulse_center"
+    path: "/var/lib/codex-pulse/center.sqlite"
+    tls: "true"
+
+
+
+
+
+log:
+    output: "file"
+    fileName: "/var/lib/codex-pulse/logs/server.log"
+    logLevel: 0
+    maxSizeMB: 20
+    maxBackupCount: 30
+    maxKeepDays: 7
