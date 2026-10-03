@@ -2,7 +2,7 @@
 
 状态：已批准实施；保留 App 托管 Helper，退出后停止采集并在下次启动增量补采。更新时间：2026-10-01。
 
-本文整合已讨论并暂定的技术方向、数据边界、统一设备码鉴权、网络入口和 Master/Execution 拆分。用户已授权创建并细化 3 个 Master、17 张 Execution，切出实施分支并完成前后端开发。本阶段使用 SQLite 开发验证，同时实现 MySQL 支持；用户提供 MySQL 后再进行真实 MySQL 整体联调。生产部署与正式发布另行处理。中心采用 Go Web Starter v2 和独立 Go module，前端放在 `server/web/`；HTTP 与 HTTPS 共用设备码配对和凭证体系。
+本文整合已讨论并暂定的技术方向、数据边界、统一设备码鉴权、网络入口和 Master/Execution 拆分。用户已授权创建并细化 3 个 Master、17 张 Execution，切出实施分支并完成前后端开发。本阶段使用 SQLite 开发验证，同时实现 MySQL 支持；用户提供 MySQL 后再进行真实 MySQL 整体联调。生产部署与正式发布另行处理。中心采用 Go Web Starter v2 和独立 Go module，前端源码放在 `server/web/`，构建后通过 Go `embed` 编入 Server，Web 与 API 单体部署；HTTP 与 HTTPS 共用设备码配对和凭证体系。
 
 ## 决策摘要
 
@@ -266,11 +266,11 @@ Server 使用独立 `server/go.mod`，现有 Helper 保持根 module；必要时
 
 后续将两个 module 的 Go 工具链和同类依赖统一到确认的最新稳定版本并固定；不在每次构建中自动追踪 `@latest`。Starter v2 当前声明 Go 1.27.1，当前 Helper 声明 Go 1.26.2；版本统一是后续有意升级，不把本次设计写入描述成已经升级。
 
-桌面 App 与中心服务独立构建、发布和 migration。已有 App 标签、更新与打包路径不因 monorepo 自动改名；网络协议必须有版本与兼容策略，不能要求三台 App 与 Server 每次同步升级。
+桌面 App 与中心服务独立构建、发布和 migration；中心 Web 与 Server 属于同一个二进制和部署单元，不单独部署前端。已有 App 标签、更新与打包路径不因 monorepo 自动改名；网络协议必须有版本与兼容策略，不能要求三台 App 与 Server 每次同步升级。
 
 ## 数据库开发与验证边界
 
-MySQL 为中心目标数据库。本阶段暂无 MySQL 环境，用户授权使用 SQLite 作为中心开发测试数据库；中心 SQLite 与本机 SQLite 为独立文件和 schema。repository 通过明确的 dialect 适配参数化 SQL、事务与唯一约束，同一业务契约用于两种数据库。SQLite 验证不能证明 MySQL 的 DDL、排序规则、锁和并发语义已通过。
+MySQL 为中心目标数据库。真实 MySQL 账密由用户填写本地忽略配置，实际联调尚未执行；此前用户授权使用 SQLite 作为中心开发测试数据库；中心 SQLite 与本机 SQLite 为独立文件和 schema。repository 通过明确的 dialect 适配参数化 SQL、事务与唯一约束，同一业务契约用于两种数据库。SQLite 验证不能证明 MySQL 的 DDL、排序规则、锁和并发语义已通过。
 
 配置、初始化与升级、备份恢复、CI 验证入口需要分别支持两种数据库。开发完成后保留真实 MySQL 整体联调 runbook，由用户提供环境后在 Master 中补记正式结果。执行卡可以按实现与已有开发证据完成，Master 不因 SQLite 通过而宣称 MySQL 验收通过。
 
@@ -292,7 +292,7 @@ MySQL 为中心目标数据库。本阶段暂无 MySQL 环境，用户授权使�
 
 凭证由受保护存储管理，中心只保存配对码、客户端凭证与会话 secret 的摘要及授权元数据，不保存可复用明文，不在 Web 静态包、业务 DTO、日志或仓库写入凭证。日志只记录有限状态、耗时与同步标识，不转储账号资料、会话标题、正文或完整上报 payload。真实账号/项目资料可在私有产品中使用，不因此进入公开截图、提交版测试证据或公开分享。
 
-中心 SQL 沿用 Starter 的 `docs/sqls/schema`、`unreleased` 和真实版本 `releases/vX.Y.Z` 组织。Starter v2 不附带业务 DDL 或通用迁移执行器；中心需要自己的结构版本、兼容检查、显式初始化/升级与执行读回流程，不能宣称生成器已提供。SQL 只有一个事实源，不复制到其他目录。
+中心 SQL 沿用 Starter 的 `docs/sqls/schema`、`unreleased` 和真实版本 `releases/vX.Y.Z` 组织。Starter v2 不附带业务 DDL 或通用迁移执行器；中心通过自己的结构版本、兼容检查和启动自动初始化/升级与执行读回流程管理结构，不能宣称生成器已提供。SQL 只有一个事实源，不复制到其他目录。
 
 备份、恢复、保留、队列预算与中心删除流程在部署实施中明确。关闭同步、撤销凭证、删除中心历史和回滚中心版本是不同动作；回滚不能盲目降级结构或删除本地 Agent 数据。日志与提交版证据继续不包含真实账号/会话资料、原始 payload 或凭据。
 
@@ -325,7 +325,7 @@ MySQL 为中心目标数据库。本阶段暂无 MySQL 环境，用户授权使�
 | M3-E3：项目与会话页面 | 项目关联、会话标题和原始 Session ID、查询、分页及下钻 |
 | M3-E4：配额与节奏页面 | 账号 ID/邮箱/套餐、实际窗口、reset、历史曲线、预测及可信状态 |
 | M3-E5：设备与配置流程 | Web 设备管理、配对码签发/撤销、同步状态、项目关联及 App 接入设置 |
-| M3-E6：构建与运行交付 | 静态资源托管、独立构建/发布入口、部署配置、备份恢复与 runbook |
+| M3-E6：构建与运行交付 | 内嵌静态资源、中心单体构建/发布入口、部署配置、备份恢复与 runbook |
 
 | M3-E7：Web 整体重构（TOO-510） | 使用 AntD 官方组件重构全部页面、导航、详情与响应式布局；详见 [Web 重构](web-redesign.md) |
 
@@ -339,7 +339,7 @@ M1 的协议与身份边界确定后，M2 和 M3 可按依赖推进；M3 的最�
 
 `internal/reporting` 使用独立私有 `reporting.db` 保存 Pulse 自有凭证、不可变队列、来源 revision、确认与分页进度；默认关闭。`ReportingStatus / PairReporting / ConfigureReporting / SyncReportingNow` 经本机 CoreService 接入，Swift 不接收凭证。App shutdown 先取消并 join 同步 owner，随后关闭本机采集与数据库。配对与设置 UI 由设备配置执行卡衔接。
 
-结构化 Session 与调用统计从已有一致只读 SQLite 快照导出，不重新读 JSONL/auth 文件；Codex 使用物理 Home fence，Cursor Dashboard 使用账期来源分区，未知账号不归属 Home 用量。网络身份、预算和历史定价见 [上报 contract](../../../../api/codexpulse/reporting/v1/README.md)，开发入口与证据见 [多机测试 runbook](../../../test/multi-machine-reporting.md)。中心原子接收/来源合并已接上本机协议，查询、配额/节奏与 Web 仍按各执行卡继续实施，这些本机证据不是完整 Master 验收。
+结构化 Session 与调用统计从已有一致只读 SQLite 快照导出，不重新读 JSONL/auth 文件；Codex 使用物理 Home fence，Cursor Dashboard 使用账期来源分区，未知账号不归属 Home 用量。网络身份、预算和历史定价见 [上报 contract](../../../../api/codexpulse/reporting/v1/README.md)，开发入口与证据见 [多机测试 runbook](../../../test/multi-machine-reporting.md)。中心原子接收/来源合并已接上本机协议，查询、配额/节奏与 Web 已实现并取得 DEV SeekDB/Tailscale 证据，这些本机证据不是完整 Master 验收。
 
 ## Master 验收条件与验证入口
 

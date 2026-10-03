@@ -34,24 +34,24 @@ type (
 		Origins           []string      `mapstructure:"origins"`
 		AllowHTTP         bool          `mapstructure:"allowHTTP"`
 		TrustedProxies    []string      `mapstructure:"trustedProxies"`
-		WebDirectory      string        `mapstructure:"webDirectory"`
 	}
 	Database struct {
-		Enabled         bool          `mapstructure:"enabled"`
-		Driver          string        `mapstructure:"driver"`
-		Host            string        `mapstructure:"host"`
-		Port            int           `mapstructure:"port"`
-		User            string        `mapstructure:"username"`
-		Password        string        `mapstructure:"password"`
-		Database        string        `mapstructure:"database"`
-		MaxIdleConns    int           `mapstructure:"maxIdleConns"`
-		MaxOpenConns    int           `mapstructure:"maxOpenConns"`
-		ConnMaxLifetime time.Duration `mapstructure:"connMaxLifetime"`
-		Charset         string        `mapstructure:"charset"`
-		TimeZone        string        `mapstructure:"timeZone"`
-		Name            string        `mapstructure:"name"`
-		Path            string        `mapstructure:"path"`
-		TLS             string        `mapstructure:"tls"`
+		Enabled          bool          `mapstructure:"enabled"`
+		MigrationTimeout time.Duration `mapstructure:"migrationTimeout"`
+		Driver           string        `mapstructure:"driver"`
+		Host             string        `mapstructure:"host"`
+		Port             int           `mapstructure:"port"`
+		User             string        `mapstructure:"username"`
+		Password         string        `mapstructure:"password"`
+		Database         string        `mapstructure:"database"`
+		MaxIdleConns     int           `mapstructure:"maxIdleConns"`
+		MaxOpenConns     int           `mapstructure:"maxOpenConns"`
+		ConnMaxLifetime  time.Duration `mapstructure:"connMaxLifetime"`
+		Charset          string        `mapstructure:"charset"`
+		TimeZone         string        `mapstructure:"timeZone"`
+		Name             string        `mapstructure:"name"`
+		Path             string        `mapstructure:"path"`
+		TLS              string        `mapstructure:"tls"`
 	}
 
 	Log struct {
@@ -110,6 +110,8 @@ func Load(file string) (Config, error) {
 	v.SetEnvPrefix("APP")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+	v.SetDefault("server.corsOrigins", []string{"*"})
+	v.SetDefault("database.migrationTimeout", 2*time.Minute)
 
 	if err := bindEnvironment(v); err != nil {
 		return Config{}, fmt.Errorf("bind environment: %w", err)
@@ -145,7 +147,6 @@ func bindEnvironment(v *viper.Viper) error {
 		"server.origins",
 		"server.allowHTTP",
 		"server.trustedProxies",
-		"server.webDirectory",
 		"log.output",
 		"log.fileName",
 		"log.logLevel",
@@ -153,6 +154,7 @@ func bindEnvironment(v *viper.Viper) error {
 		"log.maxBackupCount",
 		"log.maxKeepDays",
 		"database.enabled",
+		"database.migrationTimeout",
 		"database.driver",
 		"database.host",
 		"database.port",
@@ -190,9 +192,12 @@ func (c Config) Validate() error {
 		return fmt.Errorf("server.maxBodyBytes must be positive")
 	}
 	for _, origin := range c.Server.CORSOrigins {
+		if origin == "*" && len(c.Server.CORSOrigins) == 1 {
+			continue
+		}
 		u, err := url.Parse(origin)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || strings.ContainsAny(u.Host, "*?") || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
-			return fmt.Errorf("server.corsOrigins must contain exact HTTP(S) origins")
+			return fmt.Errorf("server.corsOrigins must be [\"*\"] or contain exact HTTP(S) origins")
 		}
 	}
 	if c.Log.Output != "stdout" && c.Log.Output != "file" && c.Log.Output != "both" {
@@ -203,6 +208,9 @@ func (c Config) Validate() error {
 	}
 
 	if c.Database.Enabled {
+		if c.Database.MigrationTimeout <= 0 {
+			return fmt.Errorf("database.migrationTimeout must be positive")
+		}
 		if c.Database.MaxOpenConns <= 0 || c.Database.MaxIdleConns < 0 || c.Database.MaxIdleConns > c.Database.MaxOpenConns || c.Database.ConnMaxLifetime <= 0 {
 			return fmt.Errorf("invalid enabled database configuration")
 		}

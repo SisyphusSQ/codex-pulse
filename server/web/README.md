@@ -4,15 +4,21 @@ React 19 / TypeScript 7 / Vite 8 / AntD 6 / ECharts 6。依赖固定在 package.
 
 独立设计评审入口：`npm --prefix server/web run storybook`（仓库根目录），只监听`http://127.0.0.1:6007/`。含全部9页、8个关键状态与5个公共组件；无需Server/数据库，所有资料和操作均为合成内存预览。2026-10-03用户批准后，相应设计已接入下述业务页面；业务入口不导入设计目录或样本。详见[全站设计稿](../../docs/design/details/multi-machine-reporting/storybook-design.md)。静态构建用`npm run build-storybook -- --output-dir ../../.artifacts/storybook`，默认`storybook-static`也已忽略。
 
+正式 Web 与 Go Server 一起部署：在 `server/` 执行 `make web-install` 后运行 `make build-center`，先生成 `web/dist` 再通过 Go `embed` 编入 Server。按 [中心说明](../README.md)运行 `make run-center`，启动自动准备表结构，直接打开 `http://127.0.0.1:8080/`。运行机器无需 Node、Vite 或 Web 目录；页面与 `/api/v1` 使用同一入口。只运行 `npm run build` 不会更新已构建的 Server，页面变更需要重新构建二进制并重启。
+
+仅在需要前端热更新开发时使用 Vite，部署不使用此入口：
+
 ```sh
 cd server/web
-npm ci --ignore-scripts
+npm ci
 npm run dev
 ```
 
-另一个终端按 [中心说明](../README.md) 初始化隔离数据库并启动 Server。Vite 默认把 `/api` 转发到 `http://127.0.0.1:8080`，保留 Host/Origin；开发配置精确允许 `http://localhost:5173` 和 `http://127.0.0.1:5173`，不设通配 CORS。改变开发地址时同步 Server origins。仅供 Vite 的 `PULSE_WEB_PROXY_TARGET` 可指定已授权中心；它不进入静态包，不包含凭据。
+Vite 默认把 `/api` 转发到 `http://127.0.0.1:8080`，保留 Host/Origin。这类本地开发需要在私有 Server 配置的 `server.origins` 中额外加入实际 Vite 入口，如 `http://localhost:5173`；默认单体配置只允许中心自身入口。CORS 默认 `*` 且不允许跨域 Cookie，Vite 页面仍通过自身同源代理使用 Cookie。仅供 Vite 的 `PULSE_WEB_PROXY_TARGET` 可指定已授权中心；它不进入静态包，不包含凭据。
 
 首次管理员在受信任服务端终端运行 `codex-pulse-server db bootstrap`，在 Web 输入短期浏览器配对码。采集设备码不能登录管理页面。凭证只在 HttpOnly Cookie，CSRF 只在内存；刷新后重新读取会话。退出只有服务端撤销成功才返回授权页，网络失败保持可操作错误；撤销/过期取消旧请求、清除内存缓存。
+
+未授权浏览器直接打开中心首页即可看到授权表单，无须先进入管理页面取码。首次码及全部浏览器授权失效后的恢复码由 Server 终端生成，命令须使用运行中服务的同一配置与数据库；10 分钟一次性码交换为当前 14 天浏览器会话。详细步骤、入口绑定与恢复说明见[首次浏览器授权与访问恢复](../README.md#首次浏览器授权与访问恢复)。
 
 不把 code/credential/CSRF 放 localStorage、sessionStorage、URL、控制台、环境变量或构建产物。Token/微美元字符串与 NULL 原样保留；前端只格式化与展示，业务聚合、仲裁和预测来自 Server。
 
@@ -23,7 +29,7 @@ npm run lint:antd
 npm run build
 ```
 
-按开发风险选择验证，提交推送收尾不重复测试。dist/node_modules/.vite 不提交；Server 同源托管 Web，版本目录更新须按运行说明重启服务。
+按开发风险选择验证，提交推送收尾不重复测试。dist/node_modules/.vite 不提交；Server 内嵌并同源托管 Web，更新与回滚仅切换匹配配置和 schema 的二进制，详见[运行说明](../docs/test/operations.md)。
 
 2026-10-01：8 个授权/client UI 测试、类型、构建、AntD lint 通过；所有锁定依赖来自 registry.npmjs.org，审计未报告漏洞。环回 HTTP/隔离 SQLite/合成一次性码的真实浏览器配对、刷新恢复、退出撤销和 390px 窄屏通过；没有读取 Codex Home 或个人/Agent 凭据。三机真实 Home、MySQL、完整看板未验收，业务页面由其余 Execution 卡继续接入。
 ## 用量总览

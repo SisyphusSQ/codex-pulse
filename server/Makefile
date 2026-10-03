@@ -34,46 +34,46 @@ help:
 
 all: fmt test build
 
-build:
+build: web-build
 	@mkdir -p $(BUILD_DIR)
 	$(GO) build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./app/main.go
 
-release:
+release: web-build
 	@mkdir -p $(BUILD_DIR)
 	$(GO) build -trimpath $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./app/main.go
 
-run:
+run: web-build
 	$(GO) run ./app/main.go http
 
-test:
+test: web-build
 	$(GO) test ./...
 
-vet:
+vet: web-build
 	$(GO) vet ./...
 
-lint:
+lint: web-build
 	$(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run
 
-fmt:
+fmt: web-build
 	$(GO) fmt ./...
 
-tidy:
+tidy: web-build
 	$(GO) mod tidy
 
 clean:
 	rm -rf $(BUILD_DIR)
 
 .PHONY: verify integration vuln
-verify:
+verify: web-build
 	@test -z "$$(gofmt -l $$(find . -name '*.go' -not -path './vendor/*'))" || (echo 'Go files required formatting'; exit 1)
 	$(GO) test -race ./...
 	$(GO) vet ./...
 	$(GO) build ./...
 
-integration:
+integration: web-build
 	$(GO) test -tags integration ./app/cmd -run TestIsolatedComponents -count=1 -timeout=2m
 
-vuln:
+vuln: web-build
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 
 # 保留本机构建入口；六平台目标各自输出到独立目录，允许 make -j 并行。
@@ -90,13 +90,13 @@ define build_platform
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$$target_os GOARCH=$$target_arch $(GO) build $(1) $(LDFLAGS) -o "$$output" ./app/main.go
 endef
 
-$(addprefix build-,$(PLATFORMS)): build-%:
+$(addprefix build-,$(PLATFORMS)): build-%: web-build
 	$(call build_platform,)
 
-$(addprefix release-,$(PLATFORMS)): release-%:
+$(addprefix release-,$(PLATFORMS)): release-%: web-build
 	$(call build_platform,-trimpath)
 
-# 前后端可独立构建；中心打包不运行测试、数据库初始化或发布。
+# Web 先构建并内嵌到 Go 二进制；中心打包不运行测试、数据库初始化或发布。
 NPM ?= npm
 CONFIG ?= $(CURDIR)/config/config.yml
 PACKAGE_DIR ?= $(BUILD_DIR)/center
@@ -105,16 +105,17 @@ web-install:
 	cd web && $(NPM) ci
 web-build:
 	cd web && $(NPM) run build
-build-center: build web-build
+build-center: build
 run-center:
-	APP_SERVER_WEBDIRECTORY="$(CURDIR)/web/dist" $(BUILD_DIR)/$(BINARY_NAME) --config "$(CONFIG)" http
+	$(BUILD_DIR)/$(BINARY_NAME) --config "$(CONFIG)" http
 package-center: build-center
 	mkdir -p $(BUILD_DIR)
 	mkdir "$(PACKAGE_DIR)"
-	mkdir -p "$(PACKAGE_DIR)/web"
 	cp $(BUILD_DIR)/$(BINARY_NAME) $(PACKAGE_DIR)/$(BINARY_NAME)
-	cp -R web/dist/. $(PACKAGE_DIR)/web/
-	mkdir -p $(PACKAGE_DIR)/deploy $(PACKAGE_DIR)/scripts
+	mkdir -p $(PACKAGE_DIR)/deploy $(PACKAGE_DIR)/scripts $(PACKAGE_DIR)/config
 	cp -R deploy/. $(PACKAGE_DIR)/deploy/
+	cp config/development.example.yml config/production.example.yml $(PACKAGE_DIR)/config/
+	cp deploy/README.md $(PACKAGE_DIR)/README.md
 	cp scripts/mysql-backup.sh $(PACKAGE_DIR)/scripts/mysql-backup.sh
+	cp scripts/deadline.py scripts/macos-service.py $(PACKAGE_DIR)/scripts/
 	cp docs/test/operations.md $(PACKAGE_DIR)/OPERATIONS.md

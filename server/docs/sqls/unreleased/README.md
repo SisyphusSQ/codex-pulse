@@ -6,4 +6,4 @@ SQLite 开发场景覆盖初始化、重入、重启读回、不兼容拒绝、�
 
 TOO-483：在同一个未发布初始结构中增加原始 default 历史的 association_scope、实际 window_start_at_ms、Credits 详情状态/到期汇总/next_expires_at_ms；与 reset 分开。两种 dialect 完整 SQL 和 DO 同步，SQLite 新隔离库验证通过。旧开发库摘要不匹配时拒绝启动，不自动 ALTER 或覆盖；没有已发布的升级前提，因此不提供无适用对象的重复升级 SQL。真实 MySQL 执行仍为 Not Run。
 
-TOO-513：中心结构v2新增独立订阅设置。新环境使用完整schema；v1环境先备份、停写并运行显式db upgrade。对应20261002_TOO-513_subscriptions_mysql.sql和sqlite.sql仅新增表，由升级程序校验v1摘要、读回所有结构并提交版本标记。SQLite隔离升级验证通过；MySQL实际执行Not Run，不以SQLite替代。
+TOO-513：中心结构v2新增独立订阅设置。新环境使用完整schema；v1 环境更新二进制后由启动迁移器自动升级；`db upgrade` 保留为运维入口，常规备份仍保留。对应20261002_TOO-513_subscriptions_mysql.sql和sqlite.sql仅新增表，由升级程序校验v1摘要、读回所有结构并提交版本标记。SQLite隔离升级验证通过；MySQL实际执行Not Run，不以SQLite替代。

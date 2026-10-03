@@ -12,13 +12,11 @@ server:
     idleTimeout: 60s
     shutdownTimeout: 10s
     maxBodyBytes: 8388608
-    corsOrigins:
-        - "https://pulse.example.com"
+    corsOrigins: ["*"] # 通配跨域不允许携带 Cookie；内嵌 Web 使用同源 API
     origins:
         - "https://pulse.example.com"
     allowHTTP: false
     trustedProxies: []
-    webDirectory: "/app/web"
 database:
     enabled: true
     driver: "mysql"

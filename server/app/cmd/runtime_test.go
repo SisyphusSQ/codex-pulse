@@ -3,13 +3,20 @@ package cmd
 import (
 	"context"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"go.uber.org/fx"
 
 	"github.com/SisyphusSQ/codex-pulse/server/config"
+	apphttp "github.com/SisyphusSQ/codex-pulse/server/internal/http"
+	gormv2 "github.com/SisyphusSQ/codex-pulse/server/internal/lib/gorm"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
+	schema_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/schema_do"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/schema_repo"
 )
 
 func runtimeConfig(t *testing.T) config.Config {
@@ -20,6 +27,7 @@ func runtimeConfig(t *testing.T) config.Config {
 	}
 	cfg.Server.Address = "127.0.0.1:0"
 	cfg.Database.Enabled = false
+	cfg.Database.Driver = "sqlite"
 	cfg.ContextTimeout = time.Second
 	if err := log.New(cfg); err != nil {
 		t.Fatal(err)
@@ -68,15 +76,46 @@ func TestOccupiedPortFailsApplicationStartup(t *testing.T) {
 	}
 }
 
-func TestMissingWebDirectoryFailsBeforeListening(t *testing.T) {
+func TestApplicationStartupAutomaticallyInitializesSchema(t *testing.T) {
 	cfg := runtimeConfig(t)
-	cfg.Server.WebDirectory = t.TempDir()
-	app := fx.New(fx.NopLogger, inject(cfg))
-	if err := app.Err(); err != nil {
+	cfg.Database.Enabled = true
+	cfg.Database.Path = filepath.Join(t.TempDir(), "private", "center.sqlite")
+	var engine *gormv2.Engine
+	var server *apphttp.Server
+	app := fx.New(fx.NopLogger, inject(cfg), fx.Populate(&engine, &server))
+	if err := app.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := app.Stop(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := schema_repo.NewSchema(engine).Check(t.Context()); err != nil {
+		t.Fatal("startup did not migrate", err)
+	}
+	response := httptest.NewRecorder()
+	server.Echo.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "http://127.0.0.1/", nil))
+	if response.Code != 200 {
+		t.Fatal("embedded Web unavailable after migration", response.Code)
+	}
+}
+
+func TestIncompatibleSchemaStopsApplicationStartup(t *testing.T) {
+	cfg := runtimeConfig(t)
+	cfg.Database.Enabled = true
+	cfg.Database.Path = filepath.Join(t.TempDir(), "private", "center.sqlite")
+	if err := withConfiguredDatabase(t.Context(), cfg, func(ctx context.Context, engine *gormv2.Engine) error {
+		if err := schema_repo.NewSchema(engine).Migrate(ctx); err != nil {
+			return err
+		}
+		return engine.DB(ctx).Model(&schema_do.SchemaVersion{}).Where("id = ?", 1).Update("version", 99).Error
+	}); err != nil {
+		t.Fatal(err)
+	}
+	app := fx.New(fx.NopLogger, inject(cfg))
 	if err := app.Start(t.Context()); err == nil {
 		_ = app.Stop(t.Context())
-		t.Fatal("missing Web was accepted")
+		t.Fatal("incompatible schema accepted")
 	}
 }

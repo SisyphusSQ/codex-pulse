@@ -12,11 +12,10 @@ server:
     idleTimeout: 60s
     shutdownTimeout: 10s
     maxBodyBytes: 8388608
-    corsOrigins: []
+    corsOrigins: ["*"] # 通配跨域不允许携带 Cookie；内嵌 Web 使用同源 API
     origins: ["http://127.0.0.1:8080"]
     allowHTTP: true
     trustedProxies: []
-    webDirectory: "/opt/codex-pulse/center/web"
 database:
     enabled: true
     driver: "sqlite"

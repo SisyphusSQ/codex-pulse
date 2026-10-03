@@ -1,6 +1,6 @@
 # 中心构建、运行与备份恢复
 
-适用独立 Go Server + `server/web`。本机 App/Helper 的 UDS、pipe 鉴权和数据库保持原架构。只有 Server 常驻；退出 App 后采集与上报停止，下次启动增量补采。以下路径均为部署示例，不是已部署环境。
+适用内嵌 `server/web` 的 Go Server 单体部署。本机 App/Helper 的 UDS、pipe 鉴权和数据库保持原架构。只有 Server 常驻；退出 App 后采集与上报停止，下次启动增量补采。以下路径均为部署示例，不是已部署环境。
 
 ## 构建与首次启动
 
@@ -8,20 +8,23 @@
 
 ```sh
 make web-install                 # npm ci，写 web/node_modules；首次或锁文件变更时
-make build                      # 独立 Go 二进制，不运行测试
-make web-build                  # 独立 Web 构建，写 web/dist
-make package-center             # 写 bin/center；含二进制、web、deploy 和本文
-bin/codex-pulse-server db init
-bin/codex-pulse-server db check
-bin/codex-pulse-server db bootstrap
-make run-center
+make package-center             # 先构建 Web 并内嵌到 Go；写 bin/center，含二进制、deploy、scripts 和本文
+make run-center                 # 自动初始化/升级，再开始监听
 ```
+
+开发/正式两套 MySQL 配置见[环境配置](../../config/README.md)，账密填写在被 Git 忽略的本地副本。当前采用二进制部署，不安装或运行 Docker。服务启动成功后，在另一个受信任终端运行与 Server 相同配置的 `db bootstrap`，随后浏览器输入管理员码。`db check` 保留为可选的只读结构诊断。
 
 `package-center` 拒绝覆盖已有打包目录；重打包时用 `PACKAGE_DIR=/新目录`，保留旧产物并避免残留旧资源。
 
 默认 SQLite 写 `.runtime/pulse.sqlite`，父目录 0700、文件 0600；不读 Agent Home。`db bootstrap` 只在受信任终端显示一次性短期管理员码，不将码放入日志、URL、截图或文档。浏览器访问 `http://127.0.0.1:8080/`，输入码后签发 collector 设备码，原生设置中配对并明确启用。关闭报告时本机统计继续运行。配对和 HTTP 许可不会自动打开上报。
 
-`server.webDirectory` 为空时只启用 API；启用时必须指向完整构建目录（index.html + assets），缺失使启动失败。HashRouter 深链接形如 `/#/quota`。静态入口只开放 GET/HEAD `/` 与 `/assets/*`，不提供目录列表、源码 map、隐藏文件或任意 SPA API 兜底。业务接口仍要求授权。更新采用完整产物目录，重启前后端同一版本；Web 不含秘密。二进制默认版本为 `dev-<commit>`（有工作树改动附加 `-dirty`），正式中心版本需另行发布；原生 App 的 tag 不等于中心已发布。管理端页脚及 GET `/api/v1/version` 读回构建、上报/TPS 协议及 schema；不返回环境或仓库 URL。
+浏览器没有授权时也可直接打开该地址，服务先显示公开授权表单，业务数据仍受保护。自定义部署的 `db bootstrap` 必须显式传入运行中 Server 的同一 `--config`，避免把码生成到另一个数据库。配对码有效 10 分钟且单次消费，浏览器会话当前有效 14 天并绑定入口。所有浏览器授权失效时可再次通过服务端 CLI 生成管理员码恢复，无须重新 `db init`；详见[首次授权与访问恢复](../../README.md#首次浏览器授权与访问恢复)。
+
+正式构建先生成 `web/dist`，再通过 Go `embed` 编入二进制；`make build`、`release`、`build-center` 与六平台目标均包含这一步，不需要另行构建/部署前端。运行时无需 Node、Vite 或 Web 目录，页面、assets 与 API 使用同一服务入口。直接运行 Go 构建或测试命令前先执行 `make web-build`，缺少内嵌资源时编译失败。`web/dist` 不提交。
+
+CORS 默认 `["*"]`，不许可跨域 Cookie；内嵌 Web 使用同源 Cookie。`server.origins` 仍为精确入口白名单，浏览器状态变更继续校验 Origin/CSRF。可将 `corsOrigins` 改为精确 Origin 列表（许可跨域凭据），或显式 `[]`（跳过 CORS）。旧配置须删除 `server.webDirectory` 与 `APP_SERVER_WEBDIRECTORY`，不再部署外置 Web 目录。
+
+HashRouter 深链接形如 `/#/quota`。静态入口只开放 GET/HEAD `/` 与 `/assets/*`，不提供目录列表、源码 map、隐藏文件或任意 SPA API 兜底。业务接口仍要求授权。更新时切换并重启整个二进制，页面与 API 始终来自同次构建；Web 不含秘密。二进制默认版本为 `dev-<commit>`（有工作树改动附加 `-dirty`），正式中心版本需另行发布；原生 App 的 tag 不等于中心已发布。管理端页脚及 GET `/api/v1/version` 读回构建、上报/TPS 协议及 schema；不返回环境或仓库 URL。
 
 ## 网络与常驻
 
@@ -59,11 +62,11 @@ bin/codex-pulse-server --config /private/restored-server.yml http
 
 ## MySQL 运行与备份入口
 
-目标 MySQL 8.4 / InnoDB / utf8mb4，建专用数据库；SQL 唯一事实源 `docs/sqls/schema/center_mysql.sql`，由 `db init` 显式执行并读回。运行用户与初始化/备份用户按用途分开授权。`https-mysql.yml` 默认 TLS true，系统信任库需信任实际数据库 CA 且证书主机名匹配；不关闭校验或自动降级。现有 Engine 对 UTC 时间、ClientFoundRows 和有界连接/读写等待统一配置。
+目标 MySQL 8.4 / InnoDB / utf8mb4，建专用数据库；DEV 已验证 SeekDB 1.2 的 MySQL 协议链路，具体证据见[联调记录](../../../docs/test/multi-machine-reporting.md)。SQL 唯一事实源 `docs/sqls/schema/center_mysql.sql`，由启动迁移器自动初始化或升级后读回。运行用户需要该专用库的业务读写及交付迁移所需 DDL 权限，限制在本库；备份用户按用途独立授权。`https-mysql.yml` 默认 TLS true，系统信任库需信任实际数据库 CA 且证书主机名匹配；不关闭校验或自动降级。现有 Engine 对 UTC 时间、ClientFoundRows 和有界连接/读写等待统一配置。
 
 ```sh
-bin/codex-pulse-server --config /private/mysql-server.yml db init
-bin/codex-pulse-server --config /private/mysql-server.yml db check
+bin/codex-pulse-server --config /private/mysql-server.yml http
+# 服务启动成功后，另一个终端使用相同配置：
 bin/codex-pulse-server --config /private/mysql-server.yml db bootstrap
 bash scripts/mysql-backup.sh backup /private/mysql-client.cnf pulse_center /private/center-backups/mysql-001
 # 先准备新的专用空库 pulse_center_restored，禁止对活动库执行。
@@ -71,15 +74,15 @@ bash scripts/mysql-backup.sh restore /private/mysql-client.cnf pulse_center_rest
 bin/codex-pulse-server --config /private/mysql-restored-server.yml db check
 ```
 
-使用 MySQL 8.4 `mysql`/`mysqldump`、`shasum` 和 GNU `timeout`（macOS 为 `gtimeout`）；不会安装工具。客户端配置复制自 `deploy/mysql-client.example.cnf` 到 0600 私有文件，密码不进入 argv。仅处理自己的受信任备份，不接受上传 SQL；恢复凭据限制为指定新库，禁止全局权限。备份单事务/quick/hex-blob/no-tablespaces/GTID OFF，不与 DDL 并行；输出与错误日志私有，整体 10 分钟截止。恢复先校验摘要并检查目标空库，不使用 `--force`，禁 LOCAL 文件导入和非交互客户端命令，恢复后撤销旧授权。MySQL DDL/导入失败可能留下部分新库：保留诊断，不启动、不切换、不假装事务回滚；修复后另建新空库重试。
+使用 MySQL 8.0+ `mysql`/`mysqldump`、`shasum` 和 GNU `timeout`；缺少 GNU timeout 时使用部署包内 Python 3 超时入口，不安装工具。MySQL 8.0 的隐式登录文件通过独立不存在的 `MYSQL_TEST_LOGIN_FILE` 隔离，不沿用个人 `.mylogin.cnf`；dump 关闭 column statistics，兼容已验证的 SeekDB。客户端配置复制自 `deploy/mysql-client.example.cnf` 到 0600 私有文件，密码不进入 argv。仅处理自己的受信任备份，不接受上传 SQL；恢复凭据限制为指定新库，禁止全局权限。备份单事务/quick/hex-blob/no-tablespaces/GTID OFF，不与 DDL 并行；输出与错误日志私有，整体 10 分钟截止。恢复先校验摘要并检查目标空库，不使用 `--force`，禁 LOCAL 文件导入和非交互客户端命令，恢复后撤销旧授权。MySQL DDL/导入失败可能留下部分新库：保留诊断，不启动、不切换、不假装事务回滚；修复后另建新空库重试。
 
-恢复后读回 schema/checksum、表结构、业务数量/来源/NULL/零、quota/reset/TPS、收据幂等和授权撤销；再 bootstrap、浏览器及三设备重配、核对真实数据，才可切换。**当前没有真实 MySQL 环境，这些操作未运行。** Shell 语法和模板检查不构成数据库验收。
+恢复后读回 schema/checksum、表结构、业务数量/来源/NULL/零、quota/reset/TPS、收据幂等和授权撤销；再 bootstrap、浏览器及三设备重配、核对真实数据，才可切换。**DEV 已完成数据库连接、自动初始化、上传与重启读回；上述备份/恢复命令尚未在实际数据库演练。** DEV 已使用 MySQL 8.0 与 Python 超时入口完成真实 dump/临时空库恢复演练；独立 MySQL 8.4 与生产恢复切换仍需单独验收。
 
 官方选项依据：[mysqldump](https://dev.mysql.com/doc/refman/8.4/en/mysqldump.html)、[mysql 客户端](https://dev.mysql.com/doc/refman/8.4/en/mysql-command-options.html)。
 
 ## 升级、回滚和数据操作区别
 
-正常启动只检查 schema/version/checksum，不 AutoMigrate。当前未发布 schema 1 若与早期开发库不符，会拒绝启动；不删库解决。未来结构升级须独立的版本 SQL、备份、执行与读回记录，不能对已初始化库用新全量 SQL 假装增量迁移。先升级支持 TPS 的中心，再升级 App；旧中心拒绝新字段时队列保留，未来 capsule 版本返回 426。
+正常启动在开始 HTTP 监听之前调用版本化迁移器：空库初始化到当前 v2，已确认 v1 自动升级到 v2，当前版本只校验而不重写标记。未知版本/摘要与已检测到的字段漂移拒绝启动，不降级、不删除历史。后续结构升级由开发者随二进制交付版本化 SQL，用户更新并重启二进制即可。`db init`/`db upgrade` 保留为运维工具。MySQL 以选中数据库的摘要命名锁串行化迁移，锁与 DDL 固定同一连接；失败连接丢弃，取消后仍有界释放锁。`database.migrationTimeout` 默认 2 分钟，普通 HTTP/数据库请求预算保持 `contextTimeout`。MySQL DDL 可能部分提交，全部 DDL 与字段读回成功才更新版本，修复实际故障后可重新启动续行；不假装事务回滚。升级仍保留常规备份与读回证据。先升级支持 TPS 的中心，再升级 App；旧中心拒绝新字段时队列保留，未来 capsule 版本返回 426。
 
 回滚先停服务，核对旧二进制对应结构。结构未变可切回完整旧产物；结构不兼容则恢复对应旧快照到新位置，和匹配二进制/配置成对切换，仍撤销恢复授权并重配；不盲降 schema、不删除原库、不隐瞒备份后数据缺口。
 
@@ -98,10 +101,20 @@ Execution 只记录开发证据，Master TOO-475/476/477 承接正式验收。SQ
 
 记录逐项 Pass / Fail / Blocked / Not Run，不用构建替代三机、真实 MySQL、HTTPS 代理部署或 CI。生产部署、签名、公证与发布在本阶段未执行，不启用已关闭 CI。开发证据见根仓 `docs/test/multi-machine-reporting.md` 及本目录运行交付摘要。
 
-## Web 静态资源目录更新
+## 二进制升级与可选 Dockerfile
 
-Server 通过受限目录句柄托管同源构建资源，运行中不要直接在该目录执行 Vite build 或替换 assets 子目录。构建到新的版本目录后，用新的 server.webDirectory 启动或重启 Server；保留上一份二进制与完整 Web 目录用于回滚。开发时若重建了当前预览目录，也需要重启隔离预览 Server，再刷新页面。单独刷新浏览器不能重新绑定被构建替换的目录。
+构建新二进制到新的产物目录，保留旧二进制与配置；停止中心后切换并重启，浏览器刷新重新获取当前页面和 hashed assets。资源在运行期间只从二进制读取，重新执行 Vite build 不会改变正在运行的服务。回滚核对数据库结构后切回旧二进制与对应配置；旧版外置 Web 模式还须保留旧配置和资源，不能拿新版严格配置直接启动旧版。
+
+本阶段不安装或运行 Docker。Dockerfile 可保留为构建描述；以下仅为可选说明，构建上下文是仓库根目录：
+
+```sh
+docker build -f server/Dockerfile -t codex-pulse-server:local .
+```
+
+Dockerfile 在 Node 阶段执行锁文件安装和 Web 构建，Go 阶段内嵌这些资源；最终镜像只包含 Server、运行配置与系统信任库，无 Node 或外置 Web。部署前按实际入口、可信代理和数据库配置调整私有配置；镜像构建不初始化数据库、不签发码、不执行迁移。二进制运行时自动准备或升级受支持的表结构，不要求使用者在启动前运行建表或升级命令。
 
 ## 结构v1至v2订阅设置升级
 
-升级前备份中心数据库并停写，使用当前新二进制及原配置显式执行db upgrade；HTTP不会自动迁移。升级器只接受已确认v1摘要，增加pulse_account_settings，校验全部字段后提交v2标记。SQLite升级在事务内，MySQL DDL不可假设回滚。失败保留实际结构，检查错误后重入；不要手改标记或删除旧事实。升级后通过db check、保留表数量/记录读回及订阅保存验证。旧备份回退须匹配旧二进制与结构，不盲降schema。MySQL实机验收仍待环境。
+升级前保留常规数据库备份，切换当前新二进制及原配置并重启；启动自动完成受支持的 v1→v2 迁移，HTTP 在迁移完成后才监听。升级器只接受已确认v1摘要，增加pulse_account_settings，校验全部字段后提交v2标记。SQLite升级在事务内，MySQL DDL不可假设回滚。失败保留实际结构，检查错误后重入；不要手改标记或删除旧事实。升级后通过db check、保留表数量/记录读回及订阅保存验证。旧备份回退须匹配旧二进制与结构，不盲降schema。MySQL实机验收仍待环境。
+
+macOS 常驻命令与权限、版本目录及回滚说明见[部署 README](../../deploy/README.md#macos-常驻)。配置使用绝对路径；正式 Tailscale 绑定与精确 Origin 同步，不开启公网监听。

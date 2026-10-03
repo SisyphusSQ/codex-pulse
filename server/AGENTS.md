@@ -6,7 +6,7 @@
 - 入口：app/main.go、app/cmd；HTTP 与中间件在 internal/http。
 - controller、service、repository 和 DO/DTO/VO 按业务域分子包；各层根包只装配，VO 根包仅保留明确公共能力。MySQL DO 一表一文件，现有标签和 TableName() 与 DO 同文件。
 - service 不直接处理 Echo 或持久化连接。DO 不作为业务响应；事务在 service 边界发起，repository 使用 Engine.DB(ctx)。
-- build：make build；release：make release（只构建，不测试、不发布）。
+- build：首次执行 make web-install，随后 make build；release：make release（Web 类型检查与构建后内嵌到 Go，不运行测试、不发布）。Web/Server 单体部署，无运行时 webDirectory；直接 Go 命令前先 make web-build，构建产物不提交。
 - test：make test；格式检查/静态检查：make verify；格式改写：make fmt。
 - lint：make lint；漏洞检查：make vuln，均使用固定版本工具。
 - integration：make integration；仅当所选组件需要且隔离环境已准备时运行，详见 docs/test/integration.md。
@@ -32,6 +32,7 @@ README 负责使用说明，docs 负责可复用说明；测试 runbook 放 docs
 
 ## 实现边界
 
+- HTTP 监听前按版本化 SQL 自动初始化/升级中心结构，失败不得开始监听；不删除历史或降级未知结构。现有 SQL 字节摘要保持稳定，后续结构变更须交付迁移，不直接使用 ORM 猜测结构。
 - 组件只有显式 enabled 才装配。provider 构造器不访问网络；连接在 OnStart 打开，在失败路径和 OnStop 关闭。
 - 构造器只保存依赖句柄，不能在 OnStart 之前获取 Mongo collection 或执行 SQL。
 - 参数、分页、资源权限在责任层验证；不得关闭鉴权、TLS 校验或吞掉错误。

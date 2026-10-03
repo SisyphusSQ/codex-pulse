@@ -17,6 +17,12 @@ jobs:
         with:
           go-version: "1.27.1"
           cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: make web-install
       - run: go mod download
       - run: make verify lint vuln
       - run: make -j2 build-all
@@ -30,6 +36,12 @@ jobs:
         with:
           go-version: "1.27.1"
           cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.2"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: make web-install
       - name: 准备临时凭据
         shell: bash
         run: |

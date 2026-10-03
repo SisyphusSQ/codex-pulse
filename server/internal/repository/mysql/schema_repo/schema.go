@@ -14,10 +14,10 @@ import (
 	schema_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/schema_do"
 )
 
-var ErrSchemaMissing = errors.New("center schema is missing: run explicit db init")
+var ErrSchemaMissing = errors.New("center schema is missing")
 var ErrSchemaIncompatible = errors.New("center schema is incompatible: inspect structure before upgrade")
 
-// Schema 不自动修改结构；服务启动仅检查，初始化只能由受控 CLI 调用。
+// Schema 用版本化 SQL 管理结构；Migrate 在服务开始监听之前初始化或升级。
 type Schema struct{ engine *gormv2.Engine }
 
 func NewSchema(engine *gormv2.Engine) *Schema { return &Schema{engine: engine} }
@@ -76,6 +76,10 @@ func (s *Schema) checkColumns(ctx context.Context) error {
 
 // Init 初始化已知结构，可安全重入已完成结构，不降级、不删除业务数据。
 func (s *Schema) Init(ctx context.Context) error {
+	return s.withMigrationLock(ctx, s.init)
+}
+
+func (s *Schema) init(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}

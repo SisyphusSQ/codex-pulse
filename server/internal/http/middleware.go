@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"uuid"
@@ -32,7 +33,16 @@ func InitMiddleware(cfg config.Config, access *access_srv.Access) *EchoMiddlewar
 	return &EchoMiddleware{config: cfg, access: access, pairing: newPairingLimiter()}
 }
 func (e *EchoMiddleware) CORS(next echo.HandlerFunc) echo.HandlerFunc {
-	return middleware.CORSWithConfig(middleware.CORSConfig{AllowOrigins: e.config.Server.CORSOrigins, AllowHeaders: []string{"Content-Type", "Authorization", "X-Pulse-CSRF", "X-Request-ID"}, AllowCredentials: true, ExposeHeaders: []string{"X-Request-ID"}})(next)
+	// 空白名单表示仅同源访问；Echo v5 不接受空 AllowOrigins。
+	if len(e.config.Server.CORSOrigins) == 0 {
+		return next
+	}
+	return middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins:     e.config.Server.CORSOrigins,
+		AllowHeaders:     []string{"Content-Type", "Authorization", "X-Pulse-CSRF", "X-Request-ID"},
+		AllowCredentials: !slices.Contains(e.config.Server.CORSOrigins, "*"),
+		ExposeHeaders:    []string{"X-Request-ID"},
+	})(next)
 }
 func (e *EchoMiddleware) Recover(next echo.HandlerFunc) echo.HandlerFunc {
 	return middleware.Recover()(next)

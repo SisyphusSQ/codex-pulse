@@ -11,6 +11,7 @@
 **/.artifacts/**
 **/.runtime/**
 **/node_modules/**
+**/web/dist/**
 **/bin/**
 **/logs/**
 **/*.log
@@ -20,3 +21,4 @@
 **/*local*.yml
 **/*test*.yml
 server/.agents/**
+server/config/*.local.*

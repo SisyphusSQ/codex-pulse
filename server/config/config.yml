@@ -12,16 +12,11 @@ server:
     idleTimeout: 60s
     shutdownTimeout: 10s
     maxBodyBytes: 8388608
-    corsOrigins:
-        - "http://localhost:5173"
-        - "http://127.0.0.1:5173"
+    corsOrigins: ["*"] # 通配跨域不允许携带 Cookie；内嵌 Web 使用同源 API
     origins:
         - "http://127.0.0.1:8080"
-        - "http://localhost:5173"
-        - "http://127.0.0.1:5173"
     allowHTTP: true
     trustedProxies: []
-    webDirectory: "" # API-only; make run-center explicitly selects the built Web
 database:
     enabled: true
     driver: "sqlite"

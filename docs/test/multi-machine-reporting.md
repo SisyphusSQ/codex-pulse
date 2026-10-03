@@ -1,6 +1,6 @@
 # 多机中心开发验证与后续验收
 
-总体方案：[多机汇总与 Web](../design/details/multi-machine-reporting/README.md)。开发证据来自隔离 SQLite 与 synthetic/empty Home，不能替代三机真实 Home 或 MySQL 验收。
+总体方案：[多机汇总与 Web](../design/details/multi-machine-reporting/README.md)。确定性开发证据使用隔离 SQLite 与 synthetic/empty Home；2026-10-03 补充了本机真实 Home Live E2E，以及 DEV SeekDB/MySQL 协议与 Tailscale 三机 HTTP 联调，见文末。各证据不能互相替代，不代表三台原生 App 全矩阵或正式部署已验收。
 
 ## 聚焦开发入口
 
@@ -61,6 +61,8 @@ HTTP 必须在 App 显式允许，连接目标仅限环回/LAN/Tailscale 地址�
 - Not Run：三台机器真实 Home 分别配置、读回设备与 Home、初次补传/退出重启/断网恢复，以及实际 Web 页面闭环。
 - Not Run：真实 MySQL 连接、整体 E2E、并发/事务/字符集/时区/备份恢复；环境由用户后续提供。
 - Not Run：生产部署、签名、公证和正式发布。
+
+2026-10-03 更新：本机一台真实 Home 的原生配对、上传、断网恢复、退出重启、设备撤销与新版 Web 首次授权已完成下述 Live E2E；三台机器分别运行及跨机去重/账号关联的完整矩阵仍为 Not Run。MySQL 本轮按用户要求排除。
 
 实际运行前说明将读取 Session/JSONL、写入各机私有 runtime、主 SQLite/偏好及 App Server housekeeping；保持真实 CODEX_HOME 的物理身份读回，三台机器分别取证。完整日志、凭据、正文和本机路径只留受保护且忽略的本机 artifacts，提交摘要使用更窄白名单。
 # Web 总览开发证据（TOO-487，2026-10-01）
@@ -222,3 +224,86 @@ Not Run：真实API对账、原生App/真实Home、三机/MySQL/生产/CI。设�
 安全自查Pass（diff范围）：既有admin授权、Cookie/Origin/CSRF、collector隔离、参数化查询与预算、修订CAS、React文本/richText及官方HTTPS来源限制保持。缓存比值由Go完整计数计算，未知不伪装成零；未新增原始内容/秘密上报、日志或匿名接口。使用原浏览器授权，没有新签发管理凭证。
 
 Not Run：本轮匿名配对界面单独浏览器验证、真实MySQL/升级并发/备份恢复、三台Mac真实上报、原生App/真实Home、CI、Docker、生产HTTPS/部署/发布。签发码/撤销真实客户端未再执行，沿用授权/client行为测试；SQLite开发证明不替代上述验收。四张Execution均指派用户、同一原milestone、归Master TOO-477；整体验收及后续MySQL复测仍在Master。
+
+## 首次授权与本机真实 Home Live E2E（2026-10-03）
+
+用户授权补做现有环境可完成的 Live E2E，MySQL 明确排除。使用新构建的 Go Server、正式 Web 和原生 Development App；中心为本机环回 HTTP/独立 SQLite。原生 App 显式绑定真实 Codex Home，并使用从已核实私有 runtime 复制的独立 0700 runtime。每次启动均读回 App/Helper 环境、Helper 参数、preferences 的 canonical path/device/inode；没有覆盖日常 App 的偏好或停止日常 App。
+
+| 场景 | 结果与证据范围 |
+| --- | --- |
+| 匿名首页与 API 边界 | Pass：新版浏览器能看到授权表单；无授权的业务/会话 API 为 401。 |
+| CLI 首次授权与访问恢复 | Pass：同一服务配置的 `db bootstrap` 生成一次性码，浏览器配对进入、刷新恢复；退出回到授权页，已消费码重放被拒绝，再经 CLI 新码恢复。 |
+| Origin/CSRF | Pass：真实 HTTP 请求缺少 CSRF 或使用其他 Origin 时写入为 403，已授权查询为 200。 |
+| 原生配对与设置 | Pass：真实 UI 配对后仍关闭上报；显式允许环回 HTTP、保存启用及 600 秒间隔，Helper 和同步库读回一致。退出重启后间隔与开关保留；未连续等待一个完整 10 分钟自动周期。默认间隔仍为 60 秒。 |
+| 实际上传与中心查询 | Pass：首轮队列排空，中心确认结构化会话、用量、额度和 Provider 状态；真实 Web 会话页加载，HTTP 列表/详情返回缓存命中率与 TPS。收到事实不等于全部历史或年度覆盖完整。 |
+| 断网与采集隔离 | Pass：只停止本轮隔离中心，原生状态变为 `offline`，保留 3 个未确认批次；中心表计数不变，同时本机 active token scan 的输入、输出和更新时间继续推进。 |
+| 断网恢复与幂等 | Pass：恢复中心后队列排空，3 个积压批次均找到唯一中心收据，digest 与离线队列原始正文 SHA-256 一致。 |
+| 带积压退出与重启 | Pass：带 1 个未确认批次正常退出，App、Helper 和 UDS 均停止，持久队列保留；使用同一 runtime 重启后继续补传，原批次获得唯一且正文匹配的确认。 |
+| 撤销采集设备 | Pass：撤销本轮测试设备后进入 `reconnect_required`，保留 2 个未确认批次；再次请求立即同步被拒绝，最近尝试时间与中心事实不再推进，本机采集仍继续更新。 |
+| 设置页位置调整 | Pass：在上述 Live E2E 完成后，仅将“多机中心”移至“本机数据”之后、设置页最后；重新构建并在真实 Home App 中检查标题顺序和界面，配置逐字段与调整前一致。没有为顺序调整新增或重跑全量测试。 |
+
+验收发现并修复真实启动缺陷：部署示例的 `corsOrigins: []` 会让 Echo v5 的 CORS 中间件在构造阶段 panic。空列表现在跳过 CORS 中间件，继续使用同源入口及原有 Cookie/Origin/CSRF 鉴权。新增回归测试验证静态授权页、匿名 API 拒绝、授权会话、缺失 CSRF 与其他 Origin 拒绝；既有非空精确白名单保持。
+
+本轮聚焦命令：`go test ./internal/http -run '^(TestUnifiedPairingCSRFRevocationAndPermissions|TestHTTPSUsesSamePairingAndSecureSession|TestNativeCoreReportingPairUploadRevokeAndClose|TestSameOriginServerWithoutCORSRetainsAuthorization|TestStaticWebRootAssetsAndAPIAuthorization)$' -count=1`（server module），Pass。实际 HTTPS 测试使用确定性测试服务，不能代表生产代理/证书部署已验收。Go Server/Web 构建和 Development App 两次构建成功；UI 顺序修改之后只补做新构建的界面与配置读回。
+
+原始数值观测、私有测试库、构建日志及截图仅保存在忽略提交且受保护的 `.artifacts/multi-machine/live-20261003/`，不提交真实 Home 路径、账号资料、正文、配对码或凭证。收尾关闭本轮测试上报、撤销测试设备与管理会话、退出 Development App、停止隔离中心；日常 App 和既有预览保持运行。
+
+剩余 Not Run：三机分别绑定真实 Home 的完整 HTTP/Tailscale/HTTPS 与跨机去重、账号切换/历史关联、真实 MySQL（本轮排除）、生产反向代理/证书/备份恢复与正式部署。已有的合成边界测试不能升级为这些场景的 Live 证明；本轮没有执行 CI、签名、公证或发布，也未据此宣称 Master 整体通过。
+
+安全 diff 自查：只移动 Swift Section，Go 空 CORS 列表保留同源鉴权及 CSRF，不新增匿名业务接口、网络暴露、凭据存储或上报字段；开发验收数据与凭据未进入提交内容。
+
+## 2026-10-03 内嵌 Web 与单体部署
+
+用户确认中心不采用前后端分离部署，CORS 默认 `*`。Web 正式产物通过 Go `embed` 编入 Server；运行时移除 `server.webDirectory`，一个二进制同源提供页面、hashed assets 和 API。Make 的本机/跨平台构建先生成 Web，打包不再附带外置 Web；Dockerfile 使用 Node → Go → 非 root 运行镜像的构建流程。README、配置和升级说明同步，旧配置须删除外置 Web 开关。
+
+Pass：Web 类型检查/构建、Go 本机构建与部署包；受影响 config、HTTP、CLI 生命周期共 15 个顶层聚焦测试通过（含子场景）。覆盖省略配置时 CORS 默认 `*`、显式空列表、精确白名单、混合通配拒绝；通配响应不设置跨域凭据许可。同源浏览器配对、Cookie、Origin/CSRF、用途权限、撤销、HTTPS Cookie 与 native Core 上报 contract 回归通过。静态首页及所有内嵌资产可读取，HEAD 无正文，资产 immutable，隐藏文件/source map/穿越路径拒绝，匿名业务 API 仍为 401。
+
+Pass：将部署包二进制复制到独立私有临时目录，仅保留二进制、配置与隔离 SQLite，无 Web/dist 目录。配置省略 corsOrigins 后实际启动：ready/index 为 200；首页引用的 30 个资源 GET/HEAD 成功；其他 Origin 的预检为 204/`Access-Control-Allow-Origin: *`，无 `Access-Control-Allow-Credentials`，匿名业务 API 为 401。Chrome 实际浏览器首次授权 → 刷新恢复 → 会话懒加载 → 退出回到授权表单通过，浏览器错误数 0。仅验证中心部署链路，本轮未启动原生 App、读取 Codex Home 或执行 MySQL。
+
+Pass：macOS/Linux × amd64/arm64 构建和 Mach-O/ELF 架构读回。Fail：Windows amd64/arm64 交叉构建因既有共享配额算法间接依赖本机 Unix diagnostics/sqlite 包失败；本轮没有修改这些依赖或移除平台目标。Not Run：Docker 实构/容器运行（本机无 Docker）、MySQL、三机及生产 HTTPS 部署。官方 Node 构建镜像 tag 已在 registry 确认存在，不能作为完整容器构建证据。
+
+原始本机证据在忽略目录 `.artifacts/multi-machine/embedded-20261003/`，包含构建输出、部署包、HTTP 结果和脱敏浏览器截图；隔离服务已停止，明文测试配对码已删除。原有应用与预览未重启。安全 diff 自查：静态资源只读内嵌、无外置路径访问；默认通配关闭跨域凭据许可，统一鉴权/入口/CSRF 保留；无新增凭据、上报字段、数据库迁移或公开业务接口。
+
+## 2026-10-03 开发/正式配置与启动自动迁移
+
+用户确认只有开发与正式两套环境，采用二进制部署，Dockerfile 可以保留但不安装/运行 Docker。新增 MySQL 开发/正式 `*.example.yml` 模板与环境说明；本机创建对应 `*.local.yml`（0600），`config/*.local.*` 被 Git 和镜像上下文排除。开发环回端口 18089、开发库与正式库分别配置，正式模板采用环回 18090 与受信任 HTTPS 代理。真实地址/账密只由用户填写本地副本，本轮没有读取或连接实际 MySQL。
+
+中心 Fx 生命周期在 HTTP 监听之前自动执行版本化 Migrate：空库初始化到 v2、已确认 v1 自动升级到 v2、当前结构重复启动只检查；未知版本/摘要及已检测到的字段漂移拒绝启动。原 SQL 内容、checksum 与 schema 版本保持不变；不调用 ORM 猜测结构，不删除业务历史。MySQL 迁移使用同数据库摘要命名锁，锁和 DDL 固定同一连接，避免单连接池死锁；取消后有界释放，失败连接丢弃，不把残留连接级锁返还池中。迁移预算默认 2 分钟，普通请求 context 预算保持不变。
+
+Pass：`go test ./config ./internal/lib/gorm ./internal/repository/mysql/schema_repo ./app/cmd -count=1`，覆盖自动初始化、已登记升级、重复执行、事实/收据保留、未知结构拒绝、SQLite 失败回滚、MySQL 锁成功/超时拒绝/迁移失败/取消清理/释放失败语义，以及 Fx 启动成功/拒绝。后续新增配置预算与显式 SQLite 夹具分别以 config/app-cmd 聚焦测试补验；固定连接的单连接池事务、失败丢弃和跨 Engine 拒绝在 gorm 包测试补验。SQL mock 不代表实际 MySQL 已执行。
+
+Pass：真实开发二进制在独立私有 SQLite 中，不执行 db init/upgrade，空库直接启动得到 ready 和内嵌页面 200；重启不改写 schema 标记；模拟已确认 v1 后重启自动升级 v2，已有收据 digest/receivedAt 保留；模拟未来 v99 时启动失败且端口未监听，版本不被降级。原始证据在忽略目录 `.artifacts/multi-machine/automigrate-20261003/`。全部隔离进程已停止，不读取 Codex Home；实际 MySQL、生产部署仍 Not Run。
+
+安全 diff 自查：私有配置 0600 且实际验证 Git 忽略；迁移 SQL 仅来自受控内嵌定义，锁参数化、连接与事务不跨 Engine，结构异常不伪装成功；不新增 HTTP 接口、匿名业务访问或上报字段。常规备份保留，MySQL DDL 部分提交语义在运行说明明确。
+
+
+## 2026-10-03 DEV 数据库与 Tailscale 联调
+
+用户提供已配置的 DEV 私有连接并授权最后经 Tailscale 验证。先实时确认三台机器身份及地址；在当前中心机器选择空闲端口，仅绑定自身具体 Tailscale IP，精确 Origin 与其对应。按用户确认将两套 Web/Server 默认端口统一为 DEV 18089、正式 18090，MySQL 连接端口保持实际实例值；同步公开示例、本地副本和 HTTPS 代理示例。现有服务、正式配置账密和正式数据库未变更。用户原配置中的 `database.database` 是 MySQL 实际库名；`database.name` 不替代它。
+
+DEV 实际后端为 SeekDB 1.2.0.0，`VERSION()` 读回 MySQL 协议版本 `5.7.25-OceanBase seekdb-v1.2.0.0`，不能表述为独立 MySQL 8.4 验收。初次只读检查确认库内无表。现有数据库不支持 TLS，使用已确认的同机回环连接并仅将私有 DEV 配置显式设为 `tls: "false"`；正式模板仍开启证书校验。Server 使用当前内嵌 Web 二进制在独立工作目录启动，没有外置前端目录。
+
+- Pass：不执行 `db init`/`upgrade` 或手工 SQL，空 DEV 库直接启动自动创建 16 张表，版本为 v2、ready 与网页为 200；重复启动不改写版本、checksum、初始化时间，已有会话/批次保留，旧批次仍返回同一收据。
+- Pass：sqmc03、sqmc04、sqmc05 经实时 Tailscale IP 完成真实 HTTP 上传。同一合成会话在三台机器分别上报和重传后，总量仍为 110 Token、中心会话为 1、来源为 3。sqmc03 初次访问超时，用户调整后再次验证 ready 与上传均为 200；不把首次失败隐藏为通过。
+- Pass：Chrome 通过 Tailscale 入口加载二进制内网页，首次管理员配对、刷新恢复、中心重启后恢复和退出授权闭环完成；合成会话可读。匿名业务 API 为 401；缺失 CSRF、外来 Origin、管理员写采集事实、collector 查询管理数据均被拒绝。通配 CORS 为 `*` 且不允许跨域凭据；浏览器 console error/warning 为空。
+- Pass：本机 development App 使用真实 Codex Home 与新的 0700 runtime；preferences 的 canonical path/inode、App/Helper 环境、父子关系与 Helper runtime 参数分别读回。通过原生 UI 配对 Tailscale DEV、明确启用、保存 600 秒间隔并发起补传，中心真实接收 745 个跨 Provider 会话，队列排空。600 秒是配置与重启持久读回证据，本轮未等待完整的两次 10 分钟周期。
+- Pass：只停止本轮 DEV Server 后，原生上报进入 offline，保留未确认批次；本机 64 个活跃 Codex Session 索引的更新时间继续推进。恢复 Server 后无需再次触发上传，自动退避重试恢复、队列归零，历史会话/收据与浏览器授权保留。
+- Pass：撤销三个合成 collector 后其 sync 返回 401；撤销真实 Home 验证设备后原生进入 reconnect_required，未确认批次保留。退出 development App 时其 Helper 与 UDS 停止；同一 runtime 重启后仍是 600 秒、相同失效状态、相同待确认批次与 body SHA-256，真实 Home 身份不变。验证结束停止 development App，并撤销/退出全部本轮测试授权；保留 DEV 中心供用户检查，未安装常驻服务。
+- Pass：两套端口配置加载的聚焦 config 测试；最终模板/私有副本均分别使用 18089/18090，Git 忽略及 0600 权限读回，文档链接和 diff 空白检查通过。
+
+Not Run：三台原生 App 分别绑定真实 Home 的完整验收矩阵、独立 MySQL 8.4、真实数据库旧版本升级演练、备份恢复/回滚演练、正式 HTTPS/生产配置/常驻部署、CI、签名/公证/版本发布。本机 MySQL 客户端为 8.0 且未找到 GNU timeout，现有备份脚本的实际执行条件尚未满足；本轮不安装工具，不对活动 DEV 库做恢复或降级。
+
+结论：DEV 的数据库、单体 Web、三机 Tailscale HTTP 与本机真实 Home 上报链路通过，可进入上线准备；这些结果不构成正式环境已经上线或 Master 全部通过。原始日志、数据库状态、HTTP 结果、队列摘要和合成网页截图保存于忽略的 `.artifacts/multi-machine/dev-tailscale-20261003/`，目录 0700、敏感文件 0600；真实地址、账密、Home 路径、账号资料与原始内容不提交。
+
+安全 diff 自查：本轮配置不扩大公开监听，DEV 绑定具体 Tailscale IP；正式数据库 TLS/HTTPS 模板保持校验，通配 CORS 与凭据分离，Cookie/Origin/CSRF 及用途鉴权拒绝已读回，迁移和重启保留事实，凭据仅存私有配置/本地 runtime。没有新增匿名业务入口、原始内容上报或生产数据库操作。
+
+部署包收尾：`make package-center` 实际构建通过，补入两套公开配置模板和独立启动 README，并同步 HTTPS upstream 18090。产物为本机 macOS arm64 单体二进制，读回 SHA-256 和文件清单，确认不包含任何 `*.local.*` 或外置 Web。最终 DEV 已切换到该部署包二进制，直接在包目录启动并读回 ready 200；未签名、公证或发布，构建输出及清单位于同一本轮 ignored artifacts。
+
+
+## v0.15.0 投产入口补齐（2026-10-03）
+
+macOS 常驻入口使用独立用户 LaunchAgent 与不可覆盖的发行目录，具体 root/config 为操作者绝对路径，配置 0600、运行目录 0700。正式与 DEV label 分离，版本清单包含二进制 SHA-256，更新保留旧发行目录与数据库。根 CI 实际纳入 Web 行为、内嵌构建、Server race/vet/build 和部署包；不将嵌套 starter workflow 当作已执行 CI。
+
+Pass：MySQL 8.0.46 实际 dump 成功，修复不支持的 `--no-login-paths` 与 dump connect-timeout 参数，隔离隐式登录文件、关闭 column statistics，Python 有界执行超时返回 124。DEV 恢复到本轮新建的专用空库后，14 张业务表逐行比较一致（含收据/原确认时间），版本/摘要保持，旧客户端及未消费设备码均失效，db check 通过。隔离 macOS LaunchAgent install/stop/start/restart/ready 和 remove 流程通过；remove 保留文件/数据，不删除业务库。
+
+本地开发补验完成后进入提交和发版收尾，按协作约定不重复执行测试；后续 CI 与正式部署结果分别读回。当前已确认采用中心 SQMC04 Tailscale 私网 HTTP、正式端口 18090，客户端在 SQMC05 由 clean main 发布 v0.15.0/build 63。私有配置迁入主仓库前先同步忽略规则；现有主仓库设计草稿备份后与已实现文档逐项对账，旧草稿不覆盖最终实现。

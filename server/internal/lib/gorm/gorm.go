@@ -3,6 +3,7 @@ package gormv2
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"net"
@@ -78,8 +79,9 @@ func New(lifecycle fx.Lifecycle, c config.Config) (*Engine, error) {
 				d.Loc = location
 				d.Params = map[string]string{"charset": conf.Charset}
 				d.Timeout = c.ContextTimeout
-				d.ReadTimeout = c.ContextTimeout
-				d.WriteTimeout = c.ContextTimeout
+				// 请求仍由各自 context 限时；连接不能用普通请求预算截断启动 DDL/迁移锁等待。
+				d.ReadTimeout = max(c.ContextTimeout, c.Database.MigrationTimeout)
+				d.WriteTimeout = max(c.ContextTimeout, c.Database.MigrationTimeout)
 				d.TLSConfig = conf.TLS
 				dialector = gormMySQL.New(gormMySQL.Config{DSN: d.FormatDSN(), SkipInitializeWithVersion: true})
 			}
@@ -147,14 +149,15 @@ func (e *Engine) wrapLog() {
 }
 
 type transactionKey struct{}
-type transactionContext struct {
+type connectionKey struct{}
+type databaseContext struct {
 	engine *Engine
 	db     *gorm.DB
 }
 
-// DB 在事务回调中复用同一个连接；repository 必须使用此入口。
+// DB 在事务或独占连接回调中复用同一个连接；repository 必须使用此入口。
 func (e *Engine) DB(ctx context.Context) *gorm.DB {
-	if tx, ok := ctx.Value(transactionKey{}).(transactionContext); ok {
+	if tx, ok := ctx.Value(transactionKey{}).(databaseContext); ok {
 		if tx.engine == e {
 			return tx.db.WithContext(ctx)
 		}
@@ -162,7 +165,37 @@ func (e *Engine) DB(ctx context.Context) *gorm.DB {
 		_ = db.AddError(errors.New("cross-database transaction context is unsupported"))
 		return db
 	}
+	if conn, ok := ctx.Value(connectionKey{}).(databaseContext); ok {
+		if conn.engine == e {
+			return conn.db.WithContext(ctx)
+		}
+		db := e.gorm.WithContext(ctx)
+		_ = db.AddError(errors.New("cross-database connection context is unsupported"))
+		return db
+	}
 	return e.gorm.WithContext(ctx)
+}
+
+// Connection 在回调期间固定连接，供连接级 MySQL 迁移锁与 DDL 共用；退出时归还连接。
+func (e *Engine) Connection(ctx context.Context, fn func(context.Context) error) error {
+	if ctx.Value(transactionKey{}) != nil || ctx.Value(connectionKey{}) != nil {
+		return errors.New("nested database connection is unsupported")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if e.gorm == nil {
+		return errors.New("database not started")
+	}
+	return e.gorm.WithContext(ctx).Connection(func(conn *gorm.DB) error {
+		err := fn(context.WithValue(ctx, connectionKey{}, databaseContext{engine: e, db: conn}))
+		if err != nil {
+			// 错误路径丢弃物理连接，避免未释放的连接级锁回到池中。
+			// Raw 以 ErrBadConn 标记丢弃；连接已经关闭时也无需再次释放。
+			_ = conn.Statement.ConnPool.(*sql.Conn).Raw(func(any) error { return driver.ErrBadConn })
+		}
+		return err
+	})
 }
 
 // Transaction 只支持本数据库事务，不支持嵌套或跨数据库事务。
@@ -182,14 +215,17 @@ func (e *Engine) transaction(ctx context.Context, fn func(context.Context) error
 	if ctx.Value(transactionKey{}) != nil {
 		return errors.New("nested or cross-database transaction is unsupported")
 	}
+	if conn, ok := ctx.Value(connectionKey{}).(databaseContext); ok && conn.engine != e {
+		return errors.New("cross-database connection context is unsupported")
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if e.gorm == nil {
 		return errors.New("database not started")
 	}
-	return e.gorm.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := fn(context.WithValue(ctx, transactionKey{}, transactionContext{engine: e, db: tx})); err != nil {
+	return e.DB(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := fn(context.WithValue(ctx, transactionKey{}, databaseContext{engine: e, db: tx})); err != nil {
 			return err
 		}
 		return ctx.Err()

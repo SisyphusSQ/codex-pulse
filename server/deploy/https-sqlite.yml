@@ -5,18 +5,17 @@ contextTimeout: 10s
 server:
     metrics: false
     readinessTimeout: 2s
-    address: "127.0.0.1:8080"
+    address: "127.0.0.1:18090"
     readHeaderTimeout: 5s
     readTimeout: 15s
     writeTimeout: 15s
     idleTimeout: 60s
     shutdownTimeout: 10s
     maxBodyBytes: 8388608
-    corsOrigins: []
+    corsOrigins: ["*"] # 通配跨域不允许携带 Cookie；内嵌 Web 使用同源 API
     origins: ["https://pulse.example.com"]
     allowHTTP: false
     trustedProxies: ["127.0.0.1/32"]
-    webDirectory: "/opt/codex-pulse/center/web"
 database:
     enabled: true
     driver: "sqlite"

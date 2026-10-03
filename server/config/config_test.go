@@ -36,7 +36,7 @@ func TestHTTPRequiresExplicitPrivateBinding(t *testing.T) {
 }
 
 func TestDeploymentExamplesValidateWithoutConnecting(t *testing.T) {
-	for _, file := range []string{"../deploy/https-sqlite.yml", "../deploy/private-http-sqlite.yml", "../deploy/https-mysql.yml", "config_docker.yml"} {
+	for _, file := range []string{"../deploy/https-sqlite.yml", "../deploy/private-http-sqlite.yml", "../deploy/https-mysql.yml", "config_docker.yml", "development.example.yml", "production.example.yml"} {
 		if _, err := Load(file); err != nil {
 			t.Fatalf("%s: %v", file, err)
 		}

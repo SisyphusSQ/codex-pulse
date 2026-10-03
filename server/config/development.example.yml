@@ -1,0 +1,44 @@
+# 开发环境模板：复制为 development.local.yml，实际地址和账密只填本地副本。
+# 两个环境使用独立数据库；二进制启动时通过 --config 明确选择。
+debug: false
+contextTimeout: 10s
+
+server:
+    metrics: true
+    readinessTimeout: 2s
+    address: "127.0.0.1:18089"
+    readHeaderTimeout: 5s
+    readTimeout: 15s
+    writeTimeout: 15s
+    idleTimeout: 60s
+    shutdownTimeout: 10s
+    maxBodyBytes: 8388608
+    corsOrigins: ["*"]
+    origins: ["http://127.0.0.1:18089"] # 与开发访问地址保持一致
+    allowHTTP: true
+    trustedProxies: [] # 开发直连不信任代理 Header
+
+database:
+    enabled: true
+    migrationTimeout: 2m # 启动自动迁移的整体预算，普通请求仍使用 contextTimeout
+    driver: "mysql"
+    host: "127.0.0.1" # 替换为该环境实际 MySQL 地址
+    port: 3306
+    database: "pulse_center_development" # 指向已建立的独立数据库
+    username: "pulse_app" # 占位用户名，请在本地副本填写实际账号
+    password: "" # 真实密码只填 *.local.yml，或通过 APP_DATABASE_PASSWORD 提供
+    maxIdleConns: 5
+    maxOpenConns: 20
+    connMaxLifetime: 5m
+    charset: "utf8mb4"
+    timeZone: "UTC"
+    name: "pulse_center_development"
+    tls: "true" # 保持证书校验；仅已确认的私有无 TLS 数据库可显式选择 false
+
+log:
+    output: "stdout"
+    fileName: ".runtime/development/logs/server.log" # 相对服务工作目录；正式部署可改成私有绝对路径
+    logLevel: 0
+    maxSizeMB: 20
+    maxBackupCount: 30
+    maxKeepDays: 7

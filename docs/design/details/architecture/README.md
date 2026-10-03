@@ -47,9 +47,9 @@ Query --> Store["SQLite"]
 
 ## 多机中心服务扩展（实施中）
 
-[多机汇总、中心服务与 Web 看板](../multi-machine-reporting/README.md) 定义可选的结构化上报与集中查询。中心骨架、统一配对鉴权与本机持久同步已实现，事实查询和 Web 等能力正在实施；不代表生产服务已经部署。现有本机 UDS、pipe token 与 Go 业务真相边界仍按本页执行；中心采用独立数据库及网络 contract，不将本机控制 RPC 开放到网络。
+[多机汇总、中心服务与 Web 看板](../multi-machine-reporting/README.md) 定义可选的结构化上报与集中查询。中心骨架、统一配对鉴权与本机持久同步已实现，事实查询和 Web 已接入真实中心；上线状态与运行证据独立记录。现有本机 UDS、pipe token 与 Go 业务真相边界仍按本页执行；中心采用独立数据库及网络 contract，不将本机控制 RPC 开放到网络。
 
-中心采用 Go Web Starter v2、MySQL 和独立 Go module，前端 AntD 放在 `server/web/`，不增加 `backend/` 层。HTTPS 与私网 HTTP 共用设备码配对和凭证权限体系，不另接 Tailscale SSO。现有本机业务与网络中心各自装配运行时，不共享数据库。
+中心采用 Go Web Starter v2、MySQL 和独立 Go module，前端 AntD 源码放在 `server/web/`，通过 Go `embed` 编入 Server，以一个二进制提供同源页面与 API，不单独部署前端，也不增加 `backend/` 层。HTTPS 与私网 HTTP 共用设备码配对和凭证权限体系，不另接 Tailscale SSO。现有本机业务与网络中心各自装配运行时，不共享数据库。
 
 已确认保留 App 托管 Helper：退出 App 后停止采集和上报，下次打开增量补采并恢复待发送队列；未观测的配额历史保留缺口。实施按 3 个 Master、14 张 Execution 组织，中心开发阶段暂用 SQLite，同时实现 MySQL 支持，真实 MySQL 整体联调待环境提供后进行。
 

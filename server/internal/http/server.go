@@ -17,6 +17,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/models/vo"
 	access_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/access_srv"
+	"github.com/SisyphusSQ/codex-pulse/server/web"
 )
 
 // Server 由 Fx 按依赖顺序启动，并在退出时停止接受业务请求。
@@ -56,26 +57,19 @@ func NewServer(lifecycle fx.Lifecycle, cfg config.Config, registry *health.Regis
 	})
 	server := &stdhttp.Server{Addr: cfg.Server.Address, Handler: e, ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout, ReadTimeout: cfg.Server.ReadTimeout, WriteTimeout: cfg.Server.WriteTimeout, IdleTimeout: cfg.Server.IdleTimeout}
 	s := &Server{Echo: e, HTTP: server, health: registry}
-	if cfg.Server.WebDirectory != "" {
-		e.GET("/", s.webIndex)
-		e.HEAD("/", s.webIndex)
-		e.GET("/assets/*", s.webAsset)
-		e.HEAD("/assets/*", s.webAsset)
-	}
+	e.GET("/", s.webIndex)
+	e.HEAD("/", s.webIndex)
+	e.GET("/assets/*", s.webAsset)
+	e.HEAD("/assets/*", s.webAsset)
 	lifecycle.Append(fx.Hook{
 		OnStart: func(context.Context) error {
-			if cfg.Server.WebDirectory != "" {
-				var err error
-				s.web, err = openWeb(cfg.Server.WebDirectory)
-				if err != nil {
-					return err
-				}
+			var err error
+			s.web, err = openWeb(web.Files)
+			if err != nil {
+				return err
 			}
 			listener, err := net.Listen("tcp", cfg.Server.Address)
 			if err != nil {
-				if s.web != nil {
-					s.web.close()
-				}
 				return err
 			}
 			registry.SetReady(true)
@@ -89,9 +83,6 @@ func NewServer(lifecycle fx.Lifecycle, cfg config.Config, registry *health.Regis
 			return nil
 		},
 		OnStop: func(ctx context.Context) error {
-			if s.web != nil {
-				defer s.web.close()
-			}
 			registry.SetReady(false)
 			if err := server.Shutdown(ctx); err != nil {
 				_ = server.Close()

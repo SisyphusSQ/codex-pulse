@@ -28,7 +28,7 @@ cron 通过 Fx 的 `cron_jobs` value group 注入 `cron.Job`，包含 Name、Sch
 | quota | quota_controller / quota_srv | mysql/quota_repo / 无自有 DO | 复用 reporting 事实及纯 Go 规则的中心周期、可信额度与 Credits |
 | catalog | catalog_controller / catalog_srv | mysql/catalog_repo / 无自有DO | 公开版本化价目与已观测模型投影 |
 | subscription | subscription_controller / subscription_srv | mysql/subscription_repo / mysql/subscription_do | 独立中心手动订阅设置与修订控制 |
-| schema | 无 HTTP / CLI 入口 | mysql/schema_repo / mysql/schema_do | 显式 DDL、版本检查与初始化标记 |
+| schema | 无 HTTP / CLI 入口 | mysql/schema_repo / mysql/schema_do | 启动自动初始化/升级、版本检查与迁移标记 |
 
 DTO/VO 同样使用 `<domain>_dto` / `<domain>_vo`。根 module.go 保留 Fx 装配；VO 的 Response、校验与通用 MutationView 留公共根。严格 JSON 解码复用 internal/http.DecodeJSON；statistics 的来源重建复用 reporting 的显式 DecideSnapshot 入口。测试夹具在 testsupport/center，仅依赖模型与存储，不反向依赖各业务 service。
 

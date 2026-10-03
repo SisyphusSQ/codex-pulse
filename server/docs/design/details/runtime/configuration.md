@@ -8,10 +8,10 @@ Viper 严格解码，未知字段拒绝启动。环境变量以 `APP_` 开头，
 | server.origins | 精确中心入口 Origin，不带路径/查询/通配。可同时配置 HTTPS 与显式私网 HTTP |
 | server.allowHTTP | 显式私网 HTTP 开关；不会因 HTTPS 失败降级，也不豁免鉴权 |
 | server.trustedProxies | 仅可信 TLS 终止代理的精确 CIDR，默认空。普通 forwarded header 不影响入口身份 |
-| server.corsOrigins | 精确跨域 Origin 白名单。官方 Web 使用同域 API；开发代理保留原始 Host（changeOrigin:false） |
-| server.webDirectory | 空为 API-only；完整 Web 构建目录启用同域壳/hashed assets，无业务秘密；缺失拒绝启动 |
+| server.corsOrigins | 默认 `["*"]`，不允许跨域凭据；精确 HTTP(S) Origin 列表允许跨域凭据，显式 `[]` 跳过 CORS。Web 内嵌并使用同源 API，Cookie 写操作仍须同源 Origin/CSRF |
 | server.maxBodyBytes | 当前上报请求上限 8 MiB；配对/管理请求另限 4 KiB，超预算明确拒绝 |
 | database.enabled | 中心 HTTP 与 db CLI 要求数据库开启 |
+| database.migrationTimeout | 启动自动迁移整体预算，默认 2 分钟，可用 APP_DATABASE_MIGRATIONTIMEOUT 覆盖；普通请求仍由 contextTimeout 控制 |
 | database.driver / path | sqlite 开发 dialect；父目录 0700、文件 0600，独立于本机库 |
 | database.host / username / password / database | mysql 配置；秘密通过受保护环境或配置提供，仓库样例为空 |
 | database.tls | mysql 明确 true 或 false；true 校验证书，false 只用于已确认私有数据库链路，不自动降级 |
@@ -20,4 +20,8 @@ Viper 严格解码，未知字段拒绝启动。环境变量以 `APP_` 开头，
 
 没有 key.type/basic/AK/JWT 登录配置。统一设备码有效 10 分钟、仅消费一次，浏览器会话有效 14 天；设备凭证在撤销前持续有效。服务端只保存摘要，HTTP/HTTPS 权限相同。HTTPS 采用 __Host-pulse_session Cookie，私网 HTTP 采用 pulse_session；会话绑定入口，不跨协议自动共享。
 
-首次运行顺序为 db init → 受控 db bootstrap → HTTP → 浏览器输入码 → 管理端签发设备码。首次码只在受信任终端显示；不要把终端截图、配对码或秘密放入提交证据。当前 config_docker.yml 是需要填入实际代理/数据库环境的部署样例，未进行生产部署或 MySQL 整体联调。
+首次运行顺序为 HTTP 启动（自动初始化/升级）→ 另一个受信任终端 db bootstrap → 浏览器输入码 → 管理端签发设备码。首次码只在受信任终端显示；不要把终端截图、配对码或秘密放入提交证据。当前 config_docker.yml 是需要填入实际代理/数据库环境的部署样例，未进行生产部署或 MySQL 整体联调。
+
+Web 资源随二进制构建，不存在运行时目录开关。升级旧配置须删除 `server.webDirectory` 和 `APP_SERVER_WEBDIRECTORY`；`server.origins` 与 CORS 含义不同，仍须精确填写实际入口，不能设为 `*`。
+
+开发与正式环境的 MySQL 模板、Git 忽略的账密副本和二进制命令见[环境配置](../../../../config/README.md)。日常升级由启动迁移器执行已登记 SQL；未知版本/摘要与字段漂移拒绝启动，不改写已接收业务事实。

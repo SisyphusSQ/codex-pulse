@@ -20,6 +20,10 @@ func Module(cfg config.Config) fx.Option {
 		return fx.Options()
 	}
 	return fx.Options(fx.Provide(schema_repo.NewSchema, access_repo.NewAccess, reporting_repo.NewReporting, statistics_repo.NewStatistics, quota_repo.NewQuota, subscription_repo.NewSubscription, catalog_repo.NewCatalog), fx.Invoke(func(lifecycle fx.Lifecycle, schema *schema_repo.Schema) {
-		lifecycle.Append(fx.Hook{OnStart: func(ctx context.Context) error { return schema.Check(ctx) }})
+		lifecycle.Append(fx.Hook{OnStart: func(ctx context.Context) error {
+			ctx, cancel := context.WithTimeout(ctx, cfg.Database.MigrationTimeout)
+			defer cancel()
+			return schema.Migrate(ctx)
+		}})
 	}))
 }

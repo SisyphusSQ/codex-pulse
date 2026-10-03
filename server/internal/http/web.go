@@ -2,53 +2,43 @@ package http
 
 import (
 	"errors"
+	"io"
 	"io/fs"
 	"mime"
 	stdhttp "net/http"
-	"os"
 	"path"
 	"strings"
 
 	"github.com/labstack/echo/v5"
 )
 
-// webFiles 只开放构建壳和 assets；os.Root 阻止目录穿越与逃逸符号链接。
-type webFiles struct{ root, assets *os.Root }
+// webFiles 只开放二进制内嵌的构建壳和 assets，不访问运行目录。
+type webFiles struct{ root fs.FS }
 
-func openWeb(directory string) (*webFiles, error) {
-	r, err := os.OpenRoot(directory)
+func openWeb(files fs.FS) (*webFiles, error) {
+	r, err := fs.Sub(files, "dist")
 	if err != nil {
 		return nil, err
 	}
 	w := &webFiles{root: r}
-	f, err := r.Open("index.html")
-	if err == nil {
-		var stat fs.FileInfo
-		stat, err = f.Stat()
-		if err == nil && (!stat.Mode().IsRegular() || stat.Size() > 16<<20) {
-			err = errors.New("invalid web index")
-		}
-		_ = f.Close()
-	}
-	if err == nil {
-		w.assets, err = r.OpenRoot("assets")
-	}
+	stat, err := fs.Stat(r, "index.html")
 	if err != nil {
-		w.close()
 		return nil, err
+	}
+	if !stat.Mode().IsRegular() || stat.Size() > 16<<20 {
+		return nil, errors.New("invalid embedded web index")
+	}
+	stat, err = fs.Stat(r, "assets")
+	if err != nil {
+		return nil, err
+	}
+	if !stat.IsDir() {
+		return nil, errors.New("invalid embedded web assets")
 	}
 	return w, nil
 }
-func (w *webFiles) close() {
-	if w.assets != nil {
-		_ = w.assets.Close()
-	}
-	if w.root != nil {
-		_ = w.root.Close()
-	}
-}
 func (s *Server) webIndex(c *echo.Context) error {
-	return s.web.serve(c, s.web.root, "index.html", false)
+	return s.web.serve(c, "index.html", false)
 }
 func (s *Server) webAsset(c *echo.Context) error {
 	name := c.Param("*")
@@ -65,10 +55,10 @@ func (s *Server) webAsset(c *echo.Context) error {
 	default:
 		return echo.ErrNotFound
 	}
-	return s.web.serve(c, s.web.assets, name, true)
+	return s.web.serve(c, "assets/"+name, true)
 }
-func (w *webFiles) serve(c *echo.Context, root *os.Root, name string, immutable bool) error {
-	f, err := root.Open(name)
+func (w *webFiles) serve(c *echo.Context, name string, immutable bool) error {
+	f, err := w.root.Open(name)
 	if err != nil {
 		return echo.ErrNotFound
 	}
@@ -80,10 +70,14 @@ func (w *webFiles) serve(c *echo.Context, root *os.Root, name string, immutable 
 	if !stat.Mode().IsRegular() || stat.Size() > 16<<20 {
 		return echo.ErrNotFound
 	}
+	content, ok := f.(io.ReadSeeker)
+	if !ok {
+		return errors.New("embedded web file is not seekable")
+	}
 	if immutable {
 		c.Response().Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	}
 	c.Response().Header().Set("Content-Type", mime.TypeByExtension(path.Ext(name)))
-	stdhttp.ServeContent(c.Response(), c.Request(), name, stat.ModTime(), f)
+	stdhttp.ServeContent(c.Response(), c.Request(), name, stat.ModTime(), content)
 	return nil
 }

@@ -463,7 +463,6 @@ struct SettingsView: View {
             Divider()
             Form {
                 CodexAccountsSettingsSection(model: model)
-                ReportingSettingsSection(settings: model.reportingSettings)
                 apiCredentialsSection
                 if model.settingsDraft != nil {
                     providerSection(.codex, response: response)
@@ -489,6 +488,7 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                ReportingSettingsSection(settings: model.reportingSettings)
             }
             .id(model.localization.preference.rawValue)
             .formStyle(.grouped)

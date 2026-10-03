@@ -8,6 +8,8 @@ logs
 *.out
 *.test
 .agents
+web/node_modules
+web/dist
 .env
 .env.*
 !.env.example

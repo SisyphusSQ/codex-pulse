@@ -51,7 +51,7 @@ func initHTTP(cmd *cobra.Command, _ []string) error {
 
 	runCtx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	startCtx, cancelStart := context.WithTimeout(runCtx, c.ContextTimeout)
+	startCtx, cancelStart := context.WithTimeout(runCtx, c.Database.MigrationTimeout)
 	defer cancelStart()
 	if err = app.Start(startCtx); err != nil {
 		return fmt.Errorf("start application: %w", err)

@@ -55,5 +55,7 @@ coverage.out
 coverage.html
 
 .runtime/
+# 含环境地址与 MySQL 账密的本地配置；只提交 *.example.yml 模板。
+/config/*.local.*
 web/node_modules/
 web/dist/
