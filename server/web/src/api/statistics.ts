@@ -1,3 +1,4 @@
+import type { SessionRecord } from './records';
 import { api, ApiError } from './client';
 
 export type Decimal = string | null;
@@ -17,13 +18,17 @@ export interface Coverage {
 export interface ReportingRange { start_at_ms: number; end_at_ms: number; time_zone: string }
 export interface Slice { key: string; name: string; totals: Totals }
 export interface Day { date: string; start_at_ms: number; totals: Totals }
-export interface Hour { weekday: number; hour: number; tokens: Decimal; sessions: number }
+export interface Hour { weekday: number; hour: number; tokens: Decimal; sessions: number;session_count:Decimal }
 export interface AnnualActivity {
   total_tokens: Decimal; peak_daily_tokens: Decimal; active_days: Decimal;
   current_streak_days: Decimal; longest_streak_days: Decimal;
   observed_days: number; unknown_days: number;
 }
+export interface ActivityBucket { start_at_ms:number; end_at_ms:number; tokens:Decimal; sessions:Decimal }
+export interface CollectorUsage { machine:{client_id:string;client_name:string};totals:Totals;coverage:Coverage;revoked_at_ms:number|null }
+export interface SourceUsage { range:ReportingRange;scope:string;items:CollectorUsage[] }
 export interface Summary {
+  activity_granularity:'hour'|'day';activity_timeline:ActivityBucket[];top_sessions:SessionRecord[];
   cost_basis: string; trend_cost_rounding_delta_micro_usd: Decimal;
   range: ReportingRange; scope: string; totals: Totals; coverage: Coverage;
   providers: Slice[]; models: Slice[]; devices: Slice[]; trend: Day[];
@@ -47,11 +52,16 @@ export async function getSummary(filter: StatsFilter, signal?: AbortSignal): Pro
   const value = await api.get<unknown>('/api/v1/statistics/summary', statsParams(filter), signal);
   if (!value || typeof value !== 'object') throw new ApiError(502);
   const s = value as Partial<Summary>;
-  if (!s.range || !s.totals || !s.coverage || !s.heatmap_range || !s.heatmap_coverage || !s.heatmap_activity || ![s.providers,s.models,s.devices,s.trend,s.heatmap,s.weekday_hours,s.tools,s.skills].every(Array.isArray)) throw new ApiError(502);
+  if (!s.range || !s.totals || !s.coverage || !s.heatmap_range || !s.heatmap_coverage || !s.heatmap_activity || ![s.providers,s.models,s.devices,s.trend,s.heatmap,s.weekday_hours,s.activity_timeline,s.top_sessions].every(Array.isArray)) throw new ApiError(502);
   return s as Summary;
 }
 export async function getDevices(signal?: AbortSignal): Promise<Device[]> {
   const value = await api.get<unknown>('/api/v1/devices/status', {}, signal);
   if (!Array.isArray(value)) throw new ApiError(502);
   return value as Device[];
+}
+
+export async function getSourceUsage(filter:StatsFilter,signal?:AbortSignal):Promise<SourceUsage>{
+ const value=await api.get<SourceUsage>('/api/v1/statistics/source-usage',statsParams(filter),signal);
+ if(!value?.range||!Array.isArray(value.items))throw new ApiError(502);return value;
 }

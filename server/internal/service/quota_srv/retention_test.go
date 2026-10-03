@@ -115,6 +115,9 @@ func TestSummaryAboveOldGlobalObservationBudget(t *testing.T) {
 	admin := centerfixture.Admin(t, access).Principal
 	s := NewQuota(quota_repo.NewQuota(engine))
 	s.now = func() time.Time { return time.UnixMilli(quotaNow) }
+	if err := engine.DB(t.Context()).Create(&reporting_do.Account{ID: "account", Provider: "codex", Plan: new("plus")}).Error; err != nil {
+		t.Fatal(err)
+	}
 	rows := make([]reporting_do.QuotaObservation, 100005)
 	for i := range rows {
 		rows[i] = reporting_do.QuotaObservation{ID: reportingv1.Key("large", fmt.Sprint(i)), ObservationID: fmt.Sprint(i), ClientID: "synthetic", Provider: "codex", LocalScope: "scope", AccountKey: new("account"), LimitID: "codex", WindowKind: "primary", WindowMinutes: new(int64(300)), ResetsAtMS: new(quotaNow + 7200000), ObservedAtMS: quotaNow - 2000000 + int64(i), UsedPercent: new(float64(30)), Validity: "accepted", Source: "app_server", HistoryOrigin: "confirmed"}
@@ -134,6 +137,9 @@ func TestSummaryMatchesFullArbitrationAcrossMixedResetEvidence(t *testing.T) {
 	s.now = func() time.Time { return time.UnixMilli(quotaNow) }
 	access := access_srv.NewAccess(access_repo.NewAccess(engine))
 	admin := centerfixture.Admin(t, access).Principal
+	if err := engine.DB(t.Context()).Create(&reporting_do.Account{ID: "account", Provider: "codex", Plan: new("plus")}).Error; err != nil {
+		t.Fatal(err)
+	}
 	random := rand.New(rand.NewPCG(41, 53))
 	for trial := 0; trial < 100; trial++ {
 		rows := []reporting_do.QuotaObservation{}

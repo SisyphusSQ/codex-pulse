@@ -4,7 +4,8 @@ import {useQuery} from '@tanstack/react-query';
 import {Link,useSearchParams} from 'react-router-dom';
 import {getUsage} from '../api/usage';
 import type {UsageModel} from '../api/usage';
-import type {Totals} from '../api/statistics';
+import {decimalSorter} from '../components/sorting';
+import type {Slice,Totals} from '../api/statistics';
 import {tokens,dollars,integer,providerNames} from '../format';
 import {initialFilter,StatsFilters} from '../components/StatsFilters';
 import {CacheHitRateCell} from '../components/CacheHitRate';
@@ -41,13 +42,13 @@ export default function Usage(){
  <div className="metric-note">最多12个模型 · 实际日桶 · 未知日期留空</div>
  </Card>
  <Card size="small" className="section-card"><Descriptions size="small" column={{xs:1,md:3}} items={[...totalDetails(data.totals).slice(0,5),{key:'cache-rate',label:'范围缓存命中率',children:<CacheHitRateCell value={data.cache_hit_rate} />}]} /></Card>
- {data.cursor_pools.length>0&&<Card title="Cursor 用量池" className="section-card"><Table size="small" rowKey="key" pagination={false} dataSource={data.cursor_pools} columns={[{title:'用量池',render:(_,r)=>r.key==='cursor.models'?'Cursor Models':r.key==='cursor.other_models'?'Other Models':'未归类'},{title:'Token',render:(_,r)=>tokens(r.totals.total_tokens)},{title:'Dashboard 上报费用',render:(_,r)=>dollars(r.totals.reported_charge_micro_usd)},{title:'文档价目估算',render:(_,r)=>dollars(r.totals.cost_micro_usd)}]} /><Typography.Text type="secondary">上报费用已经包含适用的Cursor Token Rate，不再次相加；缺少归类证据保留未归类。</Typography.Text></Card>}
+ {data.cursor_pools.length>0&&<Card title="Cursor 用量池" className="section-card"><Table size="small" rowKey="key" pagination={false} dataSource={data.cursor_pools} columns={[{title:'用量池',render:(_,r)=>r.key==='cursor.models'?'Cursor Models':r.key==='cursor.other_models'?'Other Models':'未归类'},{title:'Token',...decimalSorter<Slice>(r=>r.totals.total_tokens,true),render:(_,r)=>tokens(r.totals.total_tokens)},{title:'Dashboard 上报费用',...decimalSorter<Slice>(r=>r.totals.reported_charge_micro_usd),render:(_,r)=>dollars(r.totals.reported_charge_micro_usd)},{title:'文档价目估算',...decimalSorter<Slice>(r=>r.totals.cost_micro_usd),render:(_,r)=>dollars(r.totals.cost_micro_usd)}]} /><Typography.Text type="secondary">上报费用已经包含适用的Cursor Token Rate，不再次相加；缺少归类证据保留未归类。</Typography.Text></Card>}
  <Card title="模型用量与成本" className="section-card"><Table<UsageModel> rowKey={key} size="small" dataSource={available} pagination={{pageSize:15,showSizeChanger:true}} scroll={{x:1080}} expandable={{expandedRowRender:r=><><Descriptions size="small" column={{xs:1,md:2}} items={totalDetails(r.totals)} /><div className="catalog-toolbar">{r.totals.pricing_versions.map(v=><Link key={v} to={`/pricing?provider=${r.provider}&model=${encodeURIComponent(r.model)}&version=${encodeURIComponent(v)}`}>查看 {v}</Link>)}</div></>}} columns={[
  {title:'模型',width:230,render:(_,r)=><><Typography.Text strong>{r.model==='unknown'?'模型未归因':r.model}</Typography.Text><div className="metric-note">{providerNames[r.provider]??r.provider}</div></>},
- {title:'输入',align:'right',render:(_,r)=>tokens(r.totals.input_tokens)},{title:'缓存读取',align:'right',render:(_,r)=>tokens(r.totals.cached_tokens)},{title:'缓存命中率',align:'right',render:(_,r)=><CacheHitRateCell value={r.cache_hit_rate} />},
- {title:'输出',align:'right',render:(_,r)=>tokens(r.totals.output_tokens)},{title:'总 Token',align:'right',render:(_,r)=>tokens(r.totals.total_tokens)},
- {title:'估算成本',align:'right',render:(_,r)=><>{dollars(r.totals.cost_micro_usd)}{r.totals.cost_status==='partial'&&<div className="metric-note">已知小计</div>}</>},
- {title:'上报费用',align:'right',render:(_,r)=>dollars(r.totals.reported_charge_micro_usd)},
+ {title:'输入',align:'right',...decimalSorter<UsageModel>(r=>r.totals.input_tokens),render:(_,r)=>tokens(r.totals.input_tokens)},{title:'缓存读取',align:'right',...decimalSorter<UsageModel>(r=>r.totals.cached_tokens),render:(_,r)=>tokens(r.totals.cached_tokens)},{title:'缓存命中率',align:'right',render:(_,r)=><CacheHitRateCell value={r.cache_hit_rate} />},
+ {title:'输出',align:'right',...decimalSorter<UsageModel>(r=>r.totals.output_tokens),render:(_,r)=>tokens(r.totals.output_tokens)},{title:'总 Token',align:'right',...decimalSorter<UsageModel>(r=>r.totals.total_tokens,true),render:(_,r)=>tokens(r.totals.total_tokens)},
+ {title:'估算成本',align:'right',...decimalSorter<UsageModel>(r=>r.totals.cost_micro_usd),render:(_,r)=><>{dollars(r.totals.cost_micro_usd)}{r.totals.cost_status==='partial'&&<div className="metric-note">已知小计</div>}</>},
+ {title:'上报费用',align:'right',...decimalSorter<UsageModel>(r=>r.totals.reported_charge_micro_usd),render:(_,r)=>dollars(r.totals.reported_charge_micro_usd)},
  ]} /><Typography.Text type="secondary">模型与范围、每日趋势的金额可能存在微美元舍入差额：模型 {dollars(data.model_cost_rounding_delta_micro_usd)}；趋势 {dollars(data.trend_cost_rounding_delta_micro_usd)}。计算保留完整精度。</Typography.Text></Card>
  <Collapse ghost size="small" items={[{key:'formula',label:'成本计算口径与历史价格',children:<><Descriptions size="small" column={1} items={[{key:'versions',label:'本范围价格版本',children:data.totals.pricing_versions.join('、')||'未取得'},{key:'basis',label:'统计范围',children:'中心已接受事实；全局去重，来源筛选读取该来源自己的快照'}]} /><Typography.Paragraph>Codex：非缓存输入×输入价 + 缓存输入×缓存价 +（输出+独立reasoning）×输出价，按每百万Token费率折算。当前Mac基础文本估算不推断长上下文、Fast或缓存写入价格。Cursor缓存读取/写入分别计价；Grok参考价与完整上报费用分别保留。更新参考目录不会覆盖历史成本。</Typography.Paragraph></>}]} />
  </>}

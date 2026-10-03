@@ -250,6 +250,8 @@ func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, s
 		if err := json.Unmarshal([]byte(row.Payload), &snap, json.RejectUnknownMembers(true)); err != nil {
 			return err
 		}
+		// 旧不可变队列保留原始摘要用于重试；调用事实不再进入业务仲裁。
+		snap.Invocations = nil
 		sources = append(sources, reporting_dto.SourceSnapshot{ID: row.ID, ClientID: row.ClientID, Snapshot: snap})
 	}
 	var accepted *reporting_dto.SourceSnapshot
@@ -259,6 +261,7 @@ func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, s
 		if err := json.Unmarshal([]byte(old.Payload), &snap, json.RejectUnknownMembers(true)); err != nil {
 			return err
 		}
+		snap.Invocations = nil
 		for _, row := range stored {
 			if row.ID == current.CanonicalSourceID {
 				accepted = &reporting_dto.SourceSnapshot{ID: row.ID, ClientID: row.ClientID, Snapshot: snap, CorrectionFence: current.CorrectionFence}
@@ -295,10 +298,6 @@ func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, s
 		}
 		usage = append(usage, row)
 	}
-	calls := make([]reporting_do.Invocation, 0, len(chosen.Invocations))
-	for _, i := range chosen.Invocations {
-		calls = append(calls, reporting_do.Invocation{SessionKey: sessionKey, InvocationID: i.ID, ObservedAtMS: i.ObservedAtMS, Kind: i.Kind, ToolName: i.Name, Outcome: i.Outcome, DurationMS: i.DurationMS})
-	}
 	capsule, err = sessionCapsule("canonical", sessionKey, sessionKey, "", chosen)
 	if err != nil {
 		return err
@@ -306,7 +305,7 @@ func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, s
 	if err = s.repository.SaveCapsule(ctx, capsule); err != nil {
 		return err
 	}
-	return s.repository.SaveCanonical(ctx, meta, reporting_do.CanonicalSnapshot{SessionKey: sessionKey, Payload: string(encoded)}, usage, calls)
+	return s.repository.SaveCanonical(ctx, meta, reporting_do.CanonicalSnapshot{SessionKey: sessionKey, Payload: string(encoded)}, usage)
 }
 func normalizedPercent(value *float64) *float64 {
 	if value == nil {

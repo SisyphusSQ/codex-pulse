@@ -14,7 +14,7 @@
 | `provider` | codex/cursor/grok；省略代表已知 Provider 合计 |
 | `client_id` | 采集客户端 UUID；使用该来源自己的实际快照，跨账期沿用接收层仲裁；不把其他来源扩充的中心事实算给该机器 |
 | `project_id` | 中心项目关联组的 64 位十六进制 ID；设备筛选同时按本设备项目身份匹配 |
-| `model` | 精确模型名；`unknown` 表示无模型归因。调用没有可信模型归因，模型筛选时不返回推断的工具/技能计数 |
+| `model` | 精确模型名；`unknown` 表示无模型归因。工具/技能计数已停用 |
 | `search` | 最多 256 字符；会话标题/raw Session ID/项目名的字面包含搜索；不接收正则或 SQL 片段 |
 | `sort/direction` | activity/title/name/tokens/cost；asc/desc；默认 activity/desc，中心 ID 作为稳定次排序 |
 | `page/limit` | 默认 1/25，page 最大 100000，limit 为 1–100；范围 totals 在分页前计算 |
@@ -23,7 +23,7 @@
 
 会话/项目 URL 的 `:id` 使用中心 ID。未关联 Cursor 用量的 `session_kind=unassigned_usage`，`session_id=null`；不能把合成分组键冒充原始会话。已知会话返回用户允许的标题和原始 Session ID。项目名称相同不会合并，`members` 是显式关联的中心项目成员。项目成员列表保留无当前活动的历史项目，范围 totals 为当前已收到事实。
 
-项目详情的 `project/sessions/trend/models` 在同一只读快照中生成；`models` 为整个项目筛选范围的构成（含明确舍入差额），不随 `sessions.page` 截断，也不通过第二次浏览器请求拼接不同快照。会话详情保留全部采集来源、原始身份、趋势、工具/技能与 coverage，不返回正文或路径。
+项目详情的 `project/sessions/trend/models` 在同一只读快照中生成；`models` 为整个项目筛选范围的构成（含明确舍入差额），不随 `sessions.page` 截断，也不通过第二次浏览器请求拼接不同快照。会话详情保留全部采集来源、原始身份、趋势与 coverage，不返回正文或路径。
 
 `summary.heatmap_range` 固定为截至当前自然日的连续 365 个自然日，使用同样的 Provider、模型、项目、设备和搜索筛选，但不使用 KPI 的日期范围；`heatmap_coverage` 与当前 `coverage` 独立。没有本日/星期小时事实的格子保留 nullable 计数，不能因其他日期有事实或 Provider ready 而补成零；明确零计数事实仍返回 `"0"`。自然日以 AddDate 推进，DST 的一天可能为 23 或 25 小时。`weekday_hours.weekday` 以 Sunday=0，hour 为 0–23。
 
@@ -47,7 +47,7 @@ Provider 构成和执行设备构成的 Token/成本与范围 totals 对账。�
 
 不能给无时间事实伪造日期；它们不进入有明确起止的 KPI/趋势，而由 `untimed_facts` 提示。`collected_at_ms` 与中心 receipt 分开；超过 15 分钟或无采集证据标 stale，任一已知 Provider 的旧状态不能被其他 Provider 新心跳掩盖。撤销设备仍保留合法历史。热力图空格、局部已知零和未采集状态由前端按 coverage 分开展示。
 
-工具/技能仅返回白名单名称和计数，不返回参数、命令、结果或正文。API 不返回来源 payload、凭证摘要、Cookie、完整路径、原始 JSONL 或原始错误。数据库查询参数化，排序在服务端枚举选择，不拼接动态 SQL。
+工具/技能兼容字段为空，不返回调用参数、命令、结果或正文。API 不返回来源 payload、凭证摘要、Cookie、完整路径、原始 JSONL 或原始错误。数据库查询参数化，排序在服务端枚举选择，不拼接动态 SQL。
 
 ## 生命周期 TPS
 
@@ -64,3 +64,13 @@ input>0/cache=0 返回真实零，input=cache>0 返回 10000；零输入 not_app
 ## 中心查询投影 v4
 
 全局读取来源元数据，不传输完整 Session payload；Session 指标读取可重建 capsule，同事实来源冲突与定价口径不变。按采集机筛选仍保留完整来源仲裁。全年热力图只累计全年总量、每日明细及覆盖，避免同时生成未使用的全年模型/小时/工具分布。结构 v4 新增投影表，首次升级后台分批补建；缺失时使用原有读取逻辑。较大统计、Session、项目只读响应可 gzip 压缩，路径鉴权与响应契约不变。
+
+## TOO-524 首页与机器用量
+
+新增 `GET /api/v1/statistics/source-usage`，要求 admin；共用范围和筛选，返回 `range/scope/items`。scope 为 `collector_copies_may_overlap`；每项包含 machine(client_id/client_name)、totals、coverage、revoked_at_ms。只统计 Codex；其他平台筛选返回空项。每机器先仲裁自身同会话多个 Home；与其他机器副本可重叠，不可相加成全局。项目过滤以本机来源所属项目组判断，不能先用全局 canonical 项目排除来源。
+
+summary 新增 activity_granularity（hour/day）、activity_timeline（start_at_ms/end_at_ms/tokens/sessions nullable 十进制字符串）、top_sessions（范围Token倒序Top5，Session VO，排除unassigned_usage）。单自然日按真实偏移的小时推进，保留23/25小时DST日期；未知桶的两个计数均为NULL。星期小时序列保持原有Sunday=0约定，增加 nullable 十进制字符串 session_count；无事实为NULL，不再用 legacy sessions=0 推断真实零。Top5与当前范围统计共用事实扫描和数据库快照。
+
+项目VO新增 machines（client_id/client_name）；会话sources原字段继续使用中心名称表。设备状态仅返回未撤销设备；历史会话/项目仍解析撤销设备名称。客户端授权列表SQL过滤撤销项，鉴权撤销和历史行保留。
+
+工具与技能不再统计：既有 tools/skills 兼容字段返回空数组，totals.invocations=0；Web 不显示，不读历史调用表，也不由 source payload 计算调用数。

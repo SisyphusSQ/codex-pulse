@@ -136,7 +136,7 @@ func (s *Statistics) Session(ctx context.Context, p access_dto.Principal, q stat
 		if !ok {
 			return utils.ErrNotFound
 		}
-		result = statistics_vo.StatisticsSessionDetail{Session: read.sessionView(m), Range: statisticsRange(q), Trend: read.trend(), Tools: statisticsSlices(read.tools, true), Skills: statisticsSlices(read.skills, true), Coverage: read.coverage(s.now())}
+		result = statistics_vo.StatisticsSessionDetail{Session: read.sessionView(m), Range: statisticsRange(q), Trend: read.trend(), Tools: []statistics_vo.StatisticsSlice{}, Skills: []statistics_vo.StatisticsSlice{}, Coverage: read.coverage(s.now())}
 		items := []statistics_vo.StatisticsSession{result.Session}
 		result.ThroughputTurns, err = s.attachThroughput(ctx, q, items, read.metadata, true)
 		if err != nil {
@@ -168,6 +168,9 @@ func (o *statisticsRead) projectViews() []statistics_vo.StatisticsProject {
 			group.Name = p.Name
 		}
 		group.Members = append(group.Members, p.ID)
+		if !slices.ContainsFunc(group.Machines, func(m statistics_vo.StatisticsMachine) bool { return m.ClientID == p.ClientID }) {
+			group.Machines = append(group.Machines, statistics_vo.StatisticsMachine{ClientID: p.ClientID, ClientName: o.clients[p.ClientID].Name})
+		}
 		groups[p.GroupID] = group
 	}
 	out := make([]statistics_vo.StatisticsProject, 0, len(groups))
@@ -190,6 +193,7 @@ func (o *statisticsRead) projectViews() []statistics_vo.StatisticsProject {
 			continue
 		}
 		slices.Sort(project.Members)
+		slices.SortFunc(project.Machines, func(a, b statistics_vo.StatisticsMachine) int { return strings.Compare(a.ClientID, b.ClientID) })
 		out = append(out, project)
 	}
 	slices.SortFunc(out, func(a, b statistics_vo.StatisticsProject) int {
@@ -277,6 +281,9 @@ func (s *Statistics) Devices(ctx context.Context, p access_dto.Principal) (out [
 			return err
 		}
 		for _, c := range clients {
+			if c.RevokedAtMS != nil {
+				continue
+			}
 			view := statistics_vo.StatisticsDevice{ID: c.ID, Name: c.Name, RevokedAtMS: c.RevokedAtMS, LastReceivedAtMS: c.LastReceivedAtMS, Providers: []statistics_vo.StatisticsDeviceProvider{}}
 			for _, st := range status {
 				if st.ClientID != c.ID {

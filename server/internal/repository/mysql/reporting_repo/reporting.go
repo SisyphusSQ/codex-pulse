@@ -64,7 +64,7 @@ func (r *Reporting) Canonical(ctx context.Context, key string) (row reporting_do
 	err = r.engine.DB(ctx).Where("session_key = ?", key).Take(&row).Error
 	return
 }
-func (r *Reporting) SaveCanonical(ctx context.Context, session reporting_do.Session, payload reporting_do.CanonicalSnapshot, usage []reporting_do.Usage, invocations []reporting_do.Invocation) error {
+func (r *Reporting) SaveCanonical(ctx context.Context, session reporting_do.Session, payload reporting_do.CanonicalSnapshot, usage []reporting_do.Usage) error {
 	db := r.engine.DB(ctx)
 	if err := db.Save(&session).Error; err != nil {
 		return err
@@ -75,16 +75,8 @@ func (r *Reporting) SaveCanonical(ctx context.Context, session reporting_do.Sess
 	if err := db.Where("session_key = ?", session.ID).Delete(&reporting_do.Usage{}).Error; err != nil {
 		return err
 	}
-	if err := db.Where("session_key = ?", session.ID).Delete(&reporting_do.Invocation{}).Error; err != nil {
-		return err
-	}
 	if len(usage) > 0 {
 		if err := db.CreateInBatches(usage, 250).Error; err != nil {
-			return err
-		}
-	}
-	if len(invocations) > 0 {
-		if err := db.CreateInBatches(invocations, 250).Error; err != nil {
 			return err
 		}
 	}

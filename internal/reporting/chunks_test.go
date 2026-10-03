@@ -78,7 +78,7 @@ func TestLargeSnapshotDurablePartsAndAcknowledgement(t *testing.T) {
 		}
 	}
 	full, err := reportingv1.AssembleSnapshot(parts)
-	if err != nil || len(full.Contributions) != 20032 || len(full.Invocations) != 16691 {
+	if err != nil || len(full.Contributions) != 20032 || len(full.Invocations) != 0 {
 		t.Fatal("facts lost", err)
 	}
 	parts[0].Contributions[0].TotalTokens = new(int64(99))

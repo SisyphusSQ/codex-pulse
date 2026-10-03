@@ -6,7 +6,7 @@ export interface ThroughputStats { average_output_milli_tps:string|null;output_t
 export interface ThroughputTurns { items:{key:string;started_at_ms:number|null;ended_at_ms:number|null;throughput:ThroughputStats}[];total:string|null;limit:number;truncated:boolean }
 export interface CacheHitRateStats { basis_points:string|null;input_tokens:string|null;cached_input_tokens:string|null;unit:string;basis:string;status:'complete'|'partial'|'unavailable';reason:string;source_client_id:string|null;conflict:boolean }
 export interface SessionRecord { cache_hit_rate?:CacheHitRateStats|null; throughput?:ThroughputStats|null;id:string;provider:string;session_id:string|null;title:string;session_kind:string;project_id:string;project_group_id:string;project_name:string;created_at_ms:number|null;last_active_at_ms:number|null;collected_at_ms:number;complete:boolean;conflict:boolean;sources:Source[];totals:Totals }
-export interface ProjectRecord { id:string;name:string;members:string[];totals:Totals;last_active_at_ms:number|null;conflict:boolean }
+export interface ProjectRecord { id:string;name:string;members:string[];machines:{client_id:string;client_name:string}[];totals:Totals;last_active_at_ms:number|null;conflict:boolean }
 export interface Page { page:number;limit:number;total:number }
 export interface Records<T> { range:ReportingRange;scope:string;page:Page;items:T[];totals:Totals;coverage:Coverage }
 export interface SessionDetail { throughput_turns?:ThroughputTurns;session:SessionRecord;range:ReportingRange;trend:Day[];tools:Slice[];skills:Slice[];coverage:Coverage }

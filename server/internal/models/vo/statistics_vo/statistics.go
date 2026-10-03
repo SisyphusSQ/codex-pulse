@@ -46,10 +46,11 @@ type StatisticsDay struct {
 	Totals    StatisticsTotals `json:"totals"`
 }
 type StatisticsHour struct {
-	Weekday  int     `json:"weekday"`
-	Hour     int     `json:"hour"`
-	Tokens   *string `json:"tokens"`
-	Sessions int64   `json:"sessions"`
+	SessionCount *string `json:"session_count"`
+	Weekday      int     `json:"weekday"`
+	Hour         int     `json:"hour"`
+	Tokens       *string `json:"tokens"`
+	Sessions     int64   `json:"sessions"`
 }
 
 // StatisticsActivity 只概括已收到的年度事实；未知日期不补零，连续天数无法确认时保留 NULL。
@@ -62,25 +63,49 @@ type StatisticsActivity struct {
 	ObservedDays      int     `json:"observed_days"`
 	UnknownDays       int     `json:"unknown_days"`
 }
+type StatisticsActivityBucket struct {
+	StartAtMS int64   `json:"start_at_ms"`
+	EndAtMS   int64   `json:"end_at_ms"`
+	Tokens    *string `json:"tokens"`
+	Sessions  *string `json:"sessions"`
+}
+type StatisticsMachine struct {
+	ClientID   string `json:"client_id"`
+	ClientName string `json:"client_name"`
+}
+type StatisticsCollectorUsage struct {
+	Machine     StatisticsMachine  `json:"machine"`
+	Totals      StatisticsTotals   `json:"totals"`
+	Coverage    StatisticsCoverage `json:"coverage"`
+	RevokedAtMS *int64             `json:"revoked_at_ms"`
+}
+type StatisticsSourceUsage struct {
+	Range StatisticsRange            `json:"range"`
+	Scope string                     `json:"scope"`
+	Items []StatisticsCollectorUsage `json:"items"`
+}
 type StatisticsSummary struct {
-	CostBasis                      string             `json:"cost_basis"`
-	TrendCostRoundingDeltaMicroUSD *string            `json:"trend_cost_rounding_delta_micro_usd"`
-	Tools                          []StatisticsSlice  `json:"tools"`
-	Skills                         []StatisticsSlice  `json:"skills"`
-	Range                          StatisticsRange    `json:"range"`
-	Scope                          string             `json:"scope"`
-	Totals                         StatisticsTotals   `json:"totals"`
-	Coverage                       StatisticsCoverage `json:"coverage"`
-	Providers                      []StatisticsSlice  `json:"providers"`
-	Models                         []StatisticsSlice  `json:"models"`
-	Devices                        []StatisticsSlice  `json:"devices"`
-	Trend                          []StatisticsDay    `json:"trend"`
-	Heatmap                        []StatisticsDay    `json:"heatmap"`
-	HeatmapRange                   StatisticsRange    `json:"heatmap_range"`
-	HeatmapCoverage                StatisticsCoverage `json:"heatmap_coverage"`
-	HeatmapTotals                  StatisticsTotals   `json:"heatmap_totals"`
-	HeatmapActivity                StatisticsActivity `json:"heatmap_activity"`
-	WeekdayHours                   []StatisticsHour   `json:"weekday_hours"`
+	ActivityGranularity            string                     `json:"activity_granularity"`
+	ActivityTimeline               []StatisticsActivityBucket `json:"activity_timeline"`
+	TopSessions                    []StatisticsSession        `json:"top_sessions"`
+	CostBasis                      string                     `json:"cost_basis"`
+	TrendCostRoundingDeltaMicroUSD *string                    `json:"trend_cost_rounding_delta_micro_usd"`
+	Tools                          []StatisticsSlice          `json:"tools"`
+	Skills                         []StatisticsSlice          `json:"skills"`
+	Range                          StatisticsRange            `json:"range"`
+	Scope                          string                     `json:"scope"`
+	Totals                         StatisticsTotals           `json:"totals"`
+	Coverage                       StatisticsCoverage         `json:"coverage"`
+	Providers                      []StatisticsSlice          `json:"providers"`
+	Models                         []StatisticsSlice          `json:"models"`
+	Devices                        []StatisticsSlice          `json:"devices"`
+	Trend                          []StatisticsDay            `json:"trend"`
+	Heatmap                        []StatisticsDay            `json:"heatmap"`
+	HeatmapRange                   StatisticsRange            `json:"heatmap_range"`
+	HeatmapCoverage                StatisticsCoverage         `json:"heatmap_coverage"`
+	HeatmapTotals                  StatisticsTotals           `json:"heatmap_totals"`
+	HeatmapActivity                StatisticsActivity         `json:"heatmap_activity"`
+	WeekdayHours                   []StatisticsHour           `json:"weekday_hours"`
 }
 type StatisticsPage struct {
 	Page  int   `json:"page"`
@@ -134,12 +159,13 @@ type StatisticsSessionDetail struct {
 	Coverage        StatisticsCoverage  `json:"coverage"`
 }
 type StatisticsProject struct {
-	ID             string           `json:"id"`
-	Name           string           `json:"name"`
-	Members        []string         `json:"members"`
-	Totals         StatisticsTotals `json:"totals"`
-	LastActiveAtMS *int64           `json:"last_active_at_ms"`
-	Conflict       bool             `json:"conflict"`
+	Machines       []StatisticsMachine `json:"machines"`
+	ID             string              `json:"id"`
+	Name           string              `json:"name"`
+	Members        []string            `json:"members"`
+	Totals         StatisticsTotals    `json:"totals"`
+	LastActiveAtMS *int64              `json:"last_active_at_ms"`
+	Conflict       bool                `json:"conflict"`
 }
 type StatisticsProjects struct {
 	Range    StatisticsRange     `json:"range"`

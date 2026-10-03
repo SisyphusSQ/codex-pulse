@@ -18,7 +18,7 @@ beforeEach(()=>{api.setSession({client_id:'synthetic-browser',name:'测试浏览
 afterEach(()=>vi.unstubAllGlobals());
 function mount(){render(<OperationNotifications><QueryClientProvider client={createQueryClient()}><MemoryRouter><Quota /></MemoryRouter></QueryClientProvider></OperationNotifications>);}
 describe('quota facts and pace',()=>{
- it('loads summary and one selected pace window, and defers paged evidence until expansion',async()=>{
+ it('loads summary and selected pace without a source evidence entry',async()=>{
   const data=quotaFixture();data.windows[0].observation_count=41;
   fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(data));
   mount();await screen.findByRole('button',{name:'节奏评估说明'});
@@ -27,8 +27,8 @@ describe('quota facts and pace',()=>{
   expect(urls().some(u=>u.searchParams.get('view')==='summary')).toBe(true);
   expect(urls().filter(u=>u.pathname.endsWith('/pace')).every(u=>u.searchParams.get('window_key')===data.windows[0].key)).toBe(true);
   expect(urls().some(u=>u.searchParams.get('view')==='evidence')).toBe(false);
-  await userEvent.setup().click(screen.getByRole('tab',{name:'来源证据 (41)'}));
-  await waitFor(()=>expect(urls().some(u=>u.searchParams.get('view')==='evidence'&&u.searchParams.get('page')==='1'&&u.searchParams.get('limit')==='20')).toBe(true));
+  expect(screen.queryByRole('tab',{name:/来源证据/})).not.toBeInTheDocument();
+  expect(screen.getByText('节奏与历史')).toBeInTheDocument();
  });
  it.each(['stale','expired_unknown'])('keeps the last snapshot and forecast when polling changes freshness to %s',async freshness=>{
   const quota=quotaFixture(),pace=paceFixture();
@@ -65,7 +65,7 @@ describe('quota facts and pace',()=>{
  it('preserves observed zero, sparse forecast and exact credits with separate reset/expiry',async()=>{
   fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(quotaFixture()));
   mount();expect((await screen.findAllByText('0%')).length).toBeGreaterThan(0);await userEvent.setup().click(await screen.findByRole('button',{name:'节奏评估说明'}));await screen.findByText('实际采样数量或跨度不足');
-  await userEvent.setup().click(screen.getByText('库存来源与到期明细'));
+  await userEvent.setup().click(screen.getByText('库存到期明细'));
   expect(screen.getByText('正值代表使用快于均匀节奏')).toBeInTheDocument();expect(screen.getByLabelText('节奏偏差（百分点）')).toHaveTextContent('10.00');
   expect(screen.queryByRole('tab',{name:'Reset Credits (1)'})).not.toBeInTheDocument();expect(screen.getByText('9,007,199,254,740,993')).toBeInTheDocument();
   const credit=screen.getByText('Reset Credits').closest('.credits-section')!;expect(within(credit as HTMLElement).getByText('下一次 reset')).toBeInTheDocument();expect(within(credit as HTMLElement).getAllByText('未知').length).toBeGreaterThan(0);
@@ -73,9 +73,9 @@ describe('quota facts and pace',()=>{
  it('shows expired last value without countdown, keeps original times after failed refresh, and escapes account metadata',async()=>{
   const quota=quotaFixture();quota.windows[0].current={...quota.windows[0].current,used_percent:50,remaining_percent:50,freshness:'expired_unknown',reason:'expired_unknown',reset_remaining_ms:null};quota.accounts[0].email='<img src=x onerror=alert(1)>';
   fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(quota));mount();
-  await screen.findByText('剩余 50%');expect(document.querySelector('.quota-window-summary .ant-progress')).not.toBeNull();expect(screen.queryByText('当前未知')).not.toBeInTheDocument();await screen.findByText('额度窗口与来源详情');await userEvent.setup().click(screen.getByText('额度窗口与来源详情'));await screen.findByText('最后更新时距 reset');expect(screen.getByText('显示最后一次有效更新 · 窗口 300 分钟')).toBeInTheDocument();expect(document.querySelector('img[src="x"]')).toBeNull();
+  await screen.findByText('剩余 50%');expect(document.querySelector('.quota-window-summary .ant-progress')).not.toBeNull();expect(screen.queryByText('当前未知')).not.toBeInTheDocument();expect(screen.queryByText('额度窗口与来源详情')).not.toBeInTheDocument();expect(document.querySelector('img[src="x"]')).toBeNull();
   fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):new Response('',{status:503}));await userEvent.setup().click(screen.getByRole('button',{name:'刷新额度'}));
-  await screen.findByText('额度刷新失败，保留上次读取的数据与原时间');expect(document.querySelectorAll('.quota-numbers strong')[0]?.textContent).toBe('50%');expect(screen.getByText('最后更新时距 reset')).toBeInTheDocument();
+  await screen.findByText('额度刷新失败，保留上次读取的数据与原时间');expect(screen.getByText('剩余 50%')).toBeInTheDocument();
  });
  it('uses raw-ID account identities even for equal emails and sends explicit account/provider/source filters',async()=>{
   fetcher.mockImplementation(async(path)=>{const u=new URL(String(path),'http://localhost');if(u.pathname.endsWith('/devices/status'))return success([{id:'machine-one',name:'合成采集机',providers:[],revoked_at_ms:null,last_received_at_ms:null}]);if(u.pathname.endsWith('/pace'))return success(paceFixture());const data=quotaFixture();if(u.searchParams.get('account_key')==='account-two'){data.accounts=data.accounts.filter(a=>a.key==='account-two');data.windows=[];data.credits=[];}return success(data);});
@@ -91,7 +91,7 @@ describe('quota facts and pace',()=>{
  });
 
  it('keeps windows, resets and credits inside one selected raw-ID account even when emails match',async()=>{
-  const data=quotaFixture();
+  const data=quotaFixture();data.accounts[1].plan='Plus';
   data.windows.push({...data.windows[0],key:'window-two',account_key:'account-two',current:{...data.windows[0].current,used_percent:25,remaining_percent:75}});
   data.credits.push({...data.credits[0],key:'credit-two',account_key:'account-two',observed_inventory:'3',available_inventory:'2'});
   fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(data));
@@ -110,11 +110,17 @@ describe('quota facts and pace',()=>{
   await waitFor(()=>expect(fetcher.mock.calls.filter(([p])=>new URL(String(p),'http://localhost').searchParams.get('view')==='summary').length).toBeGreaterThan(1));
   expect(fetcher.mock.calls.some(([p])=>new URL(String(p),'http://localhost').pathname.endsWith('/pace'))).toBe(false);
   let detail=document.querySelector('.quota-detail') as HTMLElement;expect(within(detail).getByText('原始账号 ID：raw-account-two')).toBeInTheDocument();expect(within(detail).getAllByText('0',{selector:'.metric-value'})).toHaveLength(2);expect(within(detail).queryByText('7',{selector:'.metric-value'})).not.toBeInTheDocument();
-  await userEvent.setup().click(screen.getByRole('button',{name:'查看待关联观测'}));detail=document.querySelector('.quota-detail') as HTMLElement;
-  expect(within(detail).getByText('以下观测各自展示，不视为同一账号，也不按邮箱或采集设备推断归属。')).toBeInTheDocument();expect(within(detail).getByText('7',{selector:'.metric-value'})).toBeInTheDocument();expect(within(detail).queryByText('原始账号 ID：raw-account-two')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'查看待关联观测'})).not.toBeInTheDocument();
+  expect(screen.queryByText('7',{selector:'.metric-value'})).not.toBeInTheDocument();
  });
 });
 
 it('preserves provider, model and version parameters when migrating the legacy usage link',()=>{
  expect(legacyUsageTarget(new URLSearchParams('view=usage&provider=codex&model=gpt-6.1-sol&version=old'))).toBe('/usage/models?provider=codex&model=gpt-6.1-sol&version=old');
+});
+it('hides Pro monthly and short windows and shows missing Plus slots as unavailable',async()=>{
+ const data=quotaFixture();data.accounts[1].plan='Plus';data.windows.push({...data.windows[0],key:'old-month',window_minutes:43200},{...data.windows[0],key:'old-short',window_minutes:300});
+ fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(data));mount();
+ expect(await screen.findByRole('button',{name:'codex · 7 天'})).toBeInTheDocument();expect(screen.queryByRole('button',{name:'codex · 30 天'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'codex · 5 小时'})).not.toBeInTheDocument();
+ await userEvent.setup().click(screen.getByRole('button',{name:/查看账号 .*raw-account-two/}));expect(screen.getAllByText('未取得')).toHaveLength(2);expect(screen.getByText('5 小时')).toBeInTheDocument();expect(screen.getByText('7 天')).toBeInTheDocument();
 });

@@ -34,3 +34,8 @@ describe('device management',()=>{
   expect(fetcher.mock.calls.some(([p])=>String(p).endsWith('/revoke'))).toBe(false);await user.click(within(modal).getByRole('button',{name:'确认撤销'}));await screen.findByText('中心暂时不可用，请检查服务状态后重试。');expect(screen.getAllByText(client.name).length).toBeGreaterThan(0);expect(screen.getByRole('dialog')).toBeInTheDocument();
  });
 });
+it('separates app and browser grants and hides revoked entries',async()=>{
+ fetcher.mockImplementation(async path=>String(path).endsWith('/clients')?success({clients:[client,{...client,id:'revoked',name:'已撤销设备',revoked_at_ms:Date.now()},{...client,id:'admin',purpose:'admin',name:'管理授权样本'}]}):base(path));
+ mount();const app=await screen.findByRole('region',{name:'APP 授权'}),admin=screen.getByRole('region',{name:'管理浏览器授权'});
+ expect(within(app).getByText(client.name)).toBeInTheDocument();expect(within(admin).getByText('管理授权样本')).toBeInTheDocument();expect(screen.queryByText('已撤销设备')).not.toBeInTheDocument();
+});

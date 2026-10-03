@@ -39,7 +39,7 @@ func (r *Access) ClientBySecret(ctx context.Context, hash string) (access_do.Cli
 }
 func (r *Access) Clients(ctx context.Context) ([]access_do.Client, error) {
 	var clients []access_do.Client
-	err := r.engine.DB(ctx).Order("created_at_ms DESC, id").Limit(1001).Find(&clients).Error
+	err := r.engine.DB(ctx).Where("revoked_at_ms IS NULL").Order("created_at_ms DESC, id").Limit(1001).Find(&clients).Error
 	if len(clients) > 1000 {
 		return nil, utils.ErrRequestBudget
 	}
