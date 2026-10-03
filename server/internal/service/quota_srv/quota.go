@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
@@ -59,31 +60,71 @@ func (s *Quota) Current(ctx context.Context, principal access_dto.Principal, q q
 		for _, c := range clients {
 			names[c.ID] = c.Name
 		}
-		rows, err := s.repository.Observations(ctx, q)
+		windows, err := s.repository.Windows(ctx, q)
 		if err != nil {
 			return err
 		}
-		groups := map[string][]reporting_do.QuotaObservation{}
-		for _, row := range rows {
-			if row.Provider == "codex" && !store.CodexQuotaLimitActive(row.LimitID) {
+		for _, scope := range windows {
+			key := scopeKey(scope)
+			if q.WindowKey != "" && q.WindowKey != key {
 				continue
 			}
-			key := windowKey(row)
-			groups[key] = append(groups[key], row)
-		}
-		keys := make([]string, 0, len(groups))
-		for key := range groups {
-			keys = append(keys, key)
-		}
-		slices.Sort(keys)
-		for _, key := range keys {
-			window, err := buildWindow(key, groups[key], names, out.EvaluatedAtMS)
+			if scope.Provider == "codex" && !store.CodexQuotaLimitActive(scope.LimitID) {
+				continue
+			}
+			headers, err := s.repository.Headers(ctx, q, scope, out.EvaluatedAtMS, store.DefaultQuotaArbitrationRule().MaxClockSkewMS)
 			if err != nil {
 				return err
 			}
+			if len(headers) == 0 {
+				continue
+			}
+			header, err := buildWindow(key, headers, names, out.EvaluatedAtMS)
+			if err != nil {
+				return err
+			}
+			resets := retainedResets(header)
+			if q.View == "summary" {
+				header = retainedWindow(header)
+				header.Observations = []quota_vo.Observation{}
+				header.Cycles = []quota_vo.Cycle{}
+				out.Windows = append(out.Windows, header)
+				continue
+			}
+			rows, err := s.repository.WindowObservations(ctx, q, scope, resets)
+			if err != nil {
+				return err
+			}
+			if len(rows) == 0 {
+				continue
+			}
+			window, err := buildWindow(key, rows, names, out.EvaluatedAtMS)
+			if err != nil {
+				return err
+			}
+			window = retainedWindow(window)
+			window.ObservationCount = int64(len(window.Observations))
+			if q.View == "evidence" {
+				page, limit := q.Page, q.Limit
+				if page == 0 {
+					page = 1
+				}
+				if limit == 0 {
+					limit = 20
+				}
+				start := min((page-1)*limit, len(window.Observations))
+				end := min(start+limit, len(window.Observations))
+				window.Observations = window.Observations[start:end]
+				window.ObservationPage = page
+				window.ObservationLimit = limit
+				for i := range window.Cycles {
+					window.Cycles[i].ObservationIDs = []string{}
+				}
+			}
 			out.Windows = append(out.Windows, window)
 		}
-		credits, err := s.repository.Credits(ctx, q)
+		slices.SortFunc(out.Windows, func(a, b quota_vo.Window) int { return strings.Compare(a.Key, b.Key) })
+		credits, err := s.repository.Credits(ctx, q, out.EvaluatedAtMS+store.DefaultQuotaArbitrationRule().MaxClockSkewMS)
 		if err != nil {
 			return err
 		}

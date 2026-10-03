@@ -46,13 +46,18 @@ type statisticsRead struct {
 	modelTotals                                                            map[string]*statisticsAggregate
 	cursorPools                                                            map[string]*statisticsAggregate
 	modelTrendExceeded                                                     bool
+	heatmapOnly                                                            bool
 }
 
 func (s *Statistics) read(ctx context.Context, q statistics_dto.StatisticsQuery) (*statisticsRead, error) {
 	return s.readWithModelTrend(ctx, q, false)
 }
 func (s *Statistics) readWithModelTrend(ctx context.Context, q statistics_dto.StatisticsQuery, include bool) (*statisticsRead, error) {
+	return s.readFacts(ctx, q, include, false)
+}
+func (s *Statistics) readFacts(ctx context.Context, q statistics_dto.StatisticsQuery, include, heatmapOnly bool) (*statisticsRead, error) {
 	out := &statisticsRead{q: q, projects: map[string]reporting_do.Project{}, metadata: map[string]reporting_do.Session{}, sources: map[string][]statistics_vo.StatisticsSource{}, clients: map[string]access_do.Client{}, total: newStatisticsAggregate(), providers: map[string]*statisticsAggregate{}, models: map[string]*statisticsAggregate{}, days: map[string]*statisticsAggregate{}, sessions: map[string]*statisticsAggregate{}, tools: map[string]*statisticsAggregate{}, skills: map[string]*statisticsAggregate{}, hours: map[string]*statisticsAggregate{}, projectGroups: map[string]*statisticsAggregate{}, providerSeen: map[string]bool{}}
+	out.heatmapOnly = heatmapOnly
 	if include {
 		out.modelDays = map[string]*statisticsAggregate{}
 		out.modelTotals = map[string]*statisticsAggregate{}
@@ -120,7 +125,7 @@ func (s *Statistics) readWithModelTrend(ctx context.Context, q statistics_dto.St
 			return nil
 		}
 		chosen := decision.Source.Snapshot
-		m := reporting_do.Session{ID: key, Provider: chosen.Provider, SessionID: chosen.SessionID, Title: chosen.Title, ProjectID: reportingv1.Key(q.ClientID, chosen.Provider, chosen.ProjectID), SessionKind: chosen.SessionKind, SourceKind: chosen.SourceKind, HistoryStartAtMS: chosen.HistoryStartAtMS, CollectedAtMS: chosen.CollectedAtMS, CreatedAtMS: chosen.CreatedAtMS, LastActiveAtMS: chosen.LastActiveAtMS, Complete: chosen.Complete, Conflict: decision.Conflict}
+		m := reporting_do.Session{ID: key, Provider: chosen.Provider, SessionID: chosen.SessionID, Title: chosen.Title, ProjectID: reportingv1.Key(q.ClientID, chosen.Provider, chosen.ProjectID), SessionKind: chosen.SessionKind, SourceKind: chosen.SourceKind, HistoryStartAtMS: chosen.HistoryStartAtMS, CollectedAtMS: chosen.CollectedAtMS, CreatedAtMS: chosen.CreatedAtMS, LastActiveAtMS: chosen.LastActiveAtMS, Complete: chosen.Complete, Conflict: decision.Conflict, CanonicalSourceID: decision.Source.ID}
 		out.metadata[key] = m
 		if m.CollectedAtMS > 0 {
 			out.providerSeen[m.Provider] = true
@@ -151,31 +156,45 @@ func (s *Statistics) readWithModelTrend(ctx context.Context, q statistics_dto.St
 		}
 		return nil
 	}
-	err = s.repository.StreamSources(ctx, q, func(row reporting_do.SessionSource) error {
-		sourceRows++
-		if sourceRows > statistics_dto.MaximumStatisticsSources {
-			return utils.ErrRequestBudget
+	if q.ClientID == "" {
+		if !heatmapOnly {
+			err = s.repository.StreamSourceMetadata(ctx, q, func(row statistics_dto.SourceMetadata) error {
+				sourceRows++
+				if sourceRows > statistics_dto.MaximumStatisticsSources {
+					return utils.ErrRequestBudget
+				}
+				out.sources[row.SessionKey] = append(out.sources[row.SessionKey], statistics_vo.StatisticsSource{ID: row.ID, ClientID: row.ClientID, ClientName: out.clients[row.ClientID].Name, CollectedAtMS: row.CollectedAtMS, Revision: row.Revision, SourceKind: row.SourceKind, Complete: row.Complete, Deleted: row.Deleted})
+				return nil
+			})
 		}
-		if q.ClientID != "" && key != row.SessionKey {
-			if err := flush(); err != nil {
-				return err
-			}
-			key = row.SessionKey
-		}
-		var snapshot reportingv1.SessionSnapshot
-		if err := json.Unmarshal([]byte(row.Payload), &snapshot, json.RejectUnknownMembers(true)); err != nil {
-			return err
-		}
-		out.sources[row.SessionKey] = append(out.sources[row.SessionKey], statistics_vo.StatisticsSource{ID: row.ID, ClientID: row.ClientID, ClientName: out.clients[row.ClientID].Name, CollectedAtMS: row.CollectedAtMS, Revision: row.Revision, SourceKind: row.SourceKind, Complete: snapshot.Complete, Deleted: snapshot.Deleted})
-		if q.ClientID != "" {
-			size += len(row.Payload)
-			if size > 64<<20 || len(own) >= 128 {
+	} else {
+		err = s.repository.StreamSources(ctx, q, func(row reporting_do.SessionSource) error {
+			sourceRows++
+			if sourceRows > statistics_dto.MaximumStatisticsSources {
 				return utils.ErrRequestBudget
 			}
-			own = append(own, reporting_dto.SourceSnapshot{ID: row.ID, ClientID: row.ClientID, Snapshot: snapshot})
-		}
-		return nil
-	})
+			if q.ClientID != "" && key != row.SessionKey {
+				if err := flush(); err != nil {
+					return err
+				}
+				key = row.SessionKey
+			}
+			var snapshot reportingv1.SessionSnapshot
+			if err := json.Unmarshal([]byte(row.Payload), &snapshot, json.RejectUnknownMembers(true)); err != nil {
+				return err
+			}
+			out.sources[row.SessionKey] = append(out.sources[row.SessionKey], statistics_vo.StatisticsSource{ID: row.ID, ClientID: row.ClientID, ClientName: out.clients[row.ClientID].Name, CollectedAtMS: row.CollectedAtMS, Revision: row.Revision, SourceKind: row.SourceKind, Complete: snapshot.Complete, Deleted: snapshot.Deleted})
+			if q.ClientID != "" {
+				size += len(row.Payload)
+				if size > 64<<20 || len(own) >= 128 {
+					return utils.ErrRequestBudget
+				}
+				own = append(own, reporting_dto.SourceSnapshot{ID: row.ID, ClientID: row.ClientID, Snapshot: snapshot})
+			}
+			return nil
+		})
+
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -276,6 +295,11 @@ func (o *statisticsRead) usage(row reporting_do.Usage) {
 		}
 	}
 
+	if o.heatmapOnly {
+		o.total.usage(row, o.q.Location, m.Provider)
+		aggregateFor(o.days, day).usage(row, o.q.Location, m.Provider)
+		return
+	}
 	local := time.UnixMilli(at).In(o.q.Location)
 	hour := local.Format("Mon-15")
 	for _, g := range []*statisticsAggregate{o.total, sessionAggregate(o.sessions, row.SessionKey), aggregateFor(o.providers, m.Provider), aggregateFor(o.models, valueString(row.Model, "unknown")), aggregateFor(o.days, day), aggregateFor(o.hours, hour), aggregateFor(o.projectGroups, o.projects[m.ProjectID].GroupID)} {
@@ -292,6 +316,11 @@ func (o *statisticsRead) call(row reporting_do.Invocation) {
 		return
 	}
 	o.providerSeen[m.Provider] = true
+	if o.heatmapOnly {
+		o.total.call(row)
+		aggregateFor(o.days, statisticsDay(row.ObservedAtMS, o.q.Location).Format(time.DateOnly)).call(row)
+		return
+	}
 	for _, g := range []*statisticsAggregate{o.total, sessionAggregate(o.sessions, row.SessionKey), aggregateFor(o.providers, m.Provider), aggregateFor(o.days, statisticsDay(row.ObservedAtMS, o.q.Location).Format(time.DateOnly)), aggregateFor(o.projectGroups, o.projects[m.ProjectID].GroupID)} {
 		g.call(row)
 	}
@@ -412,7 +441,7 @@ func (s *Statistics) Summary(ctx context.Context, p access_dto.Principal, q stat
 		end := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, q.Location).AddDate(0, 0, 1)
 		h.EndAtMS = end.UnixMilli()
 		h.StartAtMS = end.AddDate(0, 0, -365).UnixMilli()
-		annual, err := s.read(ctx, h)
+		annual, err := s.readFacts(ctx, h, false, true)
 		if err != nil {
 			return err
 		}

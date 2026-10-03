@@ -5,3 +5,5 @@
 - 构建目标见 [六平台构建](../design/details/build/README.md)，代码测试入口见 [开发与验证](../design/details/development/README.md)。
 
 具体结果按日期/主题写入本目录并从相关执行计划链接；Pass、Fail、Not Run 分开记录，不把构建或 YAML 解析当作目标平台运行验收。
+
+- [中心四周期与查询优化：2026-10-03](../../../docs/test/center-query-retention-20261003.md)

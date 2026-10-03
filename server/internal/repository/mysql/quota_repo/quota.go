@@ -38,11 +38,9 @@ func (r *Quota) Observations(ctx context.Context, q quota_dto.Query) (out []repo
 	}
 	return
 }
-func (r *Quota) Credits(ctx context.Context, q quota_dto.Query) (out []reporting_do.ResetCredits, err error) {
-	err = r.query(ctx, q).Order("observed_at_ms,id").Limit(quota_dto.MaximumObservations + 1).Find(&out).Error
-	if len(out) > quota_dto.MaximumObservations {
-		return nil, utils.ErrRequestBudget
-	}
+func (r *Quota) Credits(ctx context.Context, q quota_dto.Query, latestAtMS int64) (out []reporting_do.ResetCredits, err error) {
+	base := r.query(ctx, q).Model(&reporting_do.ResetCredits{}).Select("*,DENSE_RANK() OVER (PARTITION BY provider,account_key,CASE WHEN account_key IS NULL THEN client_id ELSE '' END,CASE WHEN account_key IS NULL THEN local_scope ELSE '' END,CASE WHEN inventory IS NOT NULL AND status IN ('accepted','fresh','stale') AND observed_at_ms <= ? THEN 1 ELSE 0 END ORDER BY observed_at_ms DESC) AS recency", latestAtMS)
+	err = r.engine.DB(ctx).Table("(?) AS credits", base).Where("recency <= 2").Order("observed_at_ms,id").Find(&out).Error
 	return
 }
 func (r *Quota) Accounts(ctx context.Context, q quota_dto.Query) (out []reporting_do.Account, err error) {

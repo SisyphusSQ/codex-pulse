@@ -35,7 +35,7 @@ func TestAutomaticMigrationInitializesUpgradesAndPreservesData(t *testing.T) {
 		t.Fatal("automatic v1 upgrade", err)
 	}
 	var marker schema_do.SchemaVersion
-	if err := db.Take(&marker).Error; err != nil || marker.Version != 3 {
+	if err := db.Take(&marker).Error; err != nil || marker.Version != 4 {
 		t.Fatal("upgrade marker", err)
 	}
 	if err := s.Migrate(t.Context()); err != nil {
@@ -72,6 +72,32 @@ func TestAutomaticMigrationRejectsDriftAndFutureVersion(t *testing.T) {
 				t.Fatal("unknown schema modified")
 			}
 		})
+	}
+}
+
+func TestAutomaticV3UpgradeAddsProjectionWithoutChangingFacts(t *testing.T) {
+	s, engine, _ := openTestDatabase(t, filepath.Join(t.TempDir(), "private", "center.sqlite"))
+	if err := s.Migrate(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	db := engine.DB(t.Context())
+	for _, ddl := range []string{"DROP TABLE pulse_session_capsules", "DROP TABLE pulse_retired_observations", "INSERT INTO pulse_batches(client_id,batch_id,digest,received_at_ms) VALUES('synthetic','keep','digest',1)"} {
+		if err := db.Exec(ddl).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Model(&schema_do.SchemaVersion{}).Where("id = ?", 1).Updates(map[string]any{"version": 3, "checksum": "a796cb171ecdf6edbf40fccc9543c1ed2b0012d95248dcdf9da472b3eaf51565"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Migrate(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !db.Migrator().HasIndex("pulse_session_capsules", "idx_capsules_session") {
+		t.Fatal("capsule lookup index missing")
+	}
+	var count int64
+	if err := db.Table("pulse_batches").Where("batch_id = ?", "keep").Count(&count).Error; err != nil || count != 1 {
+		t.Fatal("old facts changed", err)
 	}
 }
 

@@ -21,6 +21,7 @@ type (
 	}
 
 	Server struct {
+		QuotaMaintenance  bool          `mapstructure:"quotaMaintenance"`
 		MetricsTokenFile  string        `mapstructure:"metricsTokenFile"`
 		Metrics           bool          `mapstructure:"metrics"`
 		ReadinessTimeout  time.Duration `mapstructure:"readinessTimeout"`
@@ -137,6 +138,7 @@ func bindEnvironment(v *viper.Viper) error {
 		"contextTimeout",
 		"server.address",
 		"server.metrics",
+		"server.quotaMaintenance",
 		"server.metricsTokenFile",
 		"server.readinessTimeout",
 		"server.readHeaderTimeout",

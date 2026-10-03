@@ -13,6 +13,7 @@ import (
 )
 
 func (s *Quota) Pace(ctx context.Context, principal access_dto.Principal, q quota_dto.Query) (out quota_vo.PaceResponse, err error) {
+	q.View = ""
 	current, err := s.Current(ctx, principal, q)
 	if err != nil {
 		return
@@ -94,6 +95,13 @@ func paceWindow(window quota_vo.Window, now int64) (quota_vo.PaceWindow, error) 
 	out.HistoryCycleCount = pace.HistoryCycleCount
 	out.PreviousRemainingAtElapsed = pace.PreviousRemainingAtElapsed
 	out.HistoryMedianRemainingAtElapsed = pace.HistoryMedianRemainingAtElapsed
+	out.CurrentPoints = displayPoints(out.CurrentPoints)
+	if out.PreviousCycle != nil {
+		out.PreviousCycle.Points = displayPoints(out.PreviousCycle.Points)
+	}
+	for i := range out.HistoricalCycles {
+		out.HistoricalCycles[i].Points = displayPoints(out.HistoricalCycles[i].Points)
+	}
 	return out, nil
 }
 func pacePoint(p quotaengine.PacePoint) quota_vo.PacePoint {
