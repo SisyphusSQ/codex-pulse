@@ -7,3 +7,5 @@
 具体结果按日期/主题写入本目录并从相关执行计划链接；Pass、Fail、Not Run 分开记录，不把构建或 YAML 解析当作目标平台运行验收。
 
 - [中心四周期与查询优化：2026-10-03](../../../docs/test/center-query-retention-20261003.md)
+
+- [TOO-524中心概览优化、DEV review及v0.15.2三机更新](too-524-acceptance.md)

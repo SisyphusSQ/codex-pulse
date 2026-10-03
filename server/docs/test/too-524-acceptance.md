@@ -53,3 +53,24 @@
 ## 发版授权（2026-10-04）
 
 用户授权开发验收后在SQMC05发布Mac v0.15.2，并更新SQMC03/04/05。由于此次Helper停止新增工具技能上报，客户端需要升级；中心沿用同一产品版本和提交，不另建仅Server v0.0.2。提交/发版收尾复用上述开发测试，不重复执行测试。后续实际发布与安装结果另行读回记录。
+
+## v0.15.2 发布与三机更新读回（2026-10-04）
+
+- 功能与版本归档 PR [#182](https://github.com/SisyphusSQ/codex-pulse/pull/182) 合并，发布提交冻结为 `8585b872f75ce3394e42940879961d7595823171`。SQMC05 构建 Mac `0.15.2 / build 65`，SSH signed tag 和 [GitHub Release](https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.15.2) 已公开，非草稿、非预发布；不可变 DMG、ZIP、SHA256SUMS、release-notes.md 四项资产齐全。
+- 公开下载的 ZIP/DMG 摘要一致；ZIP 解包和 DMG 挂载后的 App 签名有效，DMG 仅包含 App 与 Applications 链接。ZIP 摘要 `16adbce108e5a8f4ce4ffc310aa54b964b9c72a3339c993d4ff1308960788aa9`，DMG 摘要 `15af71a330d7a2b33afa3bc3b4f45db4ad4dabfb7bd6bd931db736abfc59b8d7`。
+- 固定更新 feed 最后更新并保留21个版本项，普通及避缓存地址均读回正式 build65，exact ZIP 的 Ed25519 签名通过；公开说明与发布文件一致，远端 tag peeled commit 与冻结提交一致。Keychain 签名临时 LaunchAgent 已卸载。未执行 Sparkle 自动替换界面完整 E2E。
+- SQMC04 生产中心先完成在线与停机备份，再切到 `v0.15.2-center-8585b87`；DEV也更新到同一发行二进制。两者ready200，schema4未增加迁移；摘要 `f5ad41dd6874e9438c1771ea81fe3ffc35d647cac8d9e2400a8661592ad4ea69`。原配置、入口、数据库、授权及旧发行目录保留，数据库包上限读回128MiB。
+
+| 机器 | App / build | Home、0700 runtime、App/Helper 环境及所有者 | 既有上报设置 | 更新后读回 |
+| --- | --- | --- | --- | --- |
+| SQMC03 | 0.15.2 / 65 | 分别一致，卷UUID与inode匹配 | 已启用、60秒、原凭据及全部历史范围保留 | 新接收成功；曾观察待传归零，活跃采集仍会产生新批次；整体partial |
+| SQMC04 | 0.15.2 / 65 | 分别一致，卷UUID与inode匹配 | 已启用、600秒、原凭据及全部历史范围保留 | 新接收成功，待传0；整体partial |
+| SQMC05 | 0.15.2 / 65 | 分别一致，卷UUID与inode匹配 | 现场已启用、600秒、原凭据及全部历史范围保留 | 新接收成功，待传0；整体source_unavailable，Codex/Cursor为partial，Grok不可用 |
+
+SQMC05的“未配置上报”旧记录已过期；升级前备份证明当时已经启用，整体也已是source_unavailable。本次按现场设置保留，没有重新配对或变更开关。中心设备状态是采集时快照，600秒间隔及旧不可变队列可能使展示版本短暂滞后，不能把它当作当前已安装二进制版本。三台均从公开ZIP安装，旧App及停止后的完整runtime备份位于各自私有应用目录；没有删除历史、清空队列或改写Codex Home。
+
+发行环境说明：首次以小写coding路径构建，在大小写不敏感磁盘上与实际Coding目录不一致，C依赖路径映射未匹配，发行门禁拦截；改从实际物理目录重建后通过，没有修改发布源码。公开资产签名读回使用现场已有OpenSSL3；系统LibreSSL不支持该Ed25519检查入口。发行为ad-hoc、未Developer ID签名/未Apple公证，Gatekeeper预期拒绝已记录，公开说明包含首次打开方式。
+
+提交与发版收尾按约定未重复执行测试；仅复用开发测试和实际部署、资产、安装读回。不把三机重启读回替代完整真实Home故障矩阵、CI、生产恢复/回滚或全新macOS用户首次启动。私有发布、备份、构建和三机读回保存在忽略目录 `.artifacts/releases/v0.15.2/`；最终DEV截图为 `.artifacts/too-524/dev-deployment/dev-release-overview.png`。
+
+安全自查：原鉴权、Origin/CSRF、配对及上报权限保持，未扩大网络入口；公开资产不含本机绝对路径、秘密或原始会话内容，新队列不含工具技能调用。旧快照摘要与历史保留边界不变。
