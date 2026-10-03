@@ -1,0 +1,2010 @@
+{
+  "id": null,
+  "uid": "codex-pulse-runtime",
+  "title": "Codex Pulse · 运行监控",
+  "tags": [
+    "codex-pulse",
+    "server",
+    "runtime"
+  ],
+  "timezone": "Asia/Shanghai",
+  "schemaVersion": 39,
+  "version": 0,
+  "editable": true,
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "timepicker": {
+    "refresh_intervals": [
+      "30s",
+      "1m",
+      "5m"
+    ],
+    "time_options": [
+      "1h",
+      "6h",
+      "12h",
+      "24h",
+      "7d",
+      "30d"
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "environment",
+        "label": "环境",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-local"
+        },
+        "query": {
+          "query": "label_values(up{job=\"codex-pulse\"}, environment)",
+          "refId": "environment"
+        },
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "allValue": null,
+        "current": {
+          "text": "prod",
+          "value": "prod"
+        }
+      },
+      {
+        "name": "instance",
+        "label": "Server 实例",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-local"
+        },
+        "query": {
+          "query": "label_values(up{job=\"codex-pulse\",environment=~\"${environment:regex}\"}, instance)",
+          "refId": "instance"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "collector",
+        "label": "上报机器",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-local"
+        },
+        "query": {
+          "query": "label_values(pulse_source_received_timestamp_seconds{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}, collector)",
+          "refId": "collector"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "provider",
+        "label": "Provider",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus-local"
+        },
+        "query": {
+          "query": "label_values(pulse_source_received_timestamp_seconds{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",collector=~\"${collector:regex}\"}, provider)",
+          "refId": "provider"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU 利用率",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "进程每秒CPU核数除以SQMC04实际逻辑CPU核数；容量来自本机node_exporter。迁移时须同步容量来源。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(process_cpu_seconds_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval]) / scalar(count(node_cpu_seconds_total{job=\"node_exporter\",instance=\"127.0.0.1:9100\",mode=\"idle\"}))",
+          "legendFormat": "{{node}}",
+          "instant": true,
+          "range": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "noValue": "无数据",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "title": "内存占用",
+      "type": "stat",
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "实际进程驻留内存RSS，按bytes换算；不是Go堆或利用率。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "process_resident_memory_bytes{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}",
+          "legendFormat": "{{node}}",
+          "instant": true,
+          "range": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "无数据",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "title": "采集状态",
+      "type": "stat",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "Prometheus是否成功采集受只读Token保护的/metrics；不能代替业务健康。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}",
+          "legendFormat": "{{node}}",
+          "instant": true,
+          "range": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "无数据",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "不可用",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "正常",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 4,
+      "title": "数据库状态",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "有界设备状态查询是否成功；0表示查询失败或超过设备预算，不把连接池有连接等同于成功。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "pulse_metrics_database_up{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}",
+          "legendFormat": "{{node}}",
+          "instant": true,
+          "range": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "无数据",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "不可用",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "正常",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "title": "5xx 累计",
+      "type": "stat",
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "自本次进程启动以来的5xx累计数，排除健康探测和采集请求；不是所选时间范围的增量。无该状态序列时保持无数据。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(app_echo_requests_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",url!~\"/metrics|/health|/ready\",code=~\"5..\"})",
+          "legendFormat": "本次进程 HTTP 5xx",
+          "instant": true,
+          "range": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "无数据",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 6,
+      "title": "机器待传快照",
+      "type": "stat",
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "同一机器将全局待传数重复报给多个Provider：先按collector/instance取最大值，再跨机器求和。仅是最后状态快照，Provider筛选不影响此值。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(max by(collector,instance) (pulse_source_pending_batches{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",collector=~\"${collector:regex}\"}))",
+          "legendFormat": "机器待传快照",
+          "instant": true,
+          "range": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "无数据",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 7,
+      "title": "CPU 利用率趋势",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "进程每秒CPU核数除以SQMC04实际逻辑CPU核数；容量来自本机node_exporter。迁移时须同步容量来源。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(process_cpu_seconds_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval]) / scalar(count(node_cpu_seconds_total{job=\"node_exporter\",instance=\"127.0.0.1:9100\",mode=\"idle\"}))",
+          "legendFormat": "{{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "内存占用趋势",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "实际进程驻留内存RSS，按bytes换算；不是Go堆或利用率。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "process_resident_memory_bytes{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}",
+          "legendFormat": "{{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "业务请求速率",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "包括Web/API和上传，排除/metrics、/health与/ready；至少需要两个样本。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(instance,node) (rate(app_echo_requests_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",url!~\"/metrics|/health|/ready\"}[$__rate_interval]))",
+          "legendFormat": "{{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "HTTP 错误比例",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "4xx与5xx分别计算，占业务请求数比例；无请求时无数据/NaN，不伪装为健康。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum by(instance,node) (rate(app_echo_requests_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",url!~\"/metrics|/health|/ready\",code=~\"5..\"}[$__rate_interval])) or on(instance) (0 * sum by(instance,node) (rate(app_echo_requests_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",url!~\"/metrics|/health|/ready\"}[$__rate_interval])))) / sum by(instance,node) (rate(app_echo_requests_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",url!~\"/metrics|/health|/ready\"}[$__rate_interval]))",
+          "legendFormat": "5xx {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "expr": "(sum by(instance,node) (rate(app_echo_requests_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",url!~\"/metrics|/health|/ready\",code=~\"4..\"}[$__rate_interval])) or on(instance) (0 * sum by(instance,node) (rate(app_echo_requests_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",url!~\"/metrics|/health|/ready\"}[$__rate_interval])))) / sum by(instance,node) (rate(app_echo_requests_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",url!~\"/metrics|/health|/ready\"}[$__rate_interval]))",
+          "legendFormat": "4xx {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "HTTP 延迟分位",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "按延迟直方图桶估算；排除健康与采集请求，无请求时没有有效分位数。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by(le,instance,node) (rate(app_echo_request_duration_seconds_bucket{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",url!~\"/metrics|/health|/ready\"}[$__rate_interval])))",
+          "legendFormat": "P50 {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by(le,instance,node) (rate(app_echo_request_duration_seconds_bucket{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",url!~\"/metrics|/health|/ready\"}[$__rate_interval])))",
+          "legendFormat": "P95 {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by(le,instance,node) (rate(app_echo_request_duration_seconds_bucket{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",url!~\"/metrics|/health|/ready\"}[$__rate_interval])))",
+          "legendFormat": "P99 {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "路由请求速率",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "按路由模板分组，显示Top10请求速率；不包含查询参数或具体Session ID。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by(url,method) (rate(app_echo_requests_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",url!~\"/metrics|/health|/ready\"}[$__rate_interval])))",
+          "legendFormat": "{{method}} {{url}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "上传请求速率",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "上传请求计数包含幂等重试，并非新增事实或Token数量。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by(code) (rate(pulse_reporting_uploads_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval]))",
+          "legendFormat": "HTTP {{code}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "title": "上传 P95 与失败比例",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 28,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "P95由上传耗时桶估算；失败比例单独使用右轴。无上传时分位与比例可无数据。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by(le,instance,node) (rate(pulse_reporting_upload_duration_seconds_bucket{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval])))",
+          "legendFormat": "P95 {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by(instance,node) (rate(pulse_reporting_upload_failures_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval])) / sum by(instance,node) (rate(pulse_reporting_uploads_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval]))",
+          "legendFormat": "失败比例 {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "失败比例.*"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "title": "来源最后接收距今",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "距离中心收到状态快照的时间，不代表原始采集新鲜度。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - pulse_source_received_timestamp_seconds{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",collector=~\"${collector:regex}\",provider=~\"${provider:regex}\"}",
+          "legendFormat": "{{collector}} · {{provider}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 16,
+      "title": "来源原采集距今",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "按设备原采集时间计算；缺失保持未知，负值表示设备时间在未来，不强行补零。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - pulse_source_collected_timestamp_seconds{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",collector=~\"${collector:regex}\",provider=~\"${provider:regex}\"}",
+          "legendFormat": "{{collector}} · {{provider}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 17,
+      "title": "来源同步状态",
+      "type": "state-timeline",
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "1表示最近同步检查为ready且不超过15分钟；0可为陈旧、缺少检查、来源不可用或同步失败，不等同于全部采集覆盖。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "pulse_source_sync_healthy{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",collector=~\"${collector:regex}\",provider=~\"${provider:regex}\"}",
+          "legendFormat": "{{collector}} · {{provider}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "未就绪/陈旧",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "同步就绪",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        },
+        "mergeValues": true,
+        "rowHeight": 0.8,
+        "showValue": "never"
+      }
+    },
+    {
+      "id": 18,
+      "title": "各机器待传快照",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 44,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "每台机器全局待传数的最后快照，跨Provider取最大值避免重复相加；不是实时队列探测，Provider筛选不影响此图。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by(collector,instance) (pulse_source_pending_batches{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",collector=~\"${collector:regex}\"})",
+          "legendFormat": "{{collector}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 19,
+      "title": "数据库连接池",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 52,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "来自sql.DB.Stats；未暴露连接池上限，不计算虚假的利用率。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "pulse_database_connections_open{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}",
+          "legendFormat": "开放 {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "expr": "pulse_database_connections_in_use{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}",
+          "legendFormat": "使用 {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        },
+        {
+          "refId": "C",
+          "expr": "pulse_database_connections_idle{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}",
+          "legendFormat": "空闲 {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "title": "数据库连接等待",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 52,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "连接池等待累计次数的每秒速率，0表示采样范围未增加；服务/查询失败时不填0。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(pulse_database_wait_total{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval])",
+          "legendFormat": "等待次数/秒 {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "title": "Go 堆内存",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "Go堆内存与顶部RSS是不同口径。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "go_memstats_heap_alloc_bytes{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}",
+          "legendFormat": "已分配 {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "expr": "go_memstats_heap_inuse_bytes{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}",
+          "legendFormat": "使用中 {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "title": "Goroutine 与线程",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 60,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "Go运行时当前数量，不表示正在处理的请求数。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "go_goroutines{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}",
+          "legendFormat": "Goroutine {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        },
+        {
+          "refId": "B",
+          "expr": "go_threads{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}",
+          "legendFormat": "线程 {{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 23,
+      "title": "运行时长",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "进程启动以来的时间；部署或异常重启后归零。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - process_start_time_seconds{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}",
+          "legendFormat": "{{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 24,
+      "title": "GC 平均暂停",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 68,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "采样范围GC暂停累计时间除以次数；没有GC时无数据/NaN。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(go_gc_duration_seconds_sum{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval]) / rate(go_gc_duration_seconds_count{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\"}[$__rate_interval])",
+          "legendFormat": "{{node}}",
+          "instant": false,
+          "range": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 25,
+      "title": "来源采集距今 · 倒序",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 76,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "按采集距今倒序，最陈旧优先；未知采集时间不生成序列，不填0。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - pulse_source_collected_timestamp_seconds{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",collector=~\"${collector:regex}\",provider=~\"${provider:regex}\"}",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "job": true,
+              "environment": true,
+              "instance": true,
+              "node": true,
+              "client_id": true
+            },
+            "indexByName": {
+              "collector": 0,
+              "provider": 1,
+              "Value": 2
+            },
+            "renameByName": {
+              "collector": "机器",
+              "provider": "Provider",
+              "Value": "采集距今"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "采集距今",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "title": "机器待传快照 · 倒序",
+      "type": "table",
+      "gridPos": {
+        "x": 12,
+        "y": 76,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-local"
+      },
+      "description": "按待传数倒序；同一机器全局队列在Provider之间去重，Provider筛选不改变机器待传。",
+      "interval": "15s",
+      "maxDataPoints": 600,
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by(collector,instance) (pulse_source_pending_batches{job=\"codex-pulse\",environment=~\"${environment:regex}\",instance=~\"${instance:regex}\",collector=~\"${collector:regex}\"})",
+          "legendFormat": "",
+          "instant": true,
+          "range": false,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-local"
+          },
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "无数据",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "job": true,
+              "environment": true,
+              "instance": true,
+              "node": true,
+              "client_id": true
+            },
+            "indexByName": {
+              "collector": 0,
+              "provider": 1,
+              "Value": 2
+            },
+            "renameByName": {
+              "collector": "机器",
+              "provider": "Provider",
+              "Value": "待传批次"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "待传批次",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "title": "三机主机监控",
+      "url": "/d/node-exporter-fleet",
+      "type": "link",
+      "includeVars": false,
+      "keepTime": true
+    },
+    {
+      "title": "Family System 运行监控",
+      "url": "/d/family-system-runtime",
+      "type": "link",
+      "keepTime": true
+    }
+  ],
+  "description": "中心日常巡检与发布观察：服务/数据库→资源/HTTP→上传/来源→连接池/Go。采集副本与同步快照不是Token额度；大盘由仓库JSON经Local file provider维护。"
+}

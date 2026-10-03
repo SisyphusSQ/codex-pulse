@@ -1,0 +1,19 @@
+# 追加到已有 scrape_configs；替换目标与既有私有凭据文件路径。
+- job_name: codex-pulse
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  metrics_path: /metrics
+  authorization:
+    type: Bearer
+    credentials_file: /absolute/private/codex-pulse-metrics-token
+  static_configs:
+    - targets: [pulse-center.example:18090]
+      labels:
+        environment: prod
+        node: sqmc04
+  metric_relabel_configs:
+    - source_labels: [client_id]
+      regex: '(.+)'
+      target_label: collector
+      replacement: '${1}'
+    # 已确认机器名称的精确ID映射仅存放在采集器私有配置，不写入仓库。

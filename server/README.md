@@ -41,6 +41,8 @@ CORS 默认 `server.corsOrigins: ["*"]`，通配模式不设置 `Access-Control-
 
 Dockerfile 保留为可选构建描述，当前采用二进制部署，不安装或运行 Docker。二进制交付只需要可执行文件与私有配置；启动自动处理受支持的表结构升级。详细步骤见[运行说明](docs/test/operations.md)。
 
+中心 Prometheus 采集与 Grafana 运行大盘见[运行监控](docs/monitoring/README.md)，覆盖资源、HTTP、数据库与各机器同步状态；专用只读 Token 与业务授权独立。
+
 HTTP/HTTPS 共用统一配对、凭证摘要、用途和撤销体系，无 Basic、AK 或 JWT 第二套登录。浏览器使用入口绑定的 HttpOnly/SameSite Cookie 和 CSRF；HTTPS Cookie 额外 Secure。采集设备用独立 Bearer，仅允许自己的上报/同步状态。上报 DTO 不携带 Agent 凭据或原始内容。
 
 - [总体设计与任务入口](../docs/design/details/multi-machine-reporting/README.md)

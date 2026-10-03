@@ -9,5 +9,6 @@
 - [中心四周期与查询优化：2026-10-03](../../../docs/test/center-query-retention-20261003.md)
 
 - [TOO-524中心概览优化、DEV review及v0.15.2三机更新](too-524-acceptance.md)
+- [中心 Grafana 运行监控交付](../monitoring/2026-10-04-delivery.md)
 
 - [TOO-525 首页独立加载与懒加载验收](too-525-acceptance.md)
