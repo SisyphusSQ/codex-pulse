@@ -32,6 +32,7 @@ HashRouter 深链接形如 `/#/quota`。静态入口只开放 GET/HEAD `/` 与 `
 * 私网 HTTP：从 `private-http-sqlite.yml` 起步；Tailscale 使用 `tailscale status --json` 按 HostName 确认当前目标 IP，再同时填写具体监听 IP 和精确 HTTP Origin，不猜历史 IP，不监听 `0.0.0.0`。显式 `allowHTTP:true`，同样设备码/用途/撤销/CSRF。浏览器会话绑定入口，HTTP 和 HTTPS 分别配对；不会自动降级。未经 HTTPS 或 Tailscale 加密的 LAN 链路使用者须明确承担明文传输属性。
 * `deploy/codex-pulse-server.service` 仅为 Linux 非 root 服务示例；安装前准备用户、0700 数据目录、0600 配置/env 文件和实际路径。MySQL 密码用私有 env `APP_DATABASE_PASSWORD` 或私有配置，禁止 shell trace。未安装/启动任何系统服务。macOS 可由现有服务管理方式启动相同命令，不向原生 App 添加 LaunchAgent。
 * SIGINT/SIGTERM 停止接收并在 `server.shutdownTimeout` 内关闭请求和依赖；超时显式失败。`/health` 仅存活，`/ready` 含数据库检查，不代表数据完整、采集在线或配额新鲜。
+* 登录 session 返回 500 时，先排查 `/ready` 和真实数据库进程，不重新初始化或配对来掩盖数据库故障。SQMC04 的 SeekDB 已由用户 LaunchAgent `com.suqing.seekdb` 管理，不应与旧的直接启动脚本并用；此次恢复、实际验证和适用边界见[数据库进程恢复记录](2026-10-04-session-db-recovery.md)。
 * 请求 8 MiB、配对/管理 4 KiB；队列、查询、分页及 TPS 预算见 API 文档。日志仅 method/route/status/request_id/duration，示例按 20 MiB、30 份、7 天轮转。默认不自动删除统计、配额、收据或撤销记录。备份保留期由操作者按磁盘预算管理，确认可恢复的新副本后再明确删除指定旧备份；不是自动清库。
 
 ## SQLite 备份与恢复
