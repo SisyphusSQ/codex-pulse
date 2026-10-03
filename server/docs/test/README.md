@@ -9,3 +9,5 @@
 - [中心四周期与查询优化：2026-10-03](../../../docs/test/center-query-retention-20261003.md)
 
 - [TOO-524中心概览优化、DEV review及v0.15.2三机更新](too-524-acceptance.md)
+
+- [TOO-525 首页独立加载与懒加载验收](too-525-acceptance.md)
