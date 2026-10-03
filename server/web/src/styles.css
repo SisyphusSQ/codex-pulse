@@ -294,3 +294,7 @@ button.activity-cell:hover,button.activity-cell:focus-visible { outline: 2px sol
 .overview-activity-grid > .ant-card:first-child .ant-card-body{padding:16px 18px}.weekday-title{padding:14px 0 10px}.weekday-title .metric-note{font-size:11px}.weekday-legend{display:flex;align-items:center;justify-content:flex-end;gap:4px;margin-top:10px;font-size:11px;color:var(--ant-color-text-secondary)}.weekday-legend .activity-cell{display:inline-block;flex:none;width:12px;height:12px;border-radius:2px}.weekday-name{font-size:11px}
 
 .top-session-meta{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.deferred-section { min-width: 0; }
+.overview-breakdowns > .deferred-section { display: flex; }
+.overview-breakdowns > .deferred-section > .ant-card { width: 100%; }
