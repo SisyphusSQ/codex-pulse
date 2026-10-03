@@ -1,5 +1,8 @@
 ## Unreleased
 
+#### feature:
+1. [TOO-524] 新增中心 Grafana 运行大盘与 Prometheus 采集模板，展示资源、HTTP、上传、数据库与三机同步状态，设备待传快照按机器去重。
+
 ## v0.15.2 - 2026-10-04
 
 #### feature:
