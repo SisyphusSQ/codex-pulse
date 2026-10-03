@@ -410,3 +410,27 @@ Pass：`make package-center` 构建成功，部署包不含私有配置。先对
 本轮开发 App 已停止，其 runtime/历史/授权保留；真实生产 App 与中心未因此停止。截图和日志位于 ignored `.artifacts/releases/v0.15.1/development/`。进入提交发版收尾后复用已有证据，不再重复测试；真实三机更新和生产部署证据后续逐项补充。
 
 安全自查：正式订阅只读取同源管理员目录，默认文本转义与来源白名单保留；真实 Home 上报仍为既有 typed 白名单，配对码只在页面内存和原生安全输入中使用，未进入日志/截图/源码。
+
+
+### v0.15.1 正式发布与三机升级读回（2026-10-03）
+
+用户进一步授权正式部署与三台 Mac 更新，并指定 Mac 在 SQMC05 发布。本段覆盖此前“生产/发布未运行”的阶段边界；不据此自动完成既有 Master 全矩阵。
+
+- 已发布：功能 PR [#177](https://github.com/SisyphusSQ/codex-pulse/pull/177) 与版本/SQL 归档 PR [#178](https://github.com/SisyphusSQ/codex-pulse/pull/178) 合并；冻结 clean main commit `1e12a95b9d4c28f5f4dd64a33d2bb940ca192013`，SQMC05 构建 `v0.15.1 / build 64`。SSH signed tag 已推送，GitHub [v0.15.1 Release](https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.15.1) 为正式、非草稿；ZIP、DMG、SHA256SUMS、release-notes.md 四个资产经公开下载读回，摘要与发行主机产物一致。
+- 已更新：固定 `updates/appcast.xml` 保留 20 个版本项，新增 0.15.1/build 64 的正式项，URL 指向不可变公开 ZIP。Ed25519 签名按实际 ZIP 验证，普通与避缓存 URL 均读回该版本；签名由 SQMC05 既有 Keychain 执行，临时签名 LaunchAgent 已卸载。未执行 Sparkle 自动升级界面的完整 E2E。
+- 已部署：SQMC04 生产单体中心先切换到同一 commit 的 v0.15.1，私网入口/原精确 Origin 保持，schema 2→3、16→18 张表，启动迁移后 ready 200。在线及停止服务后的切换备份均保留，旧配置和发行目录保留。首次 cutover 读回 1,310 个旧会话保持、旧授权/配对指纹保持；15 张旧表中 13 张指纹一致，`pulse_batches` 与 `pulse_reset_credits` 已有恢复上报产生的新记录，不能宣称全部旧表逐字节不变。DEV 发行链接未变。
+- 已接通：生产 `server.metrics:true` 和独立 0600 metrics Token 文件；匿名 `/metrics` 为 401、专用 Token 为 200、相同 Token 访问业务 API 为 401，ready 200。指标没有账号、标题、原始 Session ID 或凭据标签。抓取示例仅作为部署材料准备；未修改用户 Prometheus 采集器配置。
+
+| 主机 | App / build | 真实 Home / 0700 runtime / Helper 所有者 | 既有上报设置 | 最终现场读回 |
+| --- | --- | --- | --- | --- |
+| SQMC03 | 0.15.1 / 64 | 各项分别读回一致 | 原生产地址、凭据、已启用、60 秒、全部已索引范围保留 | 曾被数据库包上限阻塞，修复后自动重试、待传归零 |
+| SQMC04 | 0.15.1 / 64 | 各项分别读回一致 | 原生产地址、凭据、已启用、600 秒、全部已索引范围保留 | 原生立即增量入口获得新确认，待传归零 |
+| SQMC05 | 0.15.1 / 64 | 各项分别读回一致 | 原先未配置上报，保持未配置/关闭 | 正常运行，无待传批次；没有擅自配对或启用 |
+
+三台均安装公开发布 ZIP，保留旧 App 与停机后的完整 runtime 备份，没有清理 SQLite、偏好、账号历史、队列或重新签发生产设备凭据。App/Helper 进程环境、preferences 的 canonical Home 与 inode、Helper 的 runtime 参数及父子关系均分别读回。SQMC03/SQMC04 本机整体状态仍为 `partial`（部分来源可用），三个 Provider 的中心传输 `sync_state` 均为 `ready`，Grok 来源保持原来的 `disabled`；传输恢复不能描述为所有来源都已开启或完成采集。
+
+生产诊断与修复：SQMC03 更大的真实快照包含 23,238 条贡献、41,221 条调用，64 个暂存片累计 21,135,425 字节。最后一片到齐后整份写入超过 SeekDB 原 `max_allowed_packet=16 MiB`，中心返回 HTTP 500，数据库连接出现 EOF；失败耗时不足一秒。由部署管理员调整全局上限到 128 MiB并只重启生产中心，新连接读回相同值后，原队列自然退避重试成功，完整 canonical 最大值 20,004,201 字节、分片暂存归零、后续接收持续 200、客户端队列归零。事实没有截断、队列没有清空；HTTP/完整快照 contract 预算仍分别为 8/64 MiB。配置要求已追加到 [中心运行说明](../../server/docs/test/operations.md#大快照的数据库包大小)，数据库维护重启后仍需读回此实例变量。
+
+本次构建为 macOS arm64/minOS 15 的 ad-hoc 签名发行；未做 Developer ID 签名或 Apple 公证，发布说明已注明 Gatekeeper 的首次打开方式。公开 tag、ZIP/DMG 均未覆盖，固定更新 feed 按计划更新。提交/发版收尾按协作约定未重复执行测试；开发测试只引用前述已有输出，实际部署读回不能替代 CI、独立 MySQL 8.4、生产数据库恢复/回滚、三台真实 Home 的退出/断网/重复全量/账号切换完整矩阵或长期稳定性验收。
+
+安全自查：入口没有扩大、原权限/Origin/CSRF 与只读指标隔离保持；数据库只调整有上限的实例包大小，应用预算不变。秘密与原始内容未提交或进入回写，旧数据及生产凭据保留。原始发布/备份/下载/签名/三机读回只保存在忽略的 `.artifacts/releases/v0.15.1/` 及各机私有安装目录。
