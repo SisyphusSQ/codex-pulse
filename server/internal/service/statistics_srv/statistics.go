@@ -25,6 +25,7 @@ import (
 type Statistics struct {
 	repository *statistics_repo.Statistics
 	now        func() time.Time
+	cache      *statisticsCache
 }
 
 func NewStatistics(repository *statistics_repo.Statistics) *Statistics {
@@ -48,6 +49,10 @@ type statisticsRead struct {
 	cursorPools                                                       map[string]*statisticsAggregate
 	modelTrendExceeded                                                bool
 	heatmapOnly                                                       bool
+	usageOnly                                                         bool
+	projection                                                        string
+	dayStart, dayEnd                                                  int64
+	dayKey                                                            string
 }
 
 func (s *Statistics) read(ctx context.Context, q statistics_dto.StatisticsQuery) (*statisticsRead, error) {
@@ -57,8 +62,16 @@ func (s *Statistics) readWithModelTrend(ctx context.Context, q statistics_dto.St
 	return s.readFacts(ctx, q, include, false)
 }
 func (s *Statistics) readFacts(ctx context.Context, q statistics_dto.StatisticsQuery, include, heatmapOnly bool) (*statisticsRead, error) {
+	return s.readProjection(ctx, q, include, heatmapOnly, "all")
+}
+func (s *Statistics) readFor(ctx context.Context, q statistics_dto.StatisticsQuery, projection string) (*statisticsRead, error) {
+	return s.readProjection(ctx, q, false, false, projection)
+}
+func (s *Statistics) readProjection(ctx context.Context, q statistics_dto.StatisticsQuery, include, heatmapOnly bool, projection string) (*statisticsRead, error) {
 	out := &statisticsRead{q: q, projects: map[string]reporting_do.Project{}, metadata: map[string]reporting_do.Session{}, sources: map[string][]statistics_vo.StatisticsSource{}, clients: map[string]access_do.Client{}, total: newStatisticsAggregate(), providers: map[string]*statisticsAggregate{}, models: map[string]*statisticsAggregate{}, days: map[string]*statisticsAggregate{}, sessions: map[string]*statisticsAggregate{}, hours: map[string]*statisticsAggregate{}, projectGroups: map[string]*statisticsAggregate{}, timeline: map[string]*statisticsAggregate{}, providerSeen: map[string]bool{}}
 	out.heatmapOnly = heatmapOnly
+	out.usageOnly = include
+	out.projection = projection
 	if include {
 		out.modelDays = map[string]*statisticsAggregate{}
 		out.modelTotals = map[string]*statisticsAggregate{}
@@ -151,7 +164,7 @@ func (s *Statistics) readFacts(ctx context.Context, q statistics_dto.StatisticsQ
 		return nil
 	}
 	if q.ClientID == "" {
-		if !heatmapOnly {
+		if !heatmapOnly && !include && projection != "projects" {
 			err = s.repository.StreamSourceMetadata(ctx, q, func(row statistics_dto.SourceMetadata) error {
 				sourceRows++
 				if sourceRows > statistics_dto.MaximumStatisticsSources {
@@ -201,6 +214,13 @@ func (s *Statistics) readFacts(ctx context.Context, q statistics_dto.StatisticsQ
 		for key, m := range out.metadata {
 			if !out.matches(m) {
 				delete(out.metadata, key)
+			}
+		}
+		// 限制 IN 参数数量；宽搜索仍流式读取并由同一字面匹配结果过滤。
+		if q.Search != "" && len(out.metadata) <= 4096 {
+			q.MatchedSessionKeys = make([]string, 0, len(out.metadata))
+			for key := range out.metadata {
+				q.MatchedSessionKeys = append(q.MatchedSessionKeys, key)
 			}
 		}
 		stream := s.repository.StreamUsage
@@ -269,7 +289,11 @@ func (o *statisticsRead) usage(row reporting_do.Usage) {
 		return
 	}
 	o.providerSeen[m.Provider] = true
-	day := statisticsDay(at, o.q.Location).Format(time.DateOnly)
+	if o.dayKey == "" || at < o.dayStart || at >= o.dayEnd {
+		start := statisticsDay(at, o.q.Location)
+		o.dayStart, o.dayEnd, o.dayKey = start.UnixMilli(), start.AddDate(0, 0, 1).UnixMilli(), start.Format(time.DateOnly)
+	}
+	day := o.dayKey
 	if o.modelDays != nil {
 		model := valueString(row.Model, "unknown")
 		key := strings.Join([]string{m.Provider, model, day}, "\x00")
@@ -277,22 +301,43 @@ func (o *statisticsRead) usage(row reporting_do.Usage) {
 			o.modelTrendExceeded = true
 			return
 		}
-		aggregateFor(o.modelDays, key).usage(row, o.q.Location, m.Provider)
-		aggregateFor(o.modelTotals, m.Provider+"\x00"+model).usage(row, o.q.Location, m.Provider)
+		aggregateFor(o.modelDays, key).usage(row, day, m.Provider)
+		aggregateFor(o.modelTotals, m.Provider+"\x00"+model).usage(row, day, m.Provider)
 		if m.Provider == "cursor" {
-			aggregateFor(o.cursorPools, pricing.CursorUsagePoolForModel(model, at)).usage(row, o.q.Location, m.Provider)
+			aggregateFor(o.cursorPools, pricing.CursorUsagePoolForModel(model, at)).usage(row, day, m.Provider)
 		}
 	}
 
 	if o.heatmapOnly {
-		o.total.usage(row, o.q.Location, m.Provider)
-		aggregateFor(o.days, day).usage(row, o.q.Location, m.Provider)
+		o.total.usage(row, day, m.Provider)
+		aggregateFor(o.days, day).usage(row, day, m.Provider)
 		return
 	}
-	local := time.UnixMilli(at).In(o.q.Location)
-	hour := local.Format("Mon-15")
-	for _, g := range []*statisticsAggregate{o.total, sessionAggregate(o.sessions, row.SessionKey), aggregateFor(o.providers, m.Provider), aggregateFor(o.models, valueString(row.Model, "unknown")), aggregateFor(o.days, day), aggregateFor(o.hours, hour), aggregateFor(o.timeline, statisticsHourKey(at, o.q.Location)), aggregateFor(o.projectGroups, o.projects[m.ProjectID].GroupID)} {
-		g.usage(row, o.q.Location, m.Provider)
+	if o.usageOnly {
+		for _, g := range []*statisticsAggregate{o.total, aggregateFor(o.providers, m.Provider), aggregateFor(o.days, day)} {
+			g.usage(row, day, m.Provider)
+		}
+		return
+	}
+	groups := []*statisticsAggregate{o.total}
+	if o.projection == "all" || o.projection == "sessions" || o.projection == "session" || o.projection == "project" {
+		groups = append(groups, sessionAggregate(o.sessions, row.SessionKey))
+	}
+	if o.projection == "all" || o.projection == "session" || o.projection == "project" {
+		groups = append(groups, aggregateFor(o.days, day))
+	}
+	if o.projection == "all" || o.projection == "project" {
+		groups = append(groups, aggregateFor(o.models, valueString(row.Model, "unknown")))
+	}
+	if o.projection == "all" || o.projection == "projects" || o.projection == "project" {
+		groups = append(groups, aggregateFor(o.projectGroups, o.projects[m.ProjectID].GroupID))
+	}
+	if o.projection == "all" {
+		local := time.UnixMilli(at).In(o.q.Location)
+		groups = append(groups, aggregateFor(o.providers, m.Provider), aggregateFor(o.hours, local.Format("Mon-15")), aggregateFor(o.timeline, statisticsHourKey(at, o.q.Location)))
+	}
+	for _, g := range groups {
+		g.usage(row, day, m.Provider)
 	}
 }
 func statisticsRange(q statistics_dto.StatisticsQuery) statistics_vo.StatisticsRange {
@@ -398,6 +443,15 @@ func (s *Statistics) Summary(ctx context.Context, p access_dto.Principal, q stat
 	if err = access_srv.RequireAdmin(p); err != nil {
 		return
 	}
+	if s.cache != nil {
+		result, status, err := cachedProjection(ctx, s.cache, "summary", q, s.summary)
+		result.Cache = status
+		return result, err
+	}
+	return s.summary(ctx, q)
+}
+
+func (s *Statistics) summary(ctx context.Context, q statistics_dto.StatisticsQuery) (result statistics_vo.StatisticsSummary, err error) {
 	now := s.now()
 	err = s.repository.Snapshot(ctx, func(ctx context.Context) error {
 		current, err := s.read(ctx, q)

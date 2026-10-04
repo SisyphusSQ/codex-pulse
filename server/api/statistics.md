@@ -1,6 +1,6 @@
 # 统计查询 v1
 
-与本机 CoreService 分离。所有路由要求 admin 浏览器会话，不使用请求参数中的身份授予权限。响应沿用 `code/message/request_id/data` envelope。来源与投影在同一只读快照中查询；MySQL 显式使用 REPEATABLE READ/READ ONLY，SQLite 保持同一读事务。实际 MySQL 验收尚未运行。
+与本机 CoreService 分离。所有路由要求 admin 浏览器会话，不使用请求参数中的身份授予权限。响应沿用 `code/message/request_id/data` envelope。来源与投影在同一只读快照中查询；MySQL 显式使用 REPEATABLE READ/READ ONLY，SQLite 保持同一读事务。TOO-526 的现场 SeekDB 查询与 HTTP 验收见 [性能验收](../docs/test/too-526-performance.md)，不代表其他 MySQL 部署已经验收。
 
 ## 范围和筛选
 
@@ -74,3 +74,25 @@ summary 新增 activity_granularity（hour/day）、activity_timeline（start_at
 项目VO新增 machines（client_id/client_name）；会话sources原字段继续使用中心名称表。设备状态仅返回未撤销设备；历史会话/项目仍解析撤销设备名称。客户端授权列表SQL过滤撤销项，鉴权撤销和历史行保留。
 
 工具与技能不再统计：既有 tools/skills 兼容字段返回空数组，totals.invocations=0；Web 不显示，不读历史调用表，也不由 source payload 计算调用数。
+
+
+## TOO-526 独立卡片与后台缓存
+
+首页不再调用合并的 summary；各卡片独立请求、失败和刷新。旧 `GET /api/v1/statistics/summary` 保留，其范围与年度字段仍来自同一次只读快照。新增路由继续要求 admin：
+
+| GET 路由 | 字段 / 范围 |
+| --- | --- |
+| `/api/v1/statistics/annual` | heatmap、heatmap_range、heatmap_coverage、heatmap_totals、heatmap_activity；忽略 KPI 日期范围，固定近 365 个自然日 |
+| `/api/v1/statistics/totals` | range、totals、coverage；与 usage 共用精确计算 |
+| `/api/v1/statistics/activity` | range、coverage、activity_granularity、activity_timeline、weekday_hours |
+| `/api/v1/statistics/top-sessions` | range、coverage、top_sessions |
+| `/api/v1/statistics/providers` | range、coverage、providers |
+| `/api/v1/statistics/models` | range、coverage、models |
+
+annual、usage/totals、当前范围构成/活动/高消耗会话、source-usage 和兼容 summary 使用进程内缓存。相同范围的四类当前卡片共享一次计算，各路由只返回相应卡片字段；年度缓存独立于 KPI 日期。每个计算内部保持数据库快照一致，不同卡片可来自不同计算时刻，不能据此声明跨卡片原子快照。
+
+缓存键包含范围、时区及 Provider/模型/会话/设备/项目/搜索，先检查 admin 再读缓存；撤销授权不会被缓存绕过。首次未命中等待后台计算，共享同键并发冷请求；请求取消不取消其他等待者。一个后台工作者每分钟刷新近期访问的条目，超过五分钟未访问暂停刷新，下一次访问立即返回保留值并唤醒刷新。默认预热上海时区今天和年度卡片。重启清空缓存，冷查询仍需要真实计算。
+
+响应新增 `cache`：`computed_at_ms` 是计算开始时刻，`refresh_after_ms=60000`、`age_ms` 为响应时的年龄，`state` 是 ready/refreshing/refresh_failed，超过两分钟 `stale=true`。正常目标为一至两分钟延迟；高负载或刷新失败时可更久，必须按 metadata 显示旧值与警告。失败保留最后成功值，初次计算失败仍返回错误，不能伪装空成功。Web 每分钟读取 metadata；手动刷新重新读取当前值，不强制在 HTTP 路径执行 SQL。
+
+缓存上限为 32 个投影和 64 MiB 序列化结果；按最后访问淘汰已完成条目，不淘汰冷等待者。超预算返回 413，计算沿用 Server contextTimeout，停服取消计算并等待工作者退出。不新增外部缓存、DDL 或迁移。列表/详情、额度、目录与授权仍直接读取数据库。

@@ -80,11 +80,13 @@ type StatisticsCollectorUsage struct {
 	RevokedAtMS *int64             `json:"revoked_at_ms"`
 }
 type StatisticsSourceUsage struct {
+	Cache *StatisticsCache           `json:"cache,omitempty"`
 	Range StatisticsRange            `json:"range"`
 	Scope string                     `json:"scope"`
 	Items []StatisticsCollectorUsage `json:"items"`
 }
 type StatisticsSummary struct {
+	Cache                          *StatisticsCache           `json:"cache,omitempty"`
 	ActivityGranularity            string                     `json:"activity_granularity"`
 	ActivityTimeline               []StatisticsActivityBucket `json:"activity_timeline"`
 	TopSessions                    []StatisticsSession        `json:"top_sessions"`

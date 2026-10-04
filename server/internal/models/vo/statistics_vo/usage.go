@@ -13,6 +13,7 @@ type UsageModelDay struct {
 	Totals   StatisticsTotals `json:"totals"`
 }
 type UsageResponse struct {
+	Cache                          *StatisticsCache   `json:"cache,omitempty"`
 	CacheHitRate                   *CacheHitRateView  `json:"cache_hit_rate"`
 	Range                          StatisticsRange    `json:"range"`
 	Scope                          string             `json:"scope"`

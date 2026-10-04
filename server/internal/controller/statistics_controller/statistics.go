@@ -18,6 +18,12 @@ func NewStatistics(service *statistics_srv.Statistics) *Statistics {
 }
 func (s *Statistics) Register(e *echo.Echo) {
 	e.GET("/api/v1/statistics/summary", s.Summary)
+	e.GET("/api/v1/statistics/annual", s.Annual)
+	e.GET("/api/v1/statistics/totals", s.Totals)
+	e.GET("/api/v1/statistics/activity", s.Activity)
+	e.GET("/api/v1/statistics/top-sessions", s.Top)
+	e.GET("/api/v1/statistics/providers", s.Providers)
+	e.GET("/api/v1/statistics/models", s.Models)
 	e.GET("/api/v1/statistics/source-usage", s.SourceUsage)
 	e.GET("/api/v1/statistics/usage", s.Usage)
 	e.GET("/api/v1/sessions", s.Sessions)

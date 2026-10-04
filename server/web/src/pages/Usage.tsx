@@ -1,5 +1,6 @@
 import {lazy,Suspense,useMemo,useState} from 'react';
 import {Alert,Card,Collapse,Descriptions,Select,Segmented,Statistic,Table,Typography} from 'antd';
+import {CacheNotice} from '../components/CacheNotice';
 import {useQuery} from '@tanstack/react-query';
 import {Link,useSearchParams} from 'react-router-dom';
 import {getUsage} from '../api/usage';
@@ -22,7 +23,7 @@ export default function Usage(){
  const [params]=useSearchParams();
  const [filter,setFilter]=useState(()=>({...initialFilter(),provider:['codex','cursor','grok'].includes(params.get('provider')??'')?params.get('provider')!:'',model:params.get('model')??''}));
  const [metric,setMetric]=useState<Metric>('tokens');const [chosen,setChosen]=useState<string[]|null>(null);
- const query=useQuery({queryKey:['usage',filter],queryFn:({signal})=>getUsage(filter,signal)});const data=query.data;
+ const query=useQuery({queryKey:['usage',filter],queryFn:({signal})=>getUsage(filter,signal),refetchInterval:60_000});const data=query.data;
  const available=data?.models??[];
  const selection=chosen?.filter(v=>available.some(r=>key(r)===v))??available.slice(0,12).map(key);
  const option=useMemo(()=>data?usageChartOption(data,metric,selection):{},[data,metric,selection.join('\x00')]);
@@ -34,7 +35,7 @@ export default function Usage(){
  <div><Statistic title={estimatedLabel(filter.provider)} value={data.totals.cost_micro_usd??'未知'} formatter={()=>dollars(data.totals.cost_micro_usd)} /><div className="metric-note">{data.totals.cost_status==='partial'?'已知金额小计':'按历史费率计算'} · 估算</div></div>
  <div><Statistic title={filter.provider==='cursor'?'Cursor 上报费用':filter.provider==='grok'?'Grok 上报费用':'来源上报费用'} value={data.totals.reported_charge_micro_usd??'未知'} formatter={()=>dollars(data.totals.reported_charge_micro_usd)} /><div className="metric-note">{data.totals.reported_charge_status==='partial'?'已知上报金额小计':'数据源提供的金额'} · 与估算分开展示</div></div>
  <div><Statistic title="未定价记录" value={data.coverage.unpriced_facts} formatter={()=>integer(data.coverage.unpriced_facts)} /><div className="metric-note">缺失Token或价格不计作免费</div></div></div></Card>
- <CoverageNotice coverage={data.coverage} zone={filter.time_zone} />
+ <CacheNotice cache={data.cache} zone={filter.time_zone}/><CoverageNotice coverage={data.coverage} zone={filter.time_zone} />
  <Card title="按模型的用量趋势" className="section-card" extra={<Segmented aria-label="用量趋势指标" value={metric} onChange={v=>setMetric(v as Metric)} options={[{label:'Token',value:'tokens'},{label:'估算成本',value:'cost'}]} />}>
  <Select className="usage-model-selector" aria-label="趋势模型" mode="multiple" maxCount={12} maxTagCount="responsive" value={selection} onChange={setChosen} options={available.map(r=>({value:key(r),label:`${providerNames[r.provider]} · ${r.model}`}))} placeholder="选择趋势模型" />
 

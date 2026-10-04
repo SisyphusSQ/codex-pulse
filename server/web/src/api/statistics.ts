@@ -26,8 +26,10 @@ export interface AnnualActivity {
 }
 export interface ActivityBucket { start_at_ms:number; end_at_ms:number; tokens:Decimal; sessions:Decimal }
 export interface CollectorUsage { machine:{client_id:string;client_name:string};totals:Totals;coverage:Coverage;revoked_at_ms:number|null }
-export interface SourceUsage { range:ReportingRange;scope:string;items:CollectorUsage[] }
+export interface SourceUsage { cache?:StatisticsCache; range:ReportingRange;scope:string;items:CollectorUsage[] }
+export interface StatisticsCache { computed_at_ms:number; refresh_after_ms:number; age_ms:number; stale:boolean; state:'ready'|'refreshing'|'refresh_failed' }
 export interface Summary {
+  cache?: StatisticsCache;
   activity_granularity:'hour'|'day';activity_timeline:ActivityBucket[];top_sessions:SessionRecord[];
   cost_basis: string; trend_cost_rounding_delta_micro_usd: Decimal;
   range: ReportingRange; scope: string; totals: Totals; coverage: Coverage;
@@ -65,3 +67,14 @@ export async function getSourceUsage(filter:StatsFilter,signal?:AbortSignal):Pro
  const value=await api.get<SourceUsage>('/api/v1/statistics/source-usage',statsParams(filter),signal);
  if(!value?.range||!Array.isArray(value.items))throw new ApiError(502);return value;
 }
+
+export type Annual = Pick<Summary, 'cache'|'heatmap'|'heatmap_range'|'heatmap_coverage'|'heatmap_activity'|'heatmap_totals'>;
+export type Activity = Pick<Summary, 'cache'|'range'|'coverage'|'activity_granularity'|'activity_timeline'|'weekday_hours'>;
+export type TopSessions = Pick<Summary, 'cache'|'range'|'coverage'|'top_sessions'>;
+export type Breakdown = Pick<Summary, 'cache'|'range'|'coverage'> & {providers?:Slice[]; models?:Slice[]};
+export type RangeTotals = Pick<Summary, 'cache'|'range'|'coverage'|'totals'>;
+export async function getAnnual(filter:StatsFilter,signal?:AbortSignal){const v=await api.get<Annual>('/api/v1/statistics/annual',statsParams(filter),signal);if(!v?.heatmap_range||!v.heatmap_coverage||!v.heatmap_activity||!Array.isArray(v.heatmap))throw new ApiError(502);return v;}
+export async function getActivity(filter:StatsFilter,signal?:AbortSignal){const v=await api.get<Activity>('/api/v1/statistics/activity',statsParams(filter),signal);if(!v?.range||!v.coverage||!Array.isArray(v.activity_timeline)||!Array.isArray(v.weekday_hours))throw new ApiError(502);return v;}
+export async function getTopSessions(filter:StatsFilter,signal?:AbortSignal){const v=await api.get<TopSessions>('/api/v1/statistics/top-sessions',statsParams(filter),signal);if(!v?.range||!v.coverage||!Array.isArray(v.top_sessions))throw new ApiError(502);return v;}
+export async function getBreakdown(filter:StatsFilter,kind:'providers'|'models',signal?:AbortSignal){const v=await api.get<Breakdown>(`/api/v1/statistics/${kind}`,statsParams(filter),signal);if(!v?.range||!v.coverage||!Array.isArray(v[kind]))throw new ApiError(502);return v;}
+export async function getTotals(filter:StatsFilter,signal?:AbortSignal){const v=await api.get<RangeTotals>('/api/v1/statistics/totals',statsParams(filter),signal);if(!v?.range||!v.coverage||!v.totals)throw new ApiError(502);return v;}
