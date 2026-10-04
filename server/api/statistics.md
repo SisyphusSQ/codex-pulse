@@ -27,7 +27,7 @@
 
 `summary.heatmap_range` 固定为截至当前自然日的连续 365 个自然日，使用同样的 Provider、模型、项目、设备和搜索筛选，但不使用 KPI 的日期范围；`heatmap_coverage` 与当前 `coverage` 独立。没有本日/星期小时事实的格子保留 nullable 计数，不能因其他日期有事实或 Provider ready 而补成零；明确零计数事实仍返回 `"0"`。自然日以 AddDate 推进，DST 的一天可能为 23 或 25 小时。`weekday_hours.weekday` 以 Sunday=0，hour 为 0–23。
 
-`summary.heatmap_activity` 与年度日序列在同一只读快照中产生：`total_tokens` 使用年度范围已知小计；`peak_daily_tokens`、`active_days`、`longest_streak_days` 只概括已观测日，未知日不连接连续活动；`observed_days/unknown_days` 明确日级覆盖。当前连续天数允许今天明确为零时截至昨天；今天或连续段起点遇到未知日期则 `current_streak_days=null`，不能将未知日推定成中断或不活跃。前五项为 nullable 十进制字符串，全年未观测时峰值/天数为 NULL，明确观测零保留 `"0"`。Web 将不完整的活跃与最长连续天数标为“已观测”；格式化不改变 API 原始值。
+`summary.heatmap_activity` 与年度日序列在同一只读快照中产生：`total_tokens` 使用年度范围已知小计；`peak_daily_tokens`、`active_days`、`longest_streak_days` 只概括已观测日，未知日不连接连续活动；`observed_days/unknown_days` 明确日级覆盖。当前连续天数按中心已收到的连续活动日计算，今天明确为零或尚无记录时允许截至昨天；向前遇到无记录或明确零日期时停止计数，不丢弃已收到的连续段、不跨越空白日期。它表示本年度窗口中已观测的连续活动，不声称空白日期实际没有活动；热力图未知日仍保留 NULL，只有全年未观测时 `current_streak_days=null`。前五项为 nullable 十进制字符串，全年未观测时峰值/天数为 NULL，明确观测零保留 `"0"`。Web 将不完整的活跃与最长连续天数标为“已观测”；格式化不改变 API 原始值。
 
 ## 数值、成本与舍入
 

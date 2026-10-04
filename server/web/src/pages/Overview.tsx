@@ -125,7 +125,7 @@ export default function Overview() {
           ['当前连续天数', data.heatmap_activity.current_streak_days],
           ['已观测最长连续天数', data.heatmap_activity.longest_streak_days],
         ].map(([title, value], index) => <div key={title!}><strong>{index<2?tokens(value):integer(value)}</strong><span>{title}</span></div>)}</div>
-        <div className="metric-note">年度范围独立于上方统计日期；未知日期不补零，活跃天数与最长连续天数仅计已观测事实。</div>
+        <div className="metric-note">年度范围独立于上方统计日期；未知日期不补零，活跃与连续天数按已收到的活动记录计算；今天尚无活动时，当前连续天数可截至昨天。</div>
         <CoverageNotice coverage={data.heatmap_coverage} zone={filter.time_zone} />
         </div>}><Button type="text" size="small">年度活动统计</Button></Popover></div>}>
         <div className="annual-totals" aria-label="年度用量汇总">

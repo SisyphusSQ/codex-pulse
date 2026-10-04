@@ -17,6 +17,14 @@ const success=(data:unknown)=>new Response(JSON.stringify({code:200,data}));
 beforeEach(()=>{api.setSession({client_id:'synthetic-browser',name:'测试浏览器',purpose:'admin',csrf:'synthetic-csrf',expires_at_ms:null});fetcher.mockReset();vi.stubGlobal('fetch',fetcher);});
 afterEach(()=>vi.unstubAllGlobals());
 describe('overview facts',()=>{
+  it.each(['0','92'])('displays the Server current streak %s without deriving it from heatmap rows',async current=>{
+    const fixture=summaryFixture();fixture.heatmap_activity.current_streak_days=current;
+    fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:fixture.range,items:[],scope:'collector_copies_may_overlap'}):success(fixture));
+    render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
+    await screen.findByText('近 365 天 API 等价成本');
+    const annual=within(document.querySelector('.annual-totals') as HTMLElement);
+    expect(annual.getByText('当前连续天数').closest('.ant-statistic')).toHaveTextContent(`${current}天`);
+  });
   it('requests the seven-day range and opens a real date picker for custom dates',async()=>{
     fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):success(String(path).includes('/usage')?usageFrom(summaryFixture()):summaryFixture()));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
