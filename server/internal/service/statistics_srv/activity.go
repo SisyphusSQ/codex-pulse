@@ -36,19 +36,16 @@ func statisticsActivity(days []statistics_vo.StatisticsDay, total *string) stati
 	out.PeakDailyTokens = new(peak.String())
 	out.ActiveDays = new(strconv.Itoa(active))
 	out.LongestStreakDays = new(strconv.Itoa(longest))
-	// 与 Mac 汇总一致：今天明确为零时允许连续记录截至昨天。
-	// 中心未知日期不能证明中断或未活动，因此触及未知边界时不声称精确的当前连续天数。
+	// 当前连续天数只统计中心已收到的活动事实；没有活动证据的日期不连接连续段。
+	// 今天尚无活动时允许截至昨天，不要求连续段之前的日期具有明确零用量。
 	index := len(days) - 1
-	if index >= 0 && days[index].Totals.TotalTokens != nil && *days[index].Totals.TotalTokens == "0" {
+	if index >= 0 && (days[index].Totals.TotalTokens == nil || *days[index].Totals.TotalTokens == "0") {
 		index--
 	}
 	current := 0
 	for index >= 0 {
 		value := days[index].Totals.TotalTokens
-		if value == nil {
-			return out
-		}
-		if *value == "0" {
+		if value == nil || *value == "0" {
 			break
 		}
 		current++

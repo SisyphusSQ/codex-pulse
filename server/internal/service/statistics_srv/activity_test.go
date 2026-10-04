@@ -22,12 +22,33 @@ func TestStatisticsActivityObservedFacts(t *testing.T) {
 	}
 	days[1].Totals.TotalTokens = nil
 	out = statisticsActivity(days, new("18014398509481985"))
-	if out.CurrentStreakDays != nil {
-		t.Fatal("unknown streak boundary treated as an interruption")
-	}
+	decimal(t, out.CurrentStreakDays, "2")
 	days[4].Totals.TotalTokens = nil
-	if statisticsActivity(days, nil).CurrentStreakDays != nil {
-		t.Fatal("unknown today treated as inactive")
+	decimal(t, statisticsActivity(days, nil).CurrentStreakDays, "2")
+}
+
+func TestStatisticsActivityCurrentStreakFromReceivedDays(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		tokens []*string
+		want   string
+	}{
+		{"active today after unknown boundary", []*string{nil, new("1"), new("2")}, "2"},
+		{"unknown today continues yesterday", []*string{nil, new("1"), new("2"), nil}, "2"},
+		{"zero today continues yesterday", []*string{nil, new("1"), new("2"), new("0")}, "2"},
+		{"unknown gap does not connect old activity", []*string{new("1"), nil, new("2")}, "1"},
+		{"missing today and yesterday", []*string{new("1"), nil, nil}, "0"},
+		{"inactive yesterday", []*string{new("1"), new("0"), nil}, "0"},
+		{"all received days active", []*string{new("1"), new("2"), new("3")}, "3"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var days []statistics_vo.StatisticsDay
+			for _, tokens := range test.tokens {
+				days = append(days, statistics_vo.StatisticsDay{Totals: statistics_vo.StatisticsTotals{TotalTokens: tokens}})
+			}
+			out := statisticsActivity(days, nil)
+			decimal(t, out.CurrentStreakDays, test.want)
+		})
 	}
 }
 
