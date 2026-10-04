@@ -112,7 +112,7 @@ export default function Overview() {
   const data=query.data;
   const totals=usage.data?.totals;
   const sources=useQuery({queryKey:['devices','status'],queryFn:({signal})=>getDevices(signal)});
-  const devices=(sources.data??[]).filter(d=>!filter.client_id||d.id===filter.client_id).map(d=>({...d,providers:d.providers.filter(p=>!filter.provider||p.provider===filter.provider)}));
+  const devices=(sources.data??[]).filter(d=>d.revoked_at_ms===null&&(!filter.client_id||d.id===filter.client_id)).map(d=>({...d,providers:d.providers.filter(p=>!filter.provider||p.provider===filter.provider)}));
   return <section className="overview-page">
     <StatsFilters value={filter} onChange={v=>{setFilter(v);}} refresh={() => {void queryClient.refetchQueries({queryKey:['statistics'],type:'active'});void queryClient.refetchQueries({queryKey:['usage'],type:'active'});}} busy={query.isFetching||usage.isFetching||machineFetching} />
     {query.isPending ? <SectionPlaceholder title="全年活动" height={300} /> : query.error && !data ? <Card title="全年活动"><ErrorState error={query.error} retry={() => void query.refetch()} /></Card> : data && <>

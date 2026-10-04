@@ -11,7 +11,7 @@ export default function Sources(){
  const [scope,setScope]=useState<ObservationScope>({provider:'',client_id:''});
  const [selected,setSelected]=useState('');
  const query=useQuery({queryKey:['devices','status'],queryFn:({signal})=>getDevices(signal)});
- const rows=(query.data??[]).filter(d=>(!scope.client_id||d.id===scope.client_id)&&(!scope.provider||d.providers.some(p=>p.provider===scope.provider))).map(d=>({...d,providers:d.providers.filter(p=>!scope.provider||p.provider===scope.provider)}));
+ const rows=(query.data??[]).filter(d=>d.revoked_at_ms===null&&(!scope.client_id||d.id===scope.client_id)&&(!scope.provider||d.providers.some(p=>p.provider===scope.provider))).map(d=>({...d,providers:d.providers.filter(p=>!scope.provider||p.provider===scope.provider)}));
  const latestReceive=rows.reduce<number|null>((latest,d)=>d.last_received_at_ms==null?latest:latest==null?d.last_received_at_ms:Math.max(latest,d.last_received_at_ms),null);
  const current=rows.find(d=>d.id===selected)??rows[0];
  return <section><ObservationFilters value={scope} onChange={setScope} refresh={()=>void query.refetch()} busy={query.isFetching} />
