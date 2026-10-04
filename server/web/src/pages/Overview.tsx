@@ -15,7 +15,6 @@ import { CoverageNotice } from '../components/CoverageNotice';
 import { initialFilter, StatsFilters } from '../components/StatsFilters';
 import { DeferredSection, SectionPlaceholder } from '../components/DeferredSection';
 import { EmptyState, ErrorState, LoadingState } from '../components/QueryState';
-import { CacheNotice } from '../components/CacheNotice';
 import { dayjs, dollars, integer, tokens, providerNames } from '../format';
 
 const Chart = lazy(() => import('../components/Chart'));
@@ -82,7 +81,7 @@ function OverviewUsageTrend({filter}:{filter:StatsFilter}){
  const available=usage.data?.models??[];
  const selection=chosen?.filter(k=>available.some(r=>`${r.provider}:${r.model}`===k))??available.slice(0,12).map(r=>`${r.provider}:${r.model}`);
  const coverage=usage.data?.coverage;
- return <><CacheNotice cache={usage.data?.cache} zone={filter.time_zone}/>
+ return <>
         <Card className="section-card overview-trend" title={<div className="trend-title"><span>模型用量趋势</span><div className="overview-quality">{coverage && <Popover trigger="click" placement="bottomLeft" content={<div className="evidence-popover"><CoverageNotice coverage={coverage} zone={filter.time_zone} /></div>}><Button type="text" size="small" icon={<InfoCircleOutlined />}>{coverage.state==='unknown'?'暂无已知用量':'覆盖未确认'} · {coverage.stale?'采集证据陈旧':'有近期采集证据'} · 截至 {coverage.collected_at_ms===null?'尚无观测':dayjs(coverage.collected_at_ms).tz(filter.time_zone).format('MM-DD HH:mm')}</Button></Popover>}</div></div>} extra={<div className="overview-chart-controls">
           <Segmented aria-label="图表指标" size="small" options={metricOptions} value={metric} onChange={value => setMetric(value as Metric)} />
         </div>}>
@@ -98,7 +97,7 @@ function OverviewUsageTrend({filter}:{filter:StatsFilter}){
 function BreakdownQuery({filter,kind,distribution=false}:{filter:StatsFilter;kind:'providers'|'models';distribution?:boolean}){
  const query=useQuery({queryKey:['statistics',kind,filter],queryFn:({signal})=>getBreakdown(filter,kind,signal),refetchInterval:60_000});
  const title=kind==='providers'?'平台分布':'模型分布';
- return query.isPending?<LoadingState label="正在读取用量明细…"/>:!query.data?<ErrorState error={query.error} retry={()=>void query.refetch()}/>:<><CacheNotice cache={query.data.cache} zone={filter.time_zone}/>{query.error&&<Alert type="warning" title="明细更新失败，保留上次读取的数据"/>}{distribution?<Distribution rows={query.data[kind]??[]} title={title}/>:<SliceTable rows={query.data[kind]??[]}/>}</>;
+ return query.isPending?<LoadingState label="正在读取用量明细…"/>:!query.data?<ErrorState error={query.error} retry={()=>void query.refetch()}/>:<>{query.error&&<Alert type="warning" title="明细更新失败，保留上次读取的数据"/>}{distribution?<Distribution rows={query.data[kind]??[]} title={title}/>:<SliceTable rows={query.data[kind]??[]}/>}</>;
 }
 
 export default function Overview() {
@@ -116,7 +115,7 @@ export default function Overview() {
   const devices=(sources.data??[]).filter(d=>!filter.client_id||d.id===filter.client_id).map(d=>({...d,providers:d.providers.filter(p=>!filter.provider||p.provider===filter.provider)}));
   return <section className="overview-page">
     <StatsFilters value={filter} onChange={v=>{setFilter(v);}} refresh={() => {void queryClient.refetchQueries({queryKey:['statistics'],type:'active'});void queryClient.refetchQueries({queryKey:['usage'],type:'active'});}} busy={query.isFetching||usage.isFetching||machineFetching} />
-    <CacheNotice cache={data?.cache} zone={filter.time_zone}/>{query.isPending ? <SectionPlaceholder title="全年活动" height={300} /> : query.error && !data ? <Card title="全年活动"><ErrorState error={query.error} retry={() => void query.refetch()} /></Card> : data && <>
+    {query.isPending ? <SectionPlaceholder title="全年活动" height={300} /> : query.error && !data ? <Card title="全年活动"><ErrorState error={query.error} retry={() => void query.refetch()} /></Card> : data && <>
       {query.error && <Alert type="warning" showIcon title="刷新失败，以下保留上次读取的数据" description={query.error.message} className="form-alert" />}
       <Card className="overview-activity" title="全年活动" extra={<div className="annual-actions"><span className="metric-note">{data.heatmap_coverage.state==='unknown'?'年度用量未知':'年度覆盖未确认'} · {data.heatmap_coverage.stale?'采集陈旧':'近期采集'}</span><Popover trigger="click" placement="bottomRight" content={<div className="evidence-popover">
         <div className="activity-metrics">{[
@@ -137,7 +136,7 @@ export default function Overview() {
         <div className="activity-scope"><span>{dayjs(data.heatmap_range.start_at_ms).tz(filter.time_zone).format('YYYY-MM-DD')} 至 {dayjs(data.heatmap_range.end_at_ms).tz(filter.time_zone).subtract(1, 'day').format('YYYY-MM-DD')}</span><span>{filter.time_zone}</span><span>{filter.provider ? providerNames[filter.provider] : '全部客户端'}</span></div>
       </Card>
     </>}
-      <CacheNotice cache={usage.data?.cache} zone={filter.time_zone}/><Card className="summary-band" style={{ minHeight: 132 }}>
+      <Card className="summary-band" style={{ minHeight: 132 }}>
         {usage.error && totals && <Alert type="warning" showIcon title={"范围用量刷新失败，保留上次读取的数据"} description={usage.error.message} />}
         {!totals && usage.isPending ? <LoadingState label="正在读取范围用量…" /> : usage.error && !totals ? <ErrorState error={usage.error} retry={() => void usage.refetch()} /> : totals && <div className="metric-grid overview-kpis">
         <div><Statistic title="当前范围 Token 总量" value={totals.total_tokens ?? '未知'} formatter={() => tokens(totals.total_tokens)} /><div className="metric-note">输入 {tokens(totals.input_tokens)} · 输出 {tokens(totals.output_tokens)}</div></div>

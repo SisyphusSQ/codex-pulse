@@ -119,3 +119,35 @@ func TestCacheWorkerWarmRefreshAndStop(t *testing.T) {
 		t.Fatal("cache worker did not stop")
 	}
 }
+
+func TestDefaultCardsStayActiveWithoutBrowserTraffic(t *testing.T) {
+	stats, _, _, _ := statisticsFixture(t)
+	c := newStatisticsCache(t.Context(), time.Second)
+	now := stats.now()
+	c.now = func() time.Time { return now }
+	c.warm(stats)
+	c.mu.Lock()
+	if len(c.entries) != 4 {
+		t.Fatalf("default projections: %d", len(c.entries))
+	}
+	for _, e := range c.entries {
+		e.ready = nil
+		e.used = now.Add(-statisticsIdle - time.Minute)
+	}
+	idleAt := now.Add(-statisticsIdle - time.Minute)
+	other := &statisticsCacheEntry{used: idleAt}
+	c.entries[statisticsCacheKey{kind: "summary", zone: "UTC"}] = other
+	c.mu.Unlock()
+	c.warm(stats)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for key, e := range c.entries {
+		if key.kind == "summary" {
+			if !e.used.Equal(idleAt) {
+				t.Fatal("arbitrary filters were kept active")
+			}
+		} else if !e.used.Equal(now) {
+			t.Fatal("default projection went idle", key.kind)
+		}
+	}
+}

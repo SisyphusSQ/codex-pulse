@@ -8,7 +8,6 @@ import {dayjs,dateTime,integer,tokens,tokenAxis,coordinate} from '../format';
 import {sourceNames} from './RecordViews';
 import {ErrorState,LoadingState} from './QueryState';
 import {decimalSorter} from './sorting';
-import {CacheNotice} from './CacheNotice';
 const Chart=lazy(()=>import('./Chart'));
 export function sessionsTarget(filter:StatsFilter,id?:string){const params=new URLSearchParams({...statsParams(filter),sort:'tokens',direction:'desc',...(id?{selected:id}:{})});return `/sessions?${params}`;}
 function ActivityCard({data,filter,onDay}:{data:Activity;filter:StatsFilter;onDay(date:string):void}){
@@ -27,7 +26,7 @@ function TopCard({data,filter}:{data:TopSessions;filter:StatsFilter}){
 }
 export function MachineUsage({filter,onSelect}:{filter:StatsFilter;onSelect(client:string):void}){
  const query=useQuery({queryKey:['statistics','source-usage',filter],queryFn:({signal})=>getSourceUsage(filter,signal),refetchInterval:60_000});
- return <Card title="各机器采集的 Codex 用量" className="section-card" extra={<Button size="small" onClick={()=>void query.refetch()} loading={query.isFetching}>刷新</Button>}><div className="metric-note">按机器采集副本统计，机器之间可能重复；各行不能相加成全局用量。</div>{query.isPending?<LoadingState/>:query.error&&!query.data?<ErrorState error={query.error} retry={()=>void query.refetch()}/>:query.data&&<><CacheNotice cache={query.data.cache} zone={filter.time_zone}/>{query.error&&<Alert type="warning" title="刷新失败，保留上次采集数据"/>}<Table<CollectorUsage> rowKey={r=>r.machine.client_id} size="small" dataSource={query.data.items} pagination={{pageSize:10,showSizeChanger:false}} scroll={{x:780}} columns={[
+ return <Card title="各机器采集的 Codex 用量" className="section-card" extra={<Button size="small" onClick={()=>void query.refetch()} loading={query.isFetching}>刷新</Button>}><div className="metric-note">按机器采集副本统计，机器之间可能重复；各行不能相加成全局用量。</div>{query.isPending?<LoadingState/>:query.error&&!query.data?<ErrorState error={query.error} retry={()=>void query.refetch()}/>:query.data&&<>{query.error&&<Alert type="warning" title="刷新失败，保留上次采集数据"/>}<Table<CollectorUsage> rowKey={r=>r.machine.client_id} size="small" dataSource={query.data.items} pagination={{pageSize:10,showSizeChanger:false}} scroll={{x:780}} columns={[
  {title:'机器',render:(_,r)=><Button type="link" onClick={()=>onSelect(r.machine.client_id)}>{r.machine.client_name||r.machine.client_id}</Button>},
  {title:'Token 总量',align:'right',...decimalSorter<CollectorUsage>(r=>r.totals.total_tokens,true),render:(_,r)=>tokens(r.totals.total_tokens)},
  {title:'输入 Token',align:'right',...decimalSorter<CollectorUsage>(r=>r.totals.input_tokens),render:(_,r)=>tokens(r.totals.input_tokens)},
@@ -41,10 +40,10 @@ export function MachineUsage({filter,onSelect}:{filter:StatsFilter;onSelect(clie
 export function OverviewActivity({data,filter,onDay}:{data:Summary;filter:StatsFilter;onDay(date:string):void}){return <div className="overview-activity-grid"><ActivityCard data={data} filter={filter} onDay={onDay}/><TopCard data={data} filter={filter}/></div>;}
 function ActivityQuery({filter,onDay}:{filter:StatsFilter;onDay(date:string):void}){
  const query=useQuery({queryKey:['statistics','activity',filter],queryFn:({signal})=>getActivity(filter,signal),refetchInterval:60_000});
- return <section>{query.isPending?<Card title="活动分布"><LoadingState/></Card>:!query.data?<Card title="活动分布"><ErrorState error={query.error} retry={()=>void query.refetch()}/></Card>:<><CacheNotice cache={query.data.cache} zone={filter.time_zone}/>{query.error&&<Alert type="warning" title="活动分布刷新失败，保留上次数据"/>}<ActivityCard data={query.data} filter={filter} onDay={onDay}/></>}</section>;
+ return <section>{query.isPending?<Card title="活动分布"><LoadingState/></Card>:!query.data?<Card title="活动分布"><ErrorState error={query.error} retry={()=>void query.refetch()}/></Card>:<>{query.error&&<Alert type="warning" title="活动分布刷新失败，保留上次数据"/>}<ActivityCard data={query.data} filter={filter} onDay={onDay}/></>}</section>;
 }
 function TopQuery({filter}:{filter:StatsFilter}){
  const query=useQuery({queryKey:['statistics','top-sessions',filter],queryFn:({signal})=>getTopSessions(filter,signal),refetchInterval:60_000});
- return <section>{query.isPending?<Card title="高消耗会话"><LoadingState/></Card>:!query.data?<Card title="高消耗会话"><ErrorState error={query.error} retry={()=>void query.refetch()}/></Card>:<><CacheNotice cache={query.data.cache} zone={filter.time_zone}/>{query.error&&<Alert type="warning" title="高消耗会话刷新失败，保留上次数据"/>}<TopCard data={query.data} filter={filter}/></>}</section>;
+ return <section>{query.isPending?<Card title="高消耗会话"><LoadingState/></Card>:!query.data?<Card title="高消耗会话"><ErrorState error={query.error} retry={()=>void query.refetch()}/></Card>:<>{query.error&&<Alert type="warning" title="高消耗会话刷新失败，保留上次数据"/>}<TopCard data={query.data} filter={filter}/></>}</section>;
 }
 export function IndependentOverviewActivity({filter,onDay}:{filter:StatsFilter;onDay(date:string):void}){return <div className="overview-activity-grid"><ActivityQuery filter={filter} onDay={onDay}/><TopQuery filter={filter}/></div>;}

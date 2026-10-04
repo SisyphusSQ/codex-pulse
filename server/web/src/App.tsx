@@ -9,6 +9,7 @@ import { SignIn } from './auth/SignIn';
 import { ErrorState, LoadingState } from './components/QueryState';
 import { OperationNotifications, useOperationNotifications } from './components/OperationNotifications';
 import { RuntimeInfo } from './components/RuntimeInfo';
+import { StatisticsCacheFooter } from './components/StatisticsCacheFooter';
 
 const Overview=lazy(()=>import('./pages/Overview'));
 const Projects=lazy(()=>import('./pages/Projects'));
@@ -76,7 +77,7 @@ function Shell() {
           <Route path="*" element={<Result status="404" title="页面不存在" extra={<Button onClick={() => navigate('/')}>返回总览</Button>} />} />
         </Routes></Suspense>
       </Layout.Content>
-      <Layout.Footer className="app-footer"><span>Codex Pulse · 多机中心</span><RuntimeInfo /></Layout.Footer>
+      <Layout.Footer className="app-footer"><span>Codex Pulse · 多机中心</span><RuntimeInfo /><StatisticsCacheFooter /></Layout.Footer>
     </Layout>
     {mobile && <Drawer open={menuOpen} placement="left" title="Codex Pulse" size={256} onClose={()=>setMenuOpen(false)}>{menu}</Drawer>}
   </Layout>;
