@@ -131,6 +131,9 @@ export default function Overview() {
         <div className="annual-totals" aria-label="年度用量汇总">
           <div><Statistic title="近 365 天 Token 总量" value={data.heatmap_totals?.total_tokens??data.heatmap_activity.total_tokens??'未知'} formatter={()=>tokens(data.heatmap_totals?.total_tokens??data.heatmap_activity.total_tokens)} /><span className="metric-note">按年度活动范围汇总已收到事实</span></div>
           <div><Statistic title="近 365 天 API 等价成本" value={data.heatmap_totals?.cost_micro_usd??'未知'} formatter={()=>dollars(data.heatmap_totals?.cost_micro_usd??null)} /><span className="metric-note">{data.heatmap_totals?.cost_status==='partial'?'已知金额小计，含未定价记录':'按历史价格估算'} · USD</span></div>
+          <div><Statistic title="单日 Token 使用峰值" value={data.heatmap_activity.peak_daily_tokens??'未知'} formatter={()=>tokens(data.heatmap_activity.peak_daily_tokens)} /></div>
+          <div><Statistic title="最长连续天数" value={data.heatmap_activity.longest_streak_days??'未知'} formatter={()=>integer(data.heatmap_activity.longest_streak_days)} suffix={data.heatmap_activity.longest_streak_days===null?undefined:'天'} /><span className="metric-note">已观测</span></div>
+          <div><Statistic title="当前连续天数" value={data.heatmap_activity.current_streak_days??'未知'} formatter={()=>integer(data.heatmap_activity.current_streak_days)} suffix={data.heatmap_activity.current_streak_days===null?undefined:'天'} /></div>
         </div>
         {data.heatmap.length ? <ActivityHeatmap days={data.heatmap} /> : <EmptyState description="年度活动暂时不可用" />}
         <div className="activity-scope"><span>{dayjs(data.heatmap_range.start_at_ms).tz(filter.time_zone).format('YYYY-MM-DD')} 至 {dayjs(data.heatmap_range.end_at_ms).tz(filter.time_zone).subtract(1, 'day').format('YYYY-MM-DD')}</span><span>{filter.time_zone}</span><span>{filter.provider ? providerNames[filter.provider] : '全部客户端'}</span></div>

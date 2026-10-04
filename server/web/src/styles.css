@@ -273,7 +273,9 @@ button.activity-cell:hover,button.activity-cell:focus-visible { outline: 2px sol
 .source-mini>div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;padding:11px 0;border-bottom:1px solid #edf1f6}.source-mini>div:first-child{padding-top:4px}.source-mini>div:last-child{border:0}.source-mini>div>div{display:flex;align-items:center;gap:8px;min-width:0}.source-mini strong{font-weight:500;overflow-wrap:anywhere}.source-mini>div>.metric-note{grid-column:1/-1;font-size:11px}.source-mini .ant-badge-status-text{font-size:11px}
 @media(max-width:600px){.source-mini>div{gap:6px 8px}.source-mini .ant-badge-status-text{font-size:10px}}
 
-.annual-totals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;margin-bottom:24px}.annual-totals .ant-statistic-content{font-size:26px}
+.annual-totals{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:24px;margin-bottom:24px}.annual-totals .ant-statistic-content{font-size:26px}
+@media(max-width:1200px){.annual-totals{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:800px){.annual-totals{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.annual-totals{gap:16px;grid-template-columns:1fr}}
 
 .purchase-plans{--purchase-accent:#2678f5;min-width:0}.purchase-cursor{--purchase-accent:#3e9e82}.purchase-grok{--purchase-accent:#8464b4}
