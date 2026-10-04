@@ -203,7 +203,11 @@ func (s *Statistics) readFacts(ctx context.Context, q statistics_dto.StatisticsQ
 				delete(out.metadata, key)
 			}
 		}
-		if err := s.repository.StreamUsage(ctx, q, func(row reporting_do.Usage) error {
+		stream := s.repository.StreamUsage
+		if heatmapOnly {
+			stream = s.repository.StreamHeatmapUsage
+		}
+		if err := stream(ctx, q, func(row reporting_do.Usage) error {
 			factRows++
 			if factRows > statistics_dto.MaximumStatisticsFacts {
 				return utils.ErrRequestBudget

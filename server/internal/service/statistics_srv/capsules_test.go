@@ -1,9 +1,11 @@
 package statistics_srv
 
 import (
+	"net/url"
 	"reflect"
 	"testing"
 
+	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/access_repo"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/reporting_repo"
 	"github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/statistics_repo"
@@ -76,5 +78,62 @@ func TestHeatmapReadKeepsTotalsDaysAndCoverage(t *testing.T) {
 		if len(annual.models) != 0 || len(annual.hours) != 0 || len(annual.sessions) != 0 {
 			t.Fatal("unused annual breakdowns populated")
 		}
+	}
+}
+
+func TestHeatmapReadPreservesFilteredFacts(t *testing.T) {
+	stats, reporting, _, clients := statisticsFixture(t)
+	snapshot := centerfixture.Snapshot()
+	snapshot.Contributions[0].InputTokens = new(int64(9007199254740993))
+	snapshot.Contributions[0].TotalTokens = new(int64(9007199254740993))
+	snapshot.Contributions[0].Model = new("synthetic-model")
+	zero := centerfixture.Contribution(0, 2000)
+	zero.Model = new("synthetic-model")
+	unknown := centerfixture.Contribution(0, 3000)
+	unknown.TotalTokens = nil
+	unknown.Model = new("other-model")
+	snapshot.Contributions = append(snapshot.Contributions, zero, unknown)
+	fixStatisticsIDs(&snapshot)
+	centerfixture.SendSnapshot(t, reporting, clients[0], snapshot)
+	centerfixture.SendSnapshot(t, reporting, clients[1], snapshot)
+	other := centerfixture.Snapshot()
+	other.SessionID, other.ProjectID, other.Title = "other-session", "other-project", "other-title"
+	fixStatisticsIDs(&other)
+	centerfixture.SendSnapshot(t, reporting, clients[0], other)
+
+	for name, values := range map[string]url.Values{
+		"all":            {},
+		"provider":       {"provider": {"codex"}},
+		"empty_provider": {"provider": {"cursor"}},
+		"model":          {"model": {"synthetic-model"}},
+		"search":         {"search": {"other-title"}},
+		"project":        {"project_id": {reportingv1.Key(clients[0].ID, snapshot.Provider, snapshot.ProjectID)}},
+		"date":           {"start_at_ms": {"2000"}, "end_at_ms": {"3000"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			q := statisticsTestQuery(t, values)
+			full, err := stats.read(t.Context(), q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			annual, err := stats.readFacts(t.Context(), q, false, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a, _ := full.total.finish(true)
+			b, _ := annual.total.finish(true)
+			if !reflect.DeepEqual(a, b) || !reflect.DeepEqual(full.trend(), annual.trend()) || !reflect.DeepEqual(full.coverage(stats.now()), annual.coverage(stats.now())) {
+				t.Fatal("heatmap query changed filtered facts or coverage")
+			}
+			if name == "model" || name == "project" {
+				decimal(t, b.TotalTokens, "9007199254740993")
+			}
+			if name == "search" {
+				decimal(t, b.TotalTokens, "100")
+			}
+			if name == "date" || name == "empty_provider" {
+				decimal(t, b.TotalTokens, "0")
+			}
+		})
 	}
 }

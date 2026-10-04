@@ -72,7 +72,21 @@ func (r *Statistics) Status(ctx context.Context, q statistics_dto.StatisticsQuer
 }
 
 func (r *Statistics) StreamUsage(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Usage) error) error {
-	db := r.engine.DB(ctx).Table("pulse_usage AS u").Select("u.session_key,u.contribution_id,u.position,u.observed_at_ms,u.model,u.input_tokens,u.cached_tokens,u.cache_write_tokens,u.output_tokens,u.reasoning_tokens,u.total_tokens,u.cost_micro_usd,u.reported_charge_micro_usd,u.pricing_version,u.pricing_mode,u.input_price,u.cached_price,u.cache_write_price,u.output_price,u.cost_status").Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS).Where("u.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+	return r.streamUsage(ctx, q, false, visit)
+}
+
+// StreamHeatmapUsage 的年度范围使用哈希连接，避免 SeekDB 对宽范围合并连接超过查询期限。
+// 固定 hint 不改变筛选或事实；其他数据库可忽略该注释，窄范围查询保留原有计划。
+func (r *Statistics) StreamHeatmapUsage(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Usage) error) error {
+	return r.streamUsage(ctx, q, true, visit)
+}
+
+func (r *Statistics) streamUsage(ctx context.Context, q statistics_dto.StatisticsQuery, heatmap bool, visit func(reporting_do.Usage) error) error {
+	columns := "u.session_key,u.contribution_id,u.position,u.observed_at_ms,u.model,u.input_tokens,u.cached_tokens,u.cache_write_tokens,u.output_tokens,u.reasoning_tokens,u.total_tokens,u.cost_micro_usd,u.reported_charge_micro_usd,u.pricing_version,u.pricing_mode,u.input_price,u.cached_price,u.cache_write_price,u.output_price,u.cost_status"
+	if heatmap {
+		columns = "/*+ USE_HASH(u) */ " + columns
+	}
+	db := r.engine.DB(ctx).Table("pulse_usage AS u").Select(columns).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS).Where("u.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
 	rows, err := db.Rows()
 	if err != nil {
 		return err
