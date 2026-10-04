@@ -113,6 +113,23 @@ describe('overview independent and deferred loading', () => {
   const response = (path: RequestInfo | URL) => String(path).includes('/devices/status') ? success([])
     : String(path).includes('/source-usage') ? success({ range: summaryFixture().range, items: [], scope: 'collector_copies_may_overlap' })
     : success(String(path).includes('/usage') ? usageFrom(summaryFixture()) : summaryFixture());
+  it('hides revoked machines from overview rows and source choices without changing totals', async () => {
+    const fixture=summaryFixture();
+    const devices=[{id:'revoked-machine',name:'已撤销采集机样本',revoked_at_ms:0,last_received_at_ms:2,providers:[]},{id:'active-machine',name:'有效采集机样本',revoked_at_ms:null,last_received_at_ms:1,providers:[]}];
+    fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success(devices):String(path).includes('/source-usage')?success({range:fixture.range,items:devices.map(d=>({machine:{client_id:d.id,client_name:d.name},revoked_at_ms:d.revoked_at_ms,totals:fixture.totals,coverage:fixture.coverage})),scope:'collector_copies_may_overlap'}):response(path));
+    mount();
+    await screen.findByText('有效采集机样本');
+    expect(screen.queryByText('已撤销采集机样本')).not.toBeInTheDocument();
+    const totalsCard=screen.getByText('当前范围 Token 总量').closest('.summary-band')!;
+    expect(totalsCard).toHaveTextContent('90071992.5亿');
+    enter('各机器采集的 Codex 用量');
+    expect(await screen.findByRole('button',{name:'有效采集机样本'})).toBeInTheDocument();
+    expect(screen.queryByRole('button',{name:'已撤销采集机样本'})).not.toBeInTheDocument();
+    const user=userEvent.setup();await user.click(screen.getByRole('button',{name:'筛选'}));
+    await user.click(await screen.findByRole('combobox',{name:'采集来源'}));
+    expect(await screen.findByText('有效采集机样本',{selector:'.ant-select-item-option-content'})).toBeInTheDocument();
+    expect(screen.queryByText('已撤销采集机样本',{selector:'.ant-select-item-option-content'})).not.toBeInTheDocument();
+  });
   it('shows usage totals before summary and defers charts and machine requests', async () => {
     let finish!: (value: Response) => void;
     fetcher.mockImplementation(path => String(path).includes('/annual') ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(response(path)));
