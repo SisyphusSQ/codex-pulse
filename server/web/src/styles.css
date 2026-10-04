@@ -298,3 +298,5 @@ button.activity-cell:hover,button.activity-cell:focus-visible { outline: 2px sol
 .deferred-section { min-width: 0; }
 .overview-breakdowns > .deferred-section { display: flex; }
 .overview-breakdowns > .deferred-section > .ant-card { width: 100%; }
+
+.statistics-cache-footer { flex-basis: 100%; }

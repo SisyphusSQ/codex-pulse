@@ -257,7 +257,9 @@ func (c *statisticsCache) warm(s *Statistics) {
 			query = s.annualQuery(q)
 		}
 		key := c.key(kind, query)
-		if c.entries[key] != nil {
+		if e := c.entries[key]; e != nil {
+			// 默认首屏即使无人浏览也保持后台刷新，避免下次打开读到超过两分钟的旧值。
+			e.used = now
 			continue
 		}
 		if len(c.entries) >= statisticsCacheEntries && !c.evict(nil) {
