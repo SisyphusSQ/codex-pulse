@@ -16,3 +16,5 @@
 - [首页 summary 年度查询超时修复](2026-10-04-summary-query-recovery.md)
 
 - [TOO-526 全部接口与 SQL 性能优化](too-526-performance.md)
+
+- [TOO-527 年度五项概览](too-527-annual-metrics.md)
