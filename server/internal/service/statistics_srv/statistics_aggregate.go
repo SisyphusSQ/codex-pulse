@@ -77,7 +77,7 @@ func statisticsDay(at int64, location *time.Location) time.Time {
 	t := time.UnixMilli(at).In(location)
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, location)
 }
-func (g *statisticsAggregate) usage(row reporting_do.Usage, location *time.Location, provider string) {
+func (g *statisticsAggregate) usage(row reporting_do.Usage, day, provider string) {
 	g.sessions[row.SessionKey] = true
 	g.input.add(row.InputTokens)
 	g.cached.add(row.CachedTokens)
@@ -94,7 +94,7 @@ func (g *statisticsAggregate) usage(row reporting_do.Usage, location *time.Locat
 	}
 	switch row.PricingMode {
 	case "codex_model_sum":
-		bucket := statisticsDay(*row.ObservedAtMS, location).Format(time.DateOnly)
+		bucket := day
 		if g.codexRange {
 			bucket = "range"
 		}

@@ -17,6 +17,15 @@ func (s *Statistics) Usage(ctx context.Context, p access_dto.Principal, q statis
 	if err = access_srv.RequireAdmin(p); err != nil {
 		return
 	}
+	if s.cache != nil {
+		out, status, err := cachedProjection(ctx, s.cache, "usage", q, s.usage)
+		out.Cache = status
+		return out, err
+	}
+	return s.usage(ctx, q)
+}
+
+func (s *Statistics) usage(ctx context.Context, q statistics_dto.StatisticsQuery) (out statistics_vo.UsageResponse, err error) {
 	err = s.repository.Snapshot(ctx, func(ctx context.Context) error {
 		read, err := s.readWithModelTrend(ctx, q, true)
 		if err != nil {

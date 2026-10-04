@@ -14,3 +14,5 @@
 - [TOO-525 首页独立加载与懒加载验收](too-525-acceptance.md)
 - [正式环境登录 session 500：数据库进程恢复](2026-10-04-session-db-recovery.md)
 - [首页 summary 年度查询超时修复](2026-10-04-summary-query-recovery.md)
+
+- [TOO-526 全部接口与 SQL 性能优化](too-526-performance.md)

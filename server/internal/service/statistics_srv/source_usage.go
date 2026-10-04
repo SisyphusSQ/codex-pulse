@@ -23,6 +23,16 @@ func (s *Statistics) SourceUsage(ctx context.Context, p access_dto.Principal, q 
 	if err = access_srv.RequireAdmin(p); err != nil {
 		return
 	}
+	if s.cache != nil {
+		out, status, err := cachedProjection(ctx, s.cache, "source-usage", q, s.sourceUsage)
+		out.Cache = status
+		return out, err
+	}
+	return s.sourceUsage(ctx, q)
+}
+
+func (s *Statistics) sourceUsage(ctx context.Context, q statistics_dto.StatisticsQuery) (out statistics_vo.StatisticsSourceUsage, err error) {
+	out = statistics_vo.StatisticsSourceUsage{Range: statisticsRange(q), Scope: "collector_copies_may_overlap", Items: []statistics_vo.StatisticsCollectorUsage{}}
 	if q.Provider != "" && q.Provider != "codex" {
 		return
 	}

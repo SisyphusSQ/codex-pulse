@@ -81,12 +81,26 @@ func (r *Statistics) StreamHeatmapUsage(ctx context.Context, q statistics_dto.St
 	return r.streamUsage(ctx, q, true, visit)
 }
 
+func (r *Statistics) usageFilter(ctx context.Context, q statistics_dto.StatisticsQuery, db *gorm.DB) *gorm.DB {
+	if q.MatchedSessionKeys != nil {
+		db = db.Where("u.session_key IN ?", q.MatchedSessionKeys)
+	} else {
+		db = db.Where("u.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+	}
+	if q.Model == "unknown" {
+		db = db.Where("(u.model IS NULL OR u.model = '' OR u.model = ?)", q.Model)
+	} else if q.Model != "" {
+		db = db.Where("u.model = ?", q.Model)
+	}
+	return db
+}
+
 func (r *Statistics) streamUsage(ctx context.Context, q statistics_dto.StatisticsQuery, heatmap bool, visit func(reporting_do.Usage) error) error {
 	columns := "u.session_key,u.contribution_id,u.position,u.observed_at_ms,u.model,u.input_tokens,u.cached_tokens,u.cache_write_tokens,u.output_tokens,u.reasoning_tokens,u.total_tokens,u.cost_micro_usd,u.reported_charge_micro_usd,u.pricing_version,u.pricing_mode,u.input_price,u.cached_price,u.cache_write_price,u.output_price,u.cost_status"
 	if heatmap {
 		columns = "/*+ USE_HASH(u) */ " + columns
 	}
-	db := r.engine.DB(ctx).Table("pulse_usage AS u").Select(columns).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS).Where("u.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+	db := r.usageFilter(ctx, q, r.engine.DB(ctx).Table("pulse_usage AS u").Select(columns).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS))
 	rows, err := db.Rows()
 	if err != nil {
 		return err
@@ -153,7 +167,7 @@ func (r *Statistics) StreamSources(ctx context.Context, q statistics_dto.Statist
 }
 
 func (r *Statistics) StreamUntimed(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Usage) error) error {
-	db := r.engine.DB(ctx).Table("pulse_usage AS u").Select("u.session_key,u.contribution_id,u.model").Where("u.observed_at_ms IS NULL").Where("u.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+	db := r.usageFilter(ctx, q, r.engine.DB(ctx).Table("pulse_usage AS u").Select("u.session_key,u.contribution_id,u.model").Where("u.observed_at_ms IS NULL"))
 	rows, err := db.Rows()
 	if err != nil {
 		return err

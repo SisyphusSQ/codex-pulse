@@ -17,5 +17,5 @@ func Module(cfg config.Config) fx.Option {
 	if !cfg.Database.Enabled {
 		return fx.Options()
 	}
-	return fx.Options(fx.Provide(access_srv.NewAccess, reporting_srv.NewReporting, statistics_srv.NewStatistics, quota_srv.NewQuota, subscription_srv.NewSubscription, catalog_srv.NewCatalog, maintenance_srv.NewMaintenance), fx.Invoke(func(*maintenance_srv.Maintenance) {}))
+	return fx.Options(fx.Provide(access_srv.NewAccess, reporting_srv.NewReporting, statistics_srv.NewStatistics, quota_srv.NewQuota, subscription_srv.NewSubscription, catalog_srv.NewCatalog, maintenance_srv.NewMaintenance), fx.Invoke(func(*maintenance_srv.Maintenance) {}, statistics_srv.StartCache))
 }

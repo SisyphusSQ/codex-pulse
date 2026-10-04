@@ -108,7 +108,7 @@ func (s *Statistics) Sessions(ctx context.Context, p access_dto.Principal, q sta
 		return
 	}
 	err = s.repository.Snapshot(ctx, func(ctx context.Context) error {
-		read, err := s.read(ctx, q)
+		read, err := s.readFor(ctx, q, "sessions")
 		if err != nil {
 			return err
 		}
@@ -128,7 +128,7 @@ func (s *Statistics) Session(ctx context.Context, p access_dto.Principal, q stat
 	}
 	q.SessionKey = key
 	err = s.repository.Snapshot(ctx, func(ctx context.Context) error {
-		read, err := s.read(ctx, q)
+		read, err := s.readFor(ctx, q, "session")
 		if err != nil {
 			return err
 		}
@@ -149,6 +149,16 @@ func (s *Statistics) Session(ctx context.Context, p access_dto.Principal, q stat
 }
 func (o *statisticsRead) projectViews() []statistics_vo.StatisticsProject {
 	groups := map[string]statistics_vo.StatisticsProject{}
+	// 每个会话只归入一次项目组，避免每个项目再遍历全部会话。
+	activity := map[string]*int64{}
+	conflicts := map[string]bool{}
+	for _, m := range o.metadata {
+		id := o.projects[m.ProjectID].GroupID
+		if timestampCompare(m.LastActiveAtMS, activity[id]) > 0 {
+			activity[id] = m.LastActiveAtMS
+		}
+		conflicts[id] = conflicts[id] || m.Conflict
+	}
 	for _, p := range o.projects {
 		if o.q.ProjectID != "" && p.GroupID != o.q.ProjectID {
 			continue
@@ -180,15 +190,8 @@ func (o *statisticsRead) projectViews() []statistics_vo.StatisticsProject {
 			g = newStatisticsAggregate()
 		}
 		project.Totals, _ = g.finish(len(o.providerSeen) > 0)
-		for _, m := range o.metadata {
-			if o.projects[m.ProjectID].GroupID != id {
-				continue
-			}
-			if timestampCompare(m.LastActiveAtMS, project.LastActiveAtMS) > 0 {
-				project.LastActiveAtMS = m.LastActiveAtMS
-			}
-			project.Conflict = project.Conflict || m.Conflict
-		}
+		project.LastActiveAtMS = activity[id]
+		project.Conflict = conflicts[id]
 		if o.q.Search != "" && len(g.sessions) == 0 && !strings.Contains(strings.ToLower(project.Name), strings.ToLower(o.q.Search)) {
 			continue
 		}
@@ -223,7 +226,7 @@ func (s *Statistics) Projects(ctx context.Context, p access_dto.Principal, q sta
 		return
 	}
 	err = s.repository.Snapshot(ctx, func(ctx context.Context) error {
-		read, err := s.read(ctx, q)
+		read, err := s.readFor(ctx, q, "projects")
 		if err != nil {
 			return err
 		}
@@ -246,7 +249,7 @@ func (s *Statistics) Project(ctx context.Context, p access_dto.Principal, q stat
 	}
 	q.ProjectID = key
 	err = s.repository.Snapshot(ctx, func(ctx context.Context) error {
-		read, err := s.read(ctx, q)
+		read, err := s.readFor(ctx, q, "project")
 		if err != nil {
 			return err
 		}

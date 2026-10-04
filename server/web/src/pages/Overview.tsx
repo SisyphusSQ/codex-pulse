@@ -4,17 +4,18 @@ import { InfoCircleOutlined } from '@ant-design/icons';
 import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link,useSearchParams } from 'react-router-dom';
 import type { EChartsCoreOption } from 'echarts/core';
-import { getDevices, getSummary, type Decimal, type Slice } from '../api/statistics';
+import { getDevices, getAnnual, getTotals, getBreakdown, type StatsFilter, type Decimal, type Slice } from '../api/statistics';
 import { getUsage, type Usage } from '../api/usage';
 import { usageChartOption } from '../components/ModelTrend';
 import { SourceTable } from '../components/SourceTable';
-import { OverviewActivity, MachineUsage, sessionsTarget } from '../components/OverviewActivity';
+import { IndependentOverviewActivity, MachineUsage, sessionsTarget } from '../components/OverviewActivity';
 import { decimalSorter } from '../components/sorting';
 import { ActivityHeatmap } from '../components/ActivityHeatmap';
 import { CoverageNotice } from '../components/CoverageNotice';
 import { initialFilter, StatsFilters } from '../components/StatsFilters';
 import { DeferredSection, SectionPlaceholder } from '../components/DeferredSection';
 import { EmptyState, ErrorState, LoadingState } from '../components/QueryState';
+import { CacheNotice } from '../components/CacheNotice';
 import { dayjs, dollars, integer, tokens, providerNames } from '../format';
 
 const Chart = lazy(() => import('../components/Chart'));
@@ -73,26 +74,49 @@ function UsageChart({ data, metric, selection }: { data: Usage; metric: Metric; 
   return <Chart option={option} label="按自然日的用量趋势" height={280} />;
 }
 
+
+function OverviewUsageTrend({filter}:{filter:StatsFilter}){
+ const [metric,setMetric]=useState<Metric>('tokens');
+ const [chosen,setChosen]=useState<string[]|null>(null);
+ const usage=useQuery({queryKey:['usage',filter],queryFn:({signal})=>getUsage(filter,signal),refetchInterval:60_000});
+ const available=usage.data?.models??[];
+ const selection=chosen?.filter(k=>available.some(r=>`${r.provider}:${r.model}`===k))??available.slice(0,12).map(r=>`${r.provider}:${r.model}`);
+ const coverage=usage.data?.coverage;
+ return <><CacheNotice cache={usage.data?.cache} zone={filter.time_zone}/>
+        <Card className="section-card overview-trend" title={<div className="trend-title"><span>模型用量趋势</span><div className="overview-quality">{coverage && <Popover trigger="click" placement="bottomLeft" content={<div className="evidence-popover"><CoverageNotice coverage={coverage} zone={filter.time_zone} /></div>}><Button type="text" size="small" icon={<InfoCircleOutlined />}>{coverage.state==='unknown'?'暂无已知用量':'覆盖未确认'} · {coverage.stale?'采集证据陈旧':'有近期采集证据'} · 截至 {coverage.collected_at_ms===null?'尚无观测':dayjs(coverage.collected_at_ms).tz(filter.time_zone).format('MM-DD HH:mm')}</Button></Popover>}</div></div>} extra={<div className="overview-chart-controls">
+          <Segmented aria-label="图表指标" size="small" options={metricOptions} value={metric} onChange={value => setMetric(value as Metric)} />
+        </div>}>
+          <Select aria-label="概览趋势模型" className="usage-model-selector" mode="multiple" maxCount={12} maxTagCount="responsive" value={selection} onChange={setChosen} options={available.map(r=>({value:`${r.provider}:${r.model}`,label:`${providerNames[r.provider]??r.provider} · ${r.model==='unknown'?'模型未归因':r.model}`}))} placeholder="选择趋势模型" />
+          {usage.isPending?<LoadingState label="正在读取模型日桶…" />:usage.error&&!usage.data?<ErrorState error={usage.error} retry={()=>void usage.refetch()} />:<>
+          {usage.error&&<Alert type="warning" title="模型趋势更新失败，保留上次读取的数据" description={usage.error.message} />}
+          {selection.length && usage.data?<UsageChart data={usage.data} metric={metric} selection={selection} />:<EmptyState description="当前范围尚无已收到的模型日桶。" />}
+          </>}
+          <div className="metric-note">按具体模型的真实日桶 · 最多12个模型 · 未知日期留空</div>
+          {metric === 'cost' && usage.data && usage.data.trend_cost_rounding_delta_micro_usd !== '0' && <Typography.Text type="secondary">趋势与范围的舍入差额：{usage.data.trend_cost_rounding_delta_micro_usd!==null&&BigInt(usage.data.trend_cost_rounding_delta_micro_usd)>-10_000n&&BigInt(usage.data.trend_cost_rounding_delta_micro_usd)<10_000n?'不足 $0.01':dollars(usage.data.trend_cost_rounding_delta_micro_usd)}</Typography.Text>}
+        </Card></>;
+}
+function BreakdownQuery({filter,kind,distribution=false}:{filter:StatsFilter;kind:'providers'|'models';distribution?:boolean}){
+ const query=useQuery({queryKey:['statistics',kind,filter],queryFn:({signal})=>getBreakdown(filter,kind,signal),refetchInterval:60_000});
+ const title=kind==='providers'?'平台分布':'模型分布';
+ return query.isPending?<LoadingState label="正在读取用量明细…"/>:!query.data?<ErrorState error={query.error} retry={()=>void query.refetch()}/>:<><CacheNotice cache={query.data.cache} zone={filter.time_zone}/>{query.error&&<Alert type="warning" title="明细更新失败，保留上次读取的数据"/>}{distribution?<Distribution rows={query.data[kind]??[]} title={title}/>:<SliceTable rows={query.data[kind]??[]}/>}</>;
+}
+
 export default function Overview() {
   const queryClient = useQueryClient();
   const machineFetching = useIsFetching({ queryKey: ['statistics', 'source-usage'] }) > 0;
   const [params]=useSearchParams();
   const [filter, setFilter] = useState(()=>({...initialFilter([1,7,30,90].includes(Number(params.get('days')))?Number(params.get('days')):1),...Object.fromEntries([...params].filter(([key])=>['start_date','end_date_exclusive','time_zone','provider','client_id'].includes(key)))}));
-  const [metric, setMetric] = useState<Metric>('tokens');
   const [breakdown,setBreakdown]=useState<'providers'|'models'>('providers');
-  const [chosen, setChosen] = useState<string[]|null>(null);
-  const usage = useQuery({queryKey:['usage',filter],queryFn:({signal})=>getUsage(filter,signal)});
-  const available=usage.data?.models??[];
-  const selection=chosen?.filter(k=>available.some(r=>`${r.provider}:${r.model}`===k))??available.slice(0,12).map(r=>`${r.provider}:${r.model}`);
-  const query = useQuery({ queryKey: ['statistics', 'summary', filter], queryFn: ({ signal }) => getSummary(filter, signal) });
-  const data = query.data;
-  const totals = usage.data?.totals ?? data?.totals;
-  const coverage = usage.data?.coverage;
+  const usage=useQuery({queryKey:['statistics','totals',filter],queryFn:({signal})=>getTotals(filter,signal),refetchInterval:60_000});
+  const {start_date:_start,end_date_exclusive:_end,...annualFilter}=filter;
+  const query=useQuery({queryKey:['statistics','annual',annualFilter],queryFn:({signal})=>getAnnual(filter,signal),refetchInterval:60_000});
+  const data=query.data;
+  const totals=usage.data?.totals;
   const sources=useQuery({queryKey:['devices','status'],queryFn:({signal})=>getDevices(signal)});
   const devices=(sources.data??[]).filter(d=>!filter.client_id||d.id===filter.client_id).map(d=>({...d,providers:d.providers.filter(p=>!filter.provider||p.provider===filter.provider)}));
   return <section className="overview-page">
-    <StatsFilters value={filter} onChange={v=>{setFilter(v);setChosen(null);}} refresh={() => {void query.refetch();void usage.refetch();void queryClient.refetchQueries({queryKey:['statistics','source-usage'],type:'active'});}} busy={query.isFetching||usage.isFetching||machineFetching} />
-    {query.isPending ? <SectionPlaceholder title="全年活动" height={300} /> : query.error && !data ? <Card title="全年活动"><ErrorState error={query.error} retry={() => void query.refetch()} /></Card> : data && <>
+    <StatsFilters value={filter} onChange={v=>{setFilter(v);}} refresh={() => {void queryClient.refetchQueries({queryKey:['statistics'],type:'active'});void queryClient.refetchQueries({queryKey:['usage'],type:'active'});}} busy={query.isFetching||usage.isFetching||machineFetching} />
+    <CacheNotice cache={data?.cache} zone={filter.time_zone}/>{query.isPending ? <SectionPlaceholder title="全年活动" height={300} /> : query.error && !data ? <Card title="全年活动"><ErrorState error={query.error} retry={() => void query.refetch()} /></Card> : data && <>
       {query.error && <Alert type="warning" showIcon title="刷新失败，以下保留上次读取的数据" description={query.error.message} className="form-alert" />}
       <Card className="overview-activity" title="全年活动" extra={<div className="annual-actions"><span className="metric-note">{data.heatmap_coverage.state==='unknown'?'年度用量未知':'年度覆盖未确认'} · {data.heatmap_coverage.stale?'采集陈旧':'近期采集'}</span><Popover trigger="click" placement="bottomRight" content={<div className="evidence-popover">
         <div className="activity-metrics">{[
@@ -113,31 +137,21 @@ export default function Overview() {
         <div className="activity-scope"><span>{dayjs(data.heatmap_range.start_at_ms).tz(filter.time_zone).format('YYYY-MM-DD')} 至 {dayjs(data.heatmap_range.end_at_ms).tz(filter.time_zone).subtract(1, 'day').format('YYYY-MM-DD')}</span><span>{filter.time_zone}</span><span>{filter.provider ? providerNames[filter.provider] : '全部客户端'}</span></div>
       </Card>
     </>}
-      <Card className="summary-band" style={{ minHeight: 132 }}>
-        {usage.error && totals && <Alert type="warning" showIcon title={usage.data ? "范围用量刷新失败，保留上次读取的数据" : "模型用量未能读取，范围汇总使用已取得的概览数据"} description={usage.error.message} />}
+      <CacheNotice cache={usage.data?.cache} zone={filter.time_zone}/><Card className="summary-band" style={{ minHeight: 132 }}>
+        {usage.error && totals && <Alert type="warning" showIcon title={"范围用量刷新失败，保留上次读取的数据"} description={usage.error.message} />}
         {!totals && usage.isPending ? <LoadingState label="正在读取范围用量…" /> : usage.error && !totals ? <ErrorState error={usage.error} retry={() => void usage.refetch()} /> : totals && <div className="metric-grid overview-kpis">
         <div><Statistic title="当前范围 Token 总量" value={totals.total_tokens ?? '未知'} formatter={() => tokens(totals.total_tokens)} /><div className="metric-note">输入 {tokens(totals.input_tokens)} · 输出 {tokens(totals.output_tokens)}</div></div>
         <div><Statistic title="当前范围 API 等价成本" value={totals.cost_micro_usd ?? '未知'} formatter={() => dollars(totals.cost_micro_usd)} /><div className="metric-note">{totals.cost_status === 'partial' ? '已知金额小计，含未定价记录' : '按历史价格估算'} · 不是实际账单</div></div>
         <div><Statistic title="已收到会话" value={totals.sessions} formatter={() => integer(totals.sessions)} /><div className="metric-note">按 Token 活动去重 · 采集来源见下方</div></div>
       </div>}</Card>
 
-      <DeferredSection title="活动分布与高消耗会话" height={530}>{query.isPending ? <SectionPlaceholder title="活动分布与高消耗会话" height={530} /> : query.error && !data ? <Card title="活动分布与高消耗会话"><ErrorState error={query.error} retry={() => void query.refetch()} /></Card> : data && <OverviewActivity data={data} filter={filter} onDay={date=>setFilter({...filter,start_date:date,end_date_exclusive:dayjs(date).add(1,'day').format('YYYY-MM-DD')})}/>}</DeferredSection>
+      <DeferredSection title="活动分布与高消耗会话" height={530}><IndependentOverviewActivity filter={filter} onDay={date=>setFilter({...filter,start_date:date,end_date_exclusive:dayjs(date).add(1,'day').format('YYYY-MM-DD')})}/></DeferredSection>
       <DeferredSection title="各机器采集的 Codex 用量" height={280}><MachineUsage filter={filter} onSelect={client_id=>setFilter({...filter,client_id})}/></DeferredSection>
       <DeferredSection title="模型用量趋势" height={400}>
-        <Card className="section-card overview-trend" title={<div className="trend-title"><span>模型用量趋势</span><div className="overview-quality">{coverage && <Popover trigger="click" placement="bottomLeft" content={<div className="evidence-popover"><CoverageNotice coverage={coverage} zone={filter.time_zone} /></div>}><Button type="text" size="small" icon={<InfoCircleOutlined />}>{coverage.state==='unknown'?'暂无已知用量':'覆盖未确认'} · {coverage.stale?'采集证据陈旧':'有近期采集证据'} · 截至 {coverage.collected_at_ms===null?'尚无观测':dayjs(coverage.collected_at_ms).tz(filter.time_zone).format('MM-DD HH:mm')}</Button></Popover>}</div></div>} extra={<div className="overview-chart-controls">
-          <Segmented aria-label="图表指标" size="small" options={metricOptions} value={metric} onChange={value => setMetric(value as Metric)} />
-        </div>}>
-          <Select aria-label="概览趋势模型" className="usage-model-selector" mode="multiple" maxCount={12} maxTagCount="responsive" value={selection} onChange={setChosen} options={available.map(r=>({value:`${r.provider}:${r.model}`,label:`${providerNames[r.provider]??r.provider} · ${r.model==='unknown'?'模型未归因':r.model}`}))} placeholder="选择趋势模型" />
-          {usage.isPending?<LoadingState label="正在读取模型日桶…" />:usage.error&&!usage.data?<ErrorState error={usage.error} retry={()=>void usage.refetch()} />:<>
-          {usage.error&&<Alert type="warning" title="模型趋势更新失败，保留上次读取的数据" description={usage.error.message} />}
-          {selection.length && usage.data?<UsageChart data={usage.data} metric={metric} selection={selection} />:<EmptyState description="当前范围尚无已收到的模型日桶。" />}
-          </>}
-          <div className="metric-note">按具体模型的真实日桶 · 最多12个模型 · 未知日期留空</div>
-          {metric === 'cost' && usage.data && usage.data.trend_cost_rounding_delta_micro_usd !== '0' && <Typography.Text type="secondary">趋势与范围的舍入差额：{usage.data.trend_cost_rounding_delta_micro_usd!==null&&BigInt(usage.data.trend_cost_rounding_delta_micro_usd)>-10_000n&&BigInt(usage.data.trend_cost_rounding_delta_micro_usd)<10_000n?'不足 $0.01':dollars(usage.data.trend_cost_rounding_delta_micro_usd)}</Typography.Text>}
-        </Card>
+        <OverviewUsageTrend filter={filter} />
       </DeferredSection>
         <div className="overview-support">
-          <Card title="平台 / 模型明细" extra={<div className="overview-chart-controls"><Segmented size="small" aria-label="用量明细维度" value={breakdown} options={[{value:'providers',label:'平台'},{value:'models',label:'模型'}]} onChange={value=>setBreakdown(value as 'providers'|'models')} /><Link to="/usage/models">查看用量</Link></div>}>{query.isPending ? <LoadingState label="正在读取用量明细…" /> : query.error && !data ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : data && <SliceTable rows={data[breakdown]} />}</Card>
+          <DeferredSection title="平台 / 模型明细" height={360}><Card title="平台 / 模型明细" extra={<div className="overview-chart-controls"><Segmented size="small" aria-label="用量明细维度" value={breakdown} options={[{value:'providers',label:'平台'},{value:'models',label:'模型'}]} onChange={value=>setBreakdown(value as 'providers'|'models')} /><Link to="/usage/models">查看用量</Link></div>}><BreakdownQuery filter={filter} kind={breakdown}/></Card></DeferredSection>
           <Card title="采集来源" extra={<Link to="/usage/sources">查看全部{devices.length>3?` (${devices.length})`:''}</Link>}>
             {sources.isPending?<LoadingState label="正在读取采集证据…" />:sources.error&&!sources.data?<ErrorState error={sources.error} retry={()=>void sources.refetch()} />:<>
               {sources.error&&<Alert type="warning" title="来源更新失败，保留上次证据" />}
@@ -147,8 +161,8 @@ export default function Overview() {
           </Card>
         </div>
         <div className="overview-breakdowns">
-          <DeferredSection title="平台分布" height={360}>{query.isPending ? <SectionPlaceholder title="平台分布" height={360} /> : query.error && !data ? <Card title="平台分布"><ErrorState error={query.error} retry={() => void query.refetch()} /></Card> : data && <Distribution rows={data.providers} title="平台分布" />}</DeferredSection>
-          <DeferredSection title="模型分布" height={360}>{query.isPending ? <SectionPlaceholder title="模型分布" height={360} /> : query.error && !data ? <Card title="模型分布"><ErrorState error={query.error} retry={() => void query.refetch()} /></Card> : data && <Distribution rows={data.models} title="模型分布" />}</DeferredSection>
+          <DeferredSection title="平台分布" height={360}><BreakdownQuery filter={filter} kind="providers" distribution/></DeferredSection>
+          <DeferredSection title="模型分布" height={360}><BreakdownQuery filter={filter} kind="models" distribution/></DeferredSection>
         </div>
 
         <div className="overview-links"><Link to="/quota">查看账号额度与节奏</Link><Link to="/projects">项目明细</Link><Link to={sessionsTarget(filter)}>会话明细</Link></div>

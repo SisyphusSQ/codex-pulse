@@ -13,7 +13,7 @@ func TestStatisticsHTTPDefaultAuthQueryValidationAndDecimalStrings(t *testing.T)
 	server, access := testServer(t, origin)
 	administrator := admin(t, access, origin)
 	collector := reportingCollector(t, access, administrator.Principal, "采集机")
-	for _, path := range []string{"/api/v1/statistics/summary", "/api/v1/sessions", "/api/v1/projects", "/api/v1/devices/status"} {
+	for _, path := range []string{"/api/v1/statistics/summary", "/api/v1/statistics/annual", "/api/v1/statistics/totals", "/api/v1/statistics/activity", "/api/v1/statistics/top-sessions", "/api/v1/statistics/providers", "/api/v1/statistics/models", "/api/v1/sessions", "/api/v1/projects", "/api/v1/devices/status"} {
 		if response := request(server, http.MethodGet, origin, path, "", nil, false); response.Code != 401 {
 			t.Fatal("anonymous query", path, response.Code)
 		}

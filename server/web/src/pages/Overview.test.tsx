@@ -22,7 +22,7 @@ describe('overview facts',()=>{
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
     await screen.findByText('当前范围 Token 总量');const user=userEvent.setup();
     await user.click(screen.getByText('7天',{selector:'.ant-segmented-item-label'}));
-    await waitFor(()=>expect(fetcher.mock.calls.some(([path])=>{const u=new URL(String(path),'http://localhost');return u.pathname.endsWith('/summary')&&dayjs(u.searchParams.get('end_date_exclusive')).diff(dayjs(u.searchParams.get('start_date')),'day')===7;})).toBe(true));
+    await waitFor(()=>expect(fetcher.mock.calls.some(([path])=>{const u=new URL(String(path),'http://localhost');return u.pathname.endsWith('/totals')&&dayjs(u.searchParams.get('end_date_exclusive')).diff(dayjs(u.searchParams.get('start_date')),'day')===7;})).toBe(true));
     await user.click(screen.getByRole('button',{name:'自定义'}));
     await user.click(await screen.findByPlaceholderText(/Start date|开始日期/));
     // JSDOM has no layout for popup placement; Chrome verifies the visible calendar.
@@ -44,7 +44,7 @@ describe('overview facts',()=>{
     const user=userEvent.setup();await user.click(screen.getByRole('combobox',{name:'Provider'}));
     await user.click(await screen.findByText('Cursor',{selector:'.ant-select-item-option-content'}));
     await waitFor(()=>expect(fetcher.mock.calls.some(([path])=>new URL(String(path),'http://localhost').searchParams.get('provider')==='cursor')).toBe(true));
-    const url=new URL(String(fetcher.mock.calls.find(([path])=>String(path).includes('summary'))![0]),'http://localhost');
+    const url=new URL(String(fetcher.mock.calls.find(([path])=>String(path).includes('/annual'))![0]),'http://localhost');
     expect(url.searchParams.get('start_date')).toMatch(/^\d{4}-\d{2}-\d{2}$/);expect(url.searchParams.get('time_zone')).toBe('Asia/Shanghai');expect(url.searchParams.has('start_at_ms')).toBe(false);
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):new Response('',{status:503}));
     await user.click(screen.getByRole('button',{name:'刷新'}));
@@ -104,12 +104,13 @@ describe('overview independent and deferred loading', () => {
     : success(String(path).includes('/usage') ? usageFrom(summaryFixture()) : summaryFixture());
   it('shows usage totals before summary and defers charts and machine requests', async () => {
     let finish!: (value: Response) => void;
-    fetcher.mockImplementation(path => String(path).includes('/summary') ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(response(path)));
+    fetcher.mockImplementation(path => String(path).includes('/annual') ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(response(path)));
     mount();
     await screen.findByText('当前范围 Token 总量');
     expect(screen.getByText('正在读取全年活动…')).toBeInTheDocument();
     expect(screen.getByText('采集来源', { selector: '.ant-card-head-title' })).toBeInTheDocument();
     expect(fetcher.mock.calls.some(([path]) => String(path).includes('/source-usage'))).toBe(false);
+    expect(fetcher.mock.calls.some(([path]) => String(path).includes('/summary')||String(path).includes('/statistics/usage')||String(path).includes('/activity')||String(path).includes('/top-sessions'))).toBe(false);
     expect(screen.queryByRole('img', { name: '按自然日的用量趋势' })).not.toBeInTheDocument();
     enter('模型用量趋势');
     await screen.findByRole('img', { name: '按自然日的用量趋势' });
@@ -126,7 +127,7 @@ describe('overview independent and deferred loading', () => {
     const user = userEvent.setup();
     await waitFor(() => expect(screen.getByRole('button', { name: '刷新' })).not.toHaveAttribute('aria-busy', 'true'));
     await user.click(screen.getByRole('button', { name: '刷新' }));
-    await waitFor(() => expect(fetcher.mock.calls.filter(([path]) => String(path).includes('/statistics/usage'))).toHaveLength(2));
+    await waitFor(() => expect(fetcher.mock.calls.filter(([path]) => String(path).includes('/statistics/totals'))).toHaveLength(2));
     expect(fetcher.mock.calls.some(([path]) => String(path).includes('/source-usage'))).toBe(false);
     const button = screen.getByRole('button', { name: '加载各机器采集的 Codex 用量' });
     button.focus(); await user.keyboard('{Enter}');
@@ -140,8 +141,8 @@ describe('overview independent and deferred loading', () => {
     let oldSignal: AbortSignal | undefined;
     fetcher.mockImplementation((path, options) => {
       const url = new URL(String(path), 'http://localhost');
-      if (url.pathname.endsWith('/summary')) return Promise.resolve(new Response('', { status: 503 }));
-      if (url.pathname.endsWith('/usage') && !url.searchParams.has('provider')) {
+      if (url.pathname.endsWith('/annual')) return Promise.resolve(new Response('', { status: 503 }));
+      if (url.pathname.endsWith('/totals') && !url.searchParams.has('provider')) {
         oldSignal = options?.signal ?? undefined;
         return new Promise((_resolve, reject) => oldSignal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError'))));
       }
@@ -154,14 +155,15 @@ describe('overview independent and deferred loading', () => {
     await user.click(await screen.findByText('Cursor', { selector: '.ant-select-item-option-content' }));
     await screen.findByText('当前范围 Token 总量');
     expect(oldSignal?.aborted).toBe(true);
-    expect(fetcher.mock.calls.some(([path]) => String(path).includes('/statistics/usage') && new URL(String(path), 'http://localhost').searchParams.get('provider') === 'cursor')).toBe(true);
+    expect(fetcher.mock.calls.some(([path]) => String(path).includes('/statistics/totals') && new URL(String(path), 'http://localhost').searchParams.get('provider') === 'cursor')).toBe(true);
   });
   it('preserves summary totals when model usage cannot be read', async () => {
     fetcher.mockImplementation(path => Promise.resolve(String(path).includes('/statistics/usage')
       ? new Response('', { status: 413 }) : response(path)));
     mount();
     await screen.findByText('当前范围 Token 总量');
-    expect(screen.getByText('模型用量未能读取，范围汇总使用已取得的概览数据')).toBeInTheDocument();
+    enter('模型用量趋势');
+    await screen.findByText('数据未能读取');
     expect(document.querySelector('.summary-band')).toHaveTextContent('90071992.5亿');
   });
 });
