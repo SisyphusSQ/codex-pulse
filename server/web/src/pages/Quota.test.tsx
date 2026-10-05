@@ -1,3 +1,4 @@
+import {QueryNotifications} from '../components/QueryNotifications';
 import {OperationNotifications} from '../components/OperationNotifications';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
@@ -16,7 +17,7 @@ const fetcher=vi.fn<typeof fetch>();
 const success=(data:unknown)=>new Response(JSON.stringify({code:200,data}));
 beforeEach(()=>{api.setSession({client_id:'synthetic-browser',name:'测试浏览器',purpose:'admin',csrf:'synthetic-csrf',expires_at_ms:null});fetcher.mockReset();vi.stubGlobal('fetch',async (...args:Parameters<typeof fetch>)=>String(args[0]).includes('/subscription')?success({account_key:String(args[0]).split('/')[4],revision:'0',alias:null,automatic_plan:null,manual_plan:null,resolved_plan:null,date_kind:'',renewal_day:null,membership_date:null,next_date:null,day_delta:null,date_state:'unavailable',time_zone:'Asia/Shanghai',updated_at_ms:null}):fetcher(...args));});
 afterEach(()=>vi.unstubAllGlobals());
-function mount(){render(<OperationNotifications><QueryClientProvider client={createQueryClient()}><MemoryRouter><Quota /></MemoryRouter></QueryClientProvider></OperationNotifications>);}
+function mount(){render(<OperationNotifications><QueryClientProvider client={createQueryClient()}><QueryNotifications /><MemoryRouter><Quota /></MemoryRouter></QueryClientProvider></OperationNotifications>);}
 describe('quota facts and pace',()=>{
  it('loads summary and selected pace without a source evidence entry',async()=>{
   const data=quotaFixture();data.windows[0].observation_count=41;
@@ -75,7 +76,7 @@ describe('quota facts and pace',()=>{
   fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(quota));mount();
   await screen.findByText('剩余 50%');expect(document.querySelector('.quota-window-summary .ant-progress')).not.toBeNull();expect(screen.queryByText('当前未知')).not.toBeInTheDocument();expect(screen.queryByText('额度窗口与来源详情')).not.toBeInTheDocument();expect(document.querySelector('img[src="x"]')).toBeNull();
   fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):new Response('',{status:503}));await userEvent.setup().click(screen.getByRole('button',{name:'刷新额度'}));
-  await screen.findByText('额度刷新失败，保留上次读取的数据与原时间');expect(screen.getByText('剩余 50%')).toBeInTheDocument();
+  await screen.findByText('账号额度读取失败');expect(document.querySelector('.ant-alert')).toBeNull();expect(screen.getByText('剩余 50%')).toBeInTheDocument();
  });
  it('uses raw-ID account identities even for equal emails and sends explicit account/provider/source filters',async()=>{
   fetcher.mockImplementation(async(path)=>{const u=new URL(String(path),'http://localhost');if(u.pathname.endsWith('/devices/status'))return success([{id:'machine-one',name:'合成采集机',providers:[],revoked_at_ms:null,last_received_at_ms:null}]);if(u.pathname.endsWith('/pace'))return success(paceFixture());const data=quotaFixture();if(u.searchParams.get('account_key')==='account-two'){data.accounts=data.accounts.filter(a=>a.key==='account-two');data.windows=[];data.credits=[];}return success(data);});

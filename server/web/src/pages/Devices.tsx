@@ -1,7 +1,8 @@
 import {decimalSorter} from '../components/sorting';
 import { useEffect, useState } from 'react';
-import { Alert, Button, Card, Descriptions, Form, Input, Modal, Select, Steps, Table, Tabs, Tag, Typography } from 'antd';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Button, Card, Descriptions, Form, Input, Modal, Select, Steps, Table, Tabs, Tag, Typography } from 'antd';
+import {useQueryClient} from '@tanstack/react-query';
+import {useFeedbackQuery as useQuery} from '../components/QueryNotifications';
 import { ApiError } from '../api/client';
 import { getClients, issuePairing, renameClient, revokeClient, revokePairing, type Client, type Pairing } from '../api/access';
 import { getDevices } from '../api/statistics';
@@ -62,13 +63,13 @@ export default function Devices(){
 
  <Tabs items={[
  {key:'clients',label:'客户端授权',children:<> {query.isPending?<LoadingState />:query.error&&!query.data?<ErrorState error={query.error} retry={()=>void refresh()} />:query.data&&<>
- {query.error&&<Alert type="warning" showIcon title="刷新失败，保留上次授权列表" description={query.error.message} />}
+
  {clientGroup('collector','APP 授权')}{clientGroup('admin','管理浏览器授权')}
  <div className="metric-note source-footnote">撤销停止后续接入，不删除历史事实。关闭本机同步保留队列；清理队列为单独操作。</div></>}</>},
  {key:'status',label:'上报状态',children:<>
  <Card title="采集设备上报状态" className="table-card">
  {devices.isPending?<LoadingState />:devices.error&&!devices.data?<ErrorState error={devices.error} retry={()=>void devices.refetch()} />:<>
- {devices.error&&<Alert type="warning" title="设备状态刷新失败，保留上次读取" description={devices.error.message} />}
+
  {activeDevices.length?<Table rowKey={r=>`${r.id}:${r.provider}`} size="small" dataSource={activeDevices.flatMap(d=>d.providers.length?d.providers.map(p=>({...p,id:d.id,name:d.name,revoked:d.revoked_at_ms,last_received:d.last_received_at_ms})):[{id:d.id,name:d.name,provider:'',version:'',sync_state:'',sync_checked_at_ms:null,full_sync_state:'',collected_at_ms:null,coverage_start_ms:null,coverage_end_ms:null,pending_batches:0,status:'unknown',received_at_ms:0,stale:true,revoked:d.revoked_at_ms,last_received:d.last_received_at_ms}])} pagination={{pageSize:10,showSizeChanger:false}} scroll={{x:1260}} columns={[{title:'机器 / Provider',render:(_,r)=><>{r.name}<div className="metric-note">{providerNames[r.provider]??'尚无 Provider 状态'}{r.revoked?' · 已撤销':''}</div></>},{title:'版本',render:(_,r)=>r.version||'未上报'},{title:'原采集截至',...decimalSorter<{collected_at_ms:number|null}>(r=>r.collected_at_ms,true),render:(_,r)=>dateTime(r.collected_at_ms)},{title:'中心最后接收',...decimalSorter<{last_received:number|null}>(r=>r.last_received),render:(_,r)=>dateTime(r.last_received)},{title:'覆盖边界',render:(_,r)=><>{dateTime(r.coverage_start_ms)}<div>→ {dateTime(r.coverage_end_ms)}</div></>},{title:'待发送批次',...decimalSorter<{pending_batches:number}>(r=>r.pending_batches),render:(_,r)=>r.provider?integer(r.pending_batches):'未知'},{title:'来源状态',render:(_,r)=><>{deviceStates[r.status]??'未知'}<div className="metric-note">{r.stale?'采集证据陈旧':'有近期采集证据'}</div>{r.sync_state&&<div>{syncStates[r.sync_state]??'同步状态未知'} · {dateTime(r.sync_checked_at_ms??null)}</div>}{r.full_sync_state&&<Tag>{r.full_sync_state==='completed'?'全量补传已完成':'全量补传进行中'}</Tag>}</>}]} />:<EmptyState description="尚无采集设备。请签发采集码，在 App 的多机中心设置中配对并启用。" />}
  <Typography.Paragraph type="secondary">来源索引就绪及接收成功不代表完整历史上传，也不证明机器在线；关闭 App 后停止采集与上报，下次启动增量补采。此处仅显示上次收到的有限状态。</Typography.Paragraph></>}
  </Card></>},

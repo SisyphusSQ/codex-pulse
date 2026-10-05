@@ -24,7 +24,7 @@ export function installReviewApi(scenario:ReviewScenario) {
    if(path==='/api/v1/session')return response({client_id:'story-browser',name:'设计预览 · 合成数据',purpose:'admin',csrf:'synthetic-story-only',expires_at_ms:null});
    if(path==='/api/v1/version')return response({version:'设计预览',commit:'合成样本',built_at:'',reporting_protocol:1,throughput_capsule:1,schema:3});
    if(path==='/api/v1/catalog')return response(reviewCatalog);
-   if(path==='/api/v1/statistics/summary'){const v=summary();if(scenario==='empty'){v.totals={...v.totals,total_tokens:null};v.activity_timeline=v.activity_timeline.map(r=>({...r,tokens:null,sessions:null}));v.top_sessions=[];v.weekday_hours=v.weekday_hours.map(r=>({...r,tokens:null,sessions:0,session_count:null}));}return response(v);}
+   if(['/api/v1/statistics/summary','/api/v1/statistics/annual','/api/v1/statistics/totals','/api/v1/statistics/activity','/api/v1/statistics/top-sessions','/api/v1/statistics/providers','/api/v1/statistics/models'].includes(path)){const v=summary();if(scenario==='empty'){v.totals={...v.totals,total_tokens:null};v.activity_timeline=v.activity_timeline.map(r=>({...r,tokens:null,sessions:null}));v.top_sessions=[];v.weekday_hours=v.weekday_hours.map(r=>({...r,tokens:null,sessions:0,session_count:null}));}return response(v);}
    if(path==='/api/v1/statistics/source-usage')return response(scenario==='empty'?{...reviewSourceUsage(filter),items:[]}:reviewSourceUsage(filter));
    if(path==='/api/v1/statistics/usage')return response(usage());
    if(path==='/api/v1/devices/status')return response(reviewDevices);

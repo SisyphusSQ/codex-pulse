@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Button, DatePicker, Form, Popover, Segmented, Select, Space, Tag } from 'antd';
 import { FilterOutlined, ReloadOutlined } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import {useFeedbackQuery as useQuery} from './QueryNotifications';
 import type { StatsFilter } from '../api/statistics';
 import { getDevices } from '../api/statistics';
 import { dayjs, providerNames } from '../format';
@@ -27,6 +27,6 @@ export function StatsFilters({ value, onChange, refresh, busy, extra }: { value:
     </Space>
   </div>
     {(value.provider||value.client_id||value.model||value.search||activeRange==='custom')&&<div className="active-filters"><span>已筛选</span>{value.provider&&<Tag closable onClose={()=>onChange({...value,provider:''})}>{providerNames[value.provider]??value.provider}</Tag>}{value.client_id&&<Tag closable onClose={()=>onChange({...value,client_id:''})}>{sourceName}</Tag>}{value.model&&<Tag closable onClose={()=>onChange({...value,model:''})}>模型：{value.model}</Tag>}{value.search&&<Tag closable onClose={()=>onChange({...value,search:''})}>搜索：{value.search}</Tag>}{activeRange==='custom'&&<Tag closable onClose={()=>onChange(range(30))}>{value.start_date} — {dayjs(value.end_date_exclusive).subtract(1,'day').format('YYYY-MM-DD')}</Tag>}<Button type="link" size="small" onClick={()=>onChange({...range(30),provider:'',client_id:'',model:'',search:''})}>清除全部</Button></div>}
-    {devices.error&&<div role="status" className="filter-error">设备选项读取失败；可刷新重试，当前筛选未改变。</div>}
+
   </div>;
 }

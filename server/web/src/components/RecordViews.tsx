@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { Button, Descriptions, Table, Tabs, Tag, Typography, theme } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
-import { useQuery } from '@tanstack/react-query';
+import {useFeedbackQuery as useQuery} from './QueryNotifications';
 import type { EChartsCoreOption } from 'echarts/core';
 import { getSession, type Page, type Source, type SessionRecord } from '../api/records';
 import type { Day, StatsFilter, Totals } from '../api/statistics';
@@ -40,8 +40,8 @@ export function SessionPanel({ id,filter,onClose,backLabel='返回会话列表',
  const [activeTab,setActiveTab]=useState('usage');
  const query=useQuery({queryKey:['sessions','detail',id,filter,turnLimit],queryFn:({signal})=>getSession(id,filter,signal,turnLimit)});
  const data=query.data;
- return <div className="record-detail-view"><header className="record-detail-header"><Button className="record-back" aria-label={backLabel} icon={<ArrowLeftOutlined />} onClick={onClose}>{backLabel}</Button><Typography.Text type="secondary">{projectName?`${projectName} → 会话详情`:'会话详情'}</Typography.Text></header><div className="record-detail-body">{query.isPending?<LoadingState />:query.error?<ErrorState error={query.error} retry={()=>void query.refetch()} />:data&&<>
-  <Typography.Title level={4}>{data.session.title||'未命名会话'}</Typography.Title>
+ return <div className="record-detail-view"><header className="record-detail-header"><Button className="record-back" aria-label={backLabel} icon={<ArrowLeftOutlined />} onClick={onClose}>{backLabel}</Button><Typography.Text type="secondary">{projectName?`${projectName} → 会话详情`:'会话详情'}</Typography.Text></header><div className="record-detail-body">{query.isPending?<LoadingState />:query.error&&!data?<ErrorState error={query.error} retry={()=>void query.refetch()} />:data&&<>
+  <div className="record-title"><Typography.Title level={4}>{data.session.title||'未命名会话'}</Typography.Title>{data.session.conflict&&<Tag color="red" title="统计采用服务端已接受事实">来源冲突</Tag>}</div>
   <Descriptions size="small" column={{xs:1,sm:2}} items={[
    {key:'session',label:'原始 Session ID',children:<span className="record-id">{data.session.session_id??'未关联会话'}</span>,span:2},
    {key:'machines',label:'采集机器',children:sourceNames(data.session.sources),span:2},
@@ -51,7 +51,6 @@ export function SessionPanel({ id,filter,onClose,backLabel='返回会话列表',
    {key:'active',label:'最近活动',children:dateTime(data.session.last_active_at_ms,filter.time_zone)},
    {key:'collected',label:'采集截至',children:dateTime(data.session.collected_at_ms,filter.time_zone)},
   ]} />
-  {data.session.conflict&&<Tag color="red">来源存在冲突，统计采用服务端已接受事实</Tag>}
   <TotalsLine totals={data.session.totals} />
   <Tabs activeKey={activeTab} onChange={setActiveTab} items={[
    {key:'usage',label:'用量与缓存',children:<><CacheHitRateDetail value={data.session.cache_hit_rate} /><RecordTrend rows={data.trend} /><CoverageNotice coverage={data.coverage} zone={filter.time_zone} /></>},

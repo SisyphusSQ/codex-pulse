@@ -10,6 +10,7 @@ import { ErrorState, LoadingState } from './components/QueryState';
 import { OperationNotifications, useOperationNotifications } from './components/OperationNotifications';
 import { RuntimeInfo } from './components/RuntimeInfo';
 import { StatisticsCacheFooter } from './components/StatisticsCacheFooter';
+import { QueryNotifications } from './components/QueryNotifications';
 
 const Overview=lazy(()=>import('./pages/Overview'));
 const Projects=lazy(()=>import('./pages/Projects'));
@@ -85,6 +86,11 @@ function Shell() {
 
 function SessionGate() {
   const { status, error, retry } = useSession();
+  const notify = useOperationNotifications();
+  useEffect(() => {
+    if (status === 'error' && error) notify.error('浏览器授权读取失败', error.message, retry, 'session-restore');
+    else notify.close('session-restore');
+  }, [status, error, notify, retry]);
   if (status === 'loading') return <LoadingState label="正在恢复浏览器授权…" />;
   if (status === 'error') return <ErrorState error={error ?? new ApiError(0)} retry={retry} />;
   if (status === 'anonymous') return <SignIn />;
@@ -92,5 +98,5 @@ function SessionGate() {
 }
 
 export function PulseApp({ queryClient }: { queryClient: QueryClient }) {
-  return <OperationNotifications><QueryClientProvider client={queryClient}><SessionProvider><HashRouter><SessionGate /></HashRouter></SessionProvider></QueryClientProvider></OperationNotifications>;
+  return <OperationNotifications><QueryClientProvider client={queryClient}><QueryNotifications /><SessionProvider><HashRouter><SessionGate /></HashRouter></SessionProvider></QueryClientProvider></OperationNotifications>;
 }
