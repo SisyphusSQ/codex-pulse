@@ -11,14 +11,15 @@ const MaxTimestampMS int64 = 9007199254740991
 
 // Batch 是不可变的事务单元；身份只来自鉴权凭证，不在 body 中自称设备归属。
 type Batch struct {
-	Version  int                `json:"version"`
-	ID       string             `json:"id"`
-	Sessions []SessionSnapshot  `json:"sessions,omitempty"`
-	Accounts []Account          `json:"accounts,omitempty"`
-	Bindings []AccountBinding   `json:"bindings,omitempty"`
-	Quotas   []QuotaObservation `json:"quotas,omitempty"`
-	Credits  []ResetCredits     `json:"credits,omitempty"`
-	Status   []DeviceStatus     `json:"status,omitempty"`
+	Version      int                 `json:"version"`
+	ID           string              `json:"id"`
+	Sessions     []SessionSnapshot   `json:"sessions,omitempty"`
+	Accounts     []Account           `json:"accounts,omitempty"`
+	Bindings     []AccountBinding    `json:"bindings,omitempty"`
+	Quotas       []QuotaObservation  `json:"quotas,omitempty"`
+	Credits      []ResetCredits      `json:"credits,omitempty"`
+	Status       []DeviceStatus      `json:"status,omitempty"`
+	AccountUsage []AccountTokenUsage `json:"account_usage,omitempty"`
 }
 
 // SessionSnapshot 是同一来源的完整替换快照，revision 跨进程重启单调递增。

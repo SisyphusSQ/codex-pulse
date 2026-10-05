@@ -61,6 +61,7 @@ The most misleading failure mode for quota and usage tools is not missing data�
 - Codex Pro 5×/20× comes only from matching App Server `planType` evidence collected inside the account sandwich read. Pulse never infers a tier from remaining percent, tokens, windows, reset time, or Reset Credits.
 - Codex monthly renewal days and membership expiry dates are manual only in this release. Pulse does not treat token expiry, quota reset time, or Reset Credit expiry as a membership date.
 - Local sessions, tokens, projects, trends, and API-equivalent cost stay aggregated for the current Codex Home. They are not filtered or attributed by ChatGPT account.
+- Optional center account cards separately show newly recorded Codex tokens in the actual current weekly quota cycle. Only confirmed account observations count; ambiguous switch deltas and past usage are skipped. See [account cycle tokens](docs/design/details/account-cycle-tokens.md).
 - A time range that has not been fully indexed is marked as partial data rather than presented as a complete total.
 - Quota names and periods come from current data. For example, period labels are derived from the actual `window_minutes` value instead of hard-coding a "5-hour quota."
 - Currency values are always labeled as "API-equivalent cost." They help explain the public API price scale associated with token usage and do not represent an actual bill or charge.

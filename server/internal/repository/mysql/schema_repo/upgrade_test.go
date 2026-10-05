@@ -75,3 +75,38 @@ func TestV2UpgradeKeepsExistingStatusAndAddsChunkTables(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestV4AccountTokenUpgradeIsAdditiveAndPreservesRows(t *testing.T) {
+	s, engine, _ := openTestDatabase(t, filepath.Join(t.TempDir(), "private", "center.sqlite"))
+	if err := s.Init(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	db := engine.DB(t.Context())
+	if err := db.Exec("INSERT INTO pulse_batches(client_id,batch_id,digest,received_at_ms) VALUES('device','retained-v4','digest',1)").Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"pulse_account_token_facts", "pulse_account_token_sources", "pulse_account_token_periods"} {
+		if err := db.Migrator().DropTable(table); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Model(&schema_do.SchemaVersion{}).Where("id = ?", 1).Updates(map[string]any{"version": 4, "checksum": "ade85380eeb8f7c01b25432092d582d170e6462e3e4f0739f134e6247dae1b9a"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Upgrade(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Upgrade(t.Context()); err != nil {
+		t.Fatal("reentrant", err)
+	}
+	var n int64
+	if err := db.Table("pulse_batches").Where("batch_id = ?", "retained-v4").Count(&n).Error; err != nil || n != 1 {
+		t.Fatal("data lost", err)
+	}
+	if !db.Migrator().HasTable("pulse_account_token_facts") {
+		t.Fatal("missing v5")
+	}
+	if err := s.Check(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}

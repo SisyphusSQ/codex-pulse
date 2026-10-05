@@ -122,3 +122,35 @@ func TestReportingCursorSeparatesBillingCyclesAndUnknownSessionFacts(t *testing.
 		t.Fatal("cycle switch used old partition")
 	}
 }
+
+func TestReportingRecentPageSkipsOldSessionsAndPreservesFullFactIdentity(t *testing.T) {
+	repo := lightIndexRepositoryFixture(t)
+	ctx := t.Context()
+	identity := lightRolloutFixture()
+	if err := repo.ReplaceLightMetadata(ctx, storelight.LightMetadataSnapshot{Home: identity.Home, Generation: 2, ReadyAtMS: 1000, Sessions: []storelight.LightSessionMetadata{{SessionID: "old", CWD: "/synthetic/old", CreatedAtMS: 1, UpdatedAtMS: 10, RecencyAtMS: new(int64(10))}, {SessionID: "one", CWD: "/synthetic/new", RolloutPath: new(identity.Path), CreatedAtMS: 1, UpdatedAtMS: 120, RecencyAtMS: new(int64(120))}}}); err != nil {
+		t.Fatal(err)
+	}
+	generation, err := repo.StartLightTokenRebuild(ctx, "one", identity, "parser-v1", 120)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.CommitLightTokenBatch(ctx, storelight.LightTokenBatch{SessionID: "one", Generation: generation, UpdatedAtMS: 130, Activate: true, Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 3}, TimedDeltas: []storelight.LightTokenTimedDelta{{SourceOffset: 100, ObservedAtMS: 90, InputTokens: 1}, {SourceOffset: 200, ObservedAtMS: 120, InputTokens: 1}, {SourceOffset: 300, ObservedAtMS: 120, InputTokens: 1}}}); err != nil {
+		t.Fatal(err)
+	}
+	source := ReportingSource{HomeID: "synthetic", Path: identity.Home.Path, DeviceID: identity.Home.DeviceID, Inode: identity.Home.Inode}
+	all, err := repo.coreTestRepository.Repository.ReportingPage(ctx, "codex", source, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.RecentAfterMS = 100
+	recent, err := repo.coreTestRepository.Repository.ReportingPage(ctx, "codex", source, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all.Sessions) != 2 || len(recent.Sessions) != 1 || recent.Sessions[0].SessionID != "one" || len(recent.Sessions[0].Contributions) != 3 {
+		t.Fatal("recent page scanned history or truncated ordinal context")
+	}
+	if all.Sessions[1].Contributions[2].ID != recent.Sessions[0].Contributions[2].ID {
+		t.Fatal("range changed stable ID")
+	}
+}

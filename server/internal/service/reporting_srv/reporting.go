@@ -142,6 +142,9 @@ func (s *Reporting) Accept(ctx context.Context, p access_dto.Principal, batch re
 		if err := s.acceptAccountFacts(ctx, p, batch, now); err != nil {
 			return err
 		}
+		if err := s.acceptAccountTokens(ctx, p, batch, now); err != nil {
+			return err
+		}
 		for _, status := range batch.Status {
 			if status.SyncCheckedAtMS != nil {
 				if err := s.repository.SaveSync(ctx, reporting_do.DeviceSync{ClientID: p.ID, Provider: status.Provider, SyncState: status.SyncState, SyncCheckedAtMS: *status.SyncCheckedAtMS, FullSyncState: status.FullSyncState}); err != nil {

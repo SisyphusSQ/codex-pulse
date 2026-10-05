@@ -124,3 +124,9 @@ it('hides Pro monthly and short windows and shows missing Plus slots as unavaila
  expect(await screen.findByRole('button',{name:'codex · 7 天'})).toBeInTheDocument();expect(screen.queryByRole('button',{name:'codex · 30 天'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'codex · 5 小时'})).not.toBeInTheDocument();
  await userEvent.setup().click(screen.getByRole('button',{name:/查看账号 .*raw-account-two/}));expect(screen.getAllByText('未取得')).toHaveLength(2);expect(screen.getByText('5 小时')).toBeInTheDocument();expect(screen.getByText('7 天')).toBeInTheDocument();
 });
+
+it.each([["0","0"],["12345678","1234.6万"],["1234567890","12.3亿"],[null,"—"]])('shows account weekly recorded tokens %s with zero/unknown distinct',async(value,display)=>{
+ const data=quotaFixture();data.windows[0].recorded_tokens=value;
+ fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(data));mount();
+ const label=await screen.findByText('本周期已记录 Token：');expect(label.parentElement).toHaveTextContent(String(display));
+});
