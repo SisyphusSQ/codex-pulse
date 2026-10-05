@@ -26,6 +26,7 @@ type ReportingSource struct {
 	HomeID, Path, DeviceID, Partition string
 	Inode                             int64
 	StartAtMS                         int64
+	RecentAfterMS                     int64
 }
 
 // ReportingPage 在一致的只读事务内导出当前活动代，不读取源文件或认证文件。
@@ -83,7 +84,11 @@ func exportReportingCodex(db *gorm.DB, source ReportingSource, after string, pag
 		RecencyAtMS              *int64
 		ScanState                string
 	}
-	if err := db.Table("light_sessions").Where("session_id > ?", after).Order("session_id").Limit(16).Find(&sessions).Error; err != nil {
+	query := db.Table("light_sessions").Where("session_id > ?", after)
+	if source.RecentAfterMS > 0 {
+		query = query.Where("recency_at_ms >= ?", source.RecentAfterMS)
+	}
+	if err := query.Order("session_id").Limit(16).Find(&sessions).Error; err != nil {
 		return err
 	}
 	catalogs, err := loadLightPricingCatalogs(db, reportingv1.MaxTimestampMS)

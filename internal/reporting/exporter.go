@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"time"
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
@@ -14,14 +15,18 @@ type Preferences interface {
 	LoadPreferences(context.Context) (preferences.Snapshot, error)
 }
 type Exporter struct {
-	repository  *store.Repository
-	preferences Preferences
-	state       *State
-	identities  AccountIdentitySource
+	repository   *store.Repository
+	preferences  Preferences
+	state        *State
+	identities   AccountIdentitySource
+	usageEpoch   accountUsageEpoch
+	usagePending *accountUsageEpoch
+	startedAtMS  int64
+	now          func() time.Time
 }
 
 func NewExporter(repository *store.Repository, prefs Preferences, state *State, identities ...AccountIdentitySource) *Exporter {
-	e := &Exporter{repository: repository, preferences: prefs, state: state}
+	e := &Exporter{repository: repository, preferences: prefs, state: state, startedAtMS: time.Now().UnixMilli(), now: time.Now}
 	if len(identities) > 0 {
 		e.identities = identities[0]
 	}

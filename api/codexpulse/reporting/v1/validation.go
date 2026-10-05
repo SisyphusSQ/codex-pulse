@@ -41,11 +41,18 @@ func (b Batch) validate(factBudget int) error {
 	if b.Version != Version {
 		return ErrVersion
 	}
-	if !identifier(b.ID, 36) || len(b.ID) != 36 || len(b.Sessions) > 32 || len(b.Accounts) > 32 || len(b.Bindings) > 32 || len(b.Quotas) > 1000 || len(b.Credits) > 100 || len(b.Status) > 3 {
+	if !identifier(b.ID, 36) || len(b.ID) != 36 || len(b.Sessions) > 32 || len(b.Accounts) > 32 || len(b.Bindings) > 32 || len(b.Quotas) > 1000 || len(b.Credits) > 100 || len(b.Status) > 3 || len(b.AccountUsage) > 32 {
 		return ErrInvalid
 	}
-	if len(b.Sessions)+len(b.Accounts)+len(b.Bindings)+len(b.Quotas)+len(b.Credits)+len(b.Status) == 0 {
+	if len(b.Sessions)+len(b.Accounts)+len(b.Bindings)+len(b.Quotas)+len(b.Credits)+len(b.Status)+len(b.AccountUsage) == 0 {
 		return ErrInvalid
+	}
+	usageFacts := 0
+	for _, u := range b.AccountUsage {
+		usageFacts += len(u.Facts)
+		if !u.Valid() || usageFacts > MaxContributions {
+			return ErrInvalid
+		}
 	}
 	seen := make(map[string]bool)
 	for _, snapshot := range b.Sessions {

@@ -523,7 +523,7 @@ func (s *State) EnqueueFactGroups(ctx context.Context, partition string, groups 
 				return ErrProtocol
 			}
 			if candidate.Validate() != nil || len(encoded) > reportingv1.MaxBodyBytes {
-				if len(current.Accounts)+len(current.Bindings)+len(current.Quotas)+len(current.Credits)+len(current.Status) == 0 {
+				if len(current.Accounts)+len(current.Bindings)+len(current.Quotas)+len(current.Credits)+len(current.Status)+len(current.AccountUsage) == 0 {
 					return ErrQueueFull
 				}
 				batches = append(batches, current)
@@ -536,7 +536,7 @@ func (s *State) EnqueueFactGroups(ctx context.Context, partition string, groups 
 		if len(checkpoints) == 0 {
 			return nil
 		}
-		if len(current.Accounts)+len(current.Bindings)+len(current.Quotas)+len(current.Credits)+len(current.Status) > 0 {
+		if len(current.Accounts)+len(current.Bindings)+len(current.Quotas)+len(current.Credits)+len(current.Status)+len(current.AccountUsage) > 0 {
 			batches = append(batches, current)
 		}
 		rows := make([]queued, 0, len(batches))
@@ -572,6 +572,7 @@ func (s *State) EnqueueFactGroups(ctx context.Context, partition string, groups 
 	return
 }
 func mergeFactBatch(a, b reportingv1.Batch) reportingv1.Batch {
+	a.AccountUsage = append(append([]reportingv1.AccountTokenUsage(nil), a.AccountUsage...), b.AccountUsage...)
 	a.Accounts = append([]reportingv1.Account(nil), a.Accounts...)
 	a.Bindings = append([]reportingv1.AccountBinding(nil), a.Bindings...)
 	a.Quotas = append(append([]reportingv1.QuotaObservation(nil), a.Quotas...), b.Quotas...)

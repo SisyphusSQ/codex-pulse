@@ -341,6 +341,22 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 		}
 	}
 	providers := []string{"codex", "cursor", "grok"}
+	if usage, ok := r.source.(interface {
+		AccountUsage(context.Context) ([]FactsGroup, error)
+	}); ok {
+		groups, err := usage.AccountUsage(ctx)
+		if err == nil {
+			_, err = r.state.EnqueueFactGroups(ctx, cfg.partition(), groups, -1)
+			if err == nil {
+				if committed, ok := r.source.(interface{ CommitAccountUsage() }); ok {
+					committed.CommitAccountUsage()
+				}
+			}
+		}
+		if !errors.Is(err, store.ErrReportingSource) {
+			record("codex", err)
+		}
+	}
 	if current, ok := r.source.(interface {
 		CurrentFacts(context.Context, string, int64) (ExportFactsPage, error)
 	}); ok {

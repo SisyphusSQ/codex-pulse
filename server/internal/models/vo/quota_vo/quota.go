@@ -48,6 +48,7 @@ type Cycle struct {
 	LinkedHistory  bool     `json:"linked_history"`
 }
 type Window struct {
+	RecordedTokens   *string       `json:"recorded_tokens"`
 	ObservationCount int64         `json:"observation_count,omitzero"`
 	ObservationPage  int           `json:"observation_page,omitzero"`
 	ObservationLimit int           `json:"observation_limit,omitzero"`

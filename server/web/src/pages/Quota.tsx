@@ -10,7 +10,7 @@ import {ObservationFilters} from '../components/ObservationFilters';
 import {percent} from '../components/QuotaViews';
 import { AccountIdentity, CreditsCard, PacePanel } from '../components/QuotaViews';
 import { EmptyState, ErrorState, LoadingState } from '../components/QueryState';
-import { dateTime, providerNames } from '../format';
+import { dateTime, providerNames, tokens } from '../format';
 
 interface AccountGroup { key:string; accountKey:string|null; account?:QuotaAccount; provider:string; windows:QuotaWindow[]; credits:QuotaCredits[] }
 function allowedMinutes(plan:string|null|undefined):number[]{return ['pro','prolite','pro5x','pro20x'].includes(plan?.toLowerCase()??'')?[10080]:plan?.toLowerCase()==='plus'?[300,10080]:[];}
@@ -59,6 +59,7 @@ export function QuotaAccounts(){
    <div className="quota-summary-value">{w.current.remaining_percent!==null?`剩余 ${percent(w.current.remaining_percent)}`:'尚无有效观测'}</div>
    {w.current.remaining_percent!==null?<Progress aria-label="最后观测剩余额度" percent={w.current.remaining_percent} showInfo={false} size="small" />:null}
    <div className="metric-note">已用 <span>{percent(w.current.used_percent)}</span> · reset {dateTime(w.current.resets_at_ms)}</div>
+   {w.provider==='codex'&&w.window_minutes===10080&&<div className="metric-note">本周期已记录 Token：<Typography.Text strong>{w.recorded_tokens==null?'—':tokens(w.recorded_tokens)}</Typography.Text></div>}
    <div className="metric-note">最后更新 {dateTime(w.current.observed_at_ms)}{w.current.conflict?' · 来源冲突':''}{w.current.freshness==='suspicious'?' · 发现可疑观测，保留有效值':''}{group.accountKey===null?` · ${devices.data?.find(d=>d.id===w.current.selected_client_id)?.name??'来源未知'}`:''}</div>
   </Card>:<Card key={`missing:${minutes}`} size="small" className="quota-window-summary"><strong>{minutes===300?'5 小时':'7 天'}</strong><div className="quota-summary-value">未取得</div><div className="metric-note">等待该窗口的有效采集观测</div></Card>)}</div>
   {!group.windows.length&&<Typography.Paragraph type="secondary">当前账号暂无已收到的额度窗口。</Typography.Paragraph>}

@@ -15,6 +15,8 @@ export interface QuotaObservation {
 }
 export interface QuotaCycle { id:string; start_at_ms:number; resets_at_ms:number; observation_ids:string[]; linked_history:boolean }
 export interface QuotaWindow {
+
+ recorded_tokens?:string|null;
  observation_count?:number; observation_page?:number; observation_limit?:number; key:string; provider:string; account_key:string|null; identity_state:string; limit_id:string; window_kind:string;
  window_minutes:number|null; current:QuotaCurrent; cycles:QuotaCycle[]; observations:QuotaObservation[]; coverage:string;
 }

@@ -13,6 +13,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
+	"github.com/SisyphusSQ/codex-pulse/server/docs/sqls/schema"
 	schema_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/schema_do"
 )
 
@@ -35,7 +36,7 @@ func TestAutomaticMigrationInitializesUpgradesAndPreservesData(t *testing.T) {
 		t.Fatal("automatic v1 upgrade", err)
 	}
 	var marker schema_do.SchemaVersion
-	if err := db.Take(&marker).Error; err != nil || marker.Version != 4 {
+	if err := db.Take(&marker).Error; err != nil || marker.Version != schema.Version {
 		t.Fatal("upgrade marker", err)
 	}
 	if err := s.Migrate(t.Context()); err != nil {

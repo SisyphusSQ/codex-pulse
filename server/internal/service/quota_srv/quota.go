@@ -86,6 +86,9 @@ func (s *Quota) Current(ctx context.Context, principal access_dto.Principal, q q
 			resets := retainedResets(header)
 			if q.View == "summary" {
 				header = retainedWindow(header)
+				if err := s.withAccountTokens(ctx, q, &header, out.EvaluatedAtMS); err != nil {
+					return err
+				}
 				header.Observations = []quota_vo.Observation{}
 				header.Cycles = []quota_vo.Cycle{}
 				out.Windows = append(out.Windows, header)
@@ -103,6 +106,9 @@ func (s *Quota) Current(ctx context.Context, principal access_dto.Principal, q q
 				return err
 			}
 			window = retainedWindow(window)
+			if err := s.withAccountTokens(ctx, q, &window, out.EvaluatedAtMS); err != nil {
+				return err
+			}
 			window.ObservationCount = int64(len(window.Observations))
 			if q.View == "evidence" {
 				page, limit := q.Page, q.Limit
