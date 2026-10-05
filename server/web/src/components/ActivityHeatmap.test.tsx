@@ -19,11 +19,17 @@ describe('aligned annual activity',()=>{
     expect(calendar.months).toEqual([{key:'2026-11',title:'11月',column:3}]);
     expect(calendar.weeks).toBe(2);
   });
-  it('distinguishes unknown, true zero and exact 50/75/90 quantiles above Number precision',()=>{
+  it('displays empty dates as zero and retains exact 50/75/90 quantiles above Number precision',()=>{
     const values=[null,'0',...Array.from({length:10},(_,index)=>(9007199254740992n+BigInt(index)).toString())];
     const calendar=activityCalendar(values.map((tokens,index)=>day(dayjs.utc('2026-10-01').add(index,'day').format('YYYY-MM-DD'),tokens)));
-    expect(calendar.cells.map(cell=>cell.intensity)).toEqual(['unknown','none',...Array(6).fill('level-1'),...Array(2).fill('level-2'),'level-3','level-4']);
+    expect(calendar.cells.map(cell=>cell.intensity)).toEqual(['none','none',...Array(6).fill('level-1'),...Array(2).fill('level-2'),'level-3','level-4']);
     expect(activityCalendar([]).cells).toEqual([]);
+  });
+  it('keeps a missing token field distinct from an empty day',()=>{
+    const missing=day('2026-10-01',null);missing.totals.sessions=1;
+    render(<ActivityHeatmap days={[missing]} />);
+    expect(screen.getByRole('button',{name:'2026-10-01 · Token：—'})).toHaveClass('unknown');
+    expect(screen.queryByText('未知')).not.toBeInTheDocument();
   });
   it('labels the first partial month when there is room without colliding with the next month',()=>{
     const days=Array.from({length:40},(_,index)=>day(dayjs.utc('2025-10-03').add(index,'day').format('YYYY-MM-DD'),null));
@@ -32,16 +38,16 @@ describe('aligned annual activity',()=>{
   it('exposes exact day values with a single keyboard entry and moves by weeks',async()=>{
     const days=Array.from({length:10},(_,index)=>day(dayjs.utc('2026-10-01').add(index,'day').format('YYYY-MM-DD'),index===0?null:index===1?'0':'9007199254740993'));
     render(<ActivityHeatmap days={days} />);
-    expect(screen.getByRole('button',{name:'2026-10-01 · 已收到 Token：未知'})).toHaveClass('unknown');
-    expect(screen.getByRole('button',{name:'2026-10-02 · 已收到 Token：0'})).toHaveClass('none');
+    expect(screen.getByRole('button',{name:'2026-10-01 · Token：0'})).toHaveClass('none');
+    expect(screen.getByRole('button',{name:'2026-10-02 · Token：0'})).toHaveClass('none');
     const buttons=screen.getAllByRole('button');
     expect(buttons.filter(button=>button.tabIndex===0)).toHaveLength(1);
     const user=userEvent.setup();await user.tab();
     expect(buttons[9]).toHaveFocus();
     await user.keyboard('{ArrowLeft}');expect(buttons[2]).toHaveFocus();
-    expect(buttons[2]).toHaveAccessibleName('2026-10-03 · 已收到 Token：90071992.5亿');
+    expect(buttons[2]).toHaveAccessibleName('2026-10-03 · Token：90071992.5亿');
     await user.click(buttons[2]);
-    expect(await screen.findByText('2026-10-03 · 已收到 Token：90071992.5亿')).toBeInTheDocument();
+    expect(await screen.findByText('2026-10-03 · Token：90071992.5亿')).toBeInTheDocument();
     await user.keyboard('{Home}');expect(buttons[0]).toHaveFocus();
     await user.keyboard('{End}');expect(buttons[9]).toHaveFocus();
   });

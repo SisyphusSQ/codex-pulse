@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { Tooltip } from 'antd';
 import type { Day } from '../api/statistics';
-import { dayjs, tokens } from '../format';
+import { dayjs } from '../format';
+import { usageDecimal, usageTokens } from './usageDisplay';
 
 // 参考掘金正值的 50/75/90 分位色阶；只决定颜色，日值与年度指标仍由 Server 提供。
 export function activityCalendar(days: Day[]) {
@@ -19,7 +20,8 @@ export function activityCalendar(days: Day[]) {
   const leading = first.day();
   const cells = days.map(day => {
     const offset = dayjs.utc(day.date).diff(first, 'day');
-    const value = day.totals.total_tokens === null ? null : BigInt(day.totals.total_tokens);
+    const display = usageDecimal(day.totals, 'total_tokens');
+    const value = display === null ? null : BigInt(display);
     const intensity = value === null ? 'unknown' : value === 0n ? 'none' : `level-${1 + thresholds.filter(threshold => value > threshold).length}`;
     return { day, column: Math.floor((leading + offset) / 7) + 2, row: (leading + offset) % 7 + 2, intensity };
   });
@@ -49,11 +51,11 @@ export function ActivityHeatmap({ days }: { days: Day[] }) {
   }
   return <div className="activity-heatmap">
     <div className="activity-calendar-scroll" ref={scroll}>
-      <div className="activity-calendar" role="group" aria-label="过去一年已收到的每日 Token 热力图，方向键选择日期" style={{ '--activity-weeks': calendar.weeks } as CSSProperties}>
+      <div className="activity-calendar" role="group" aria-label="过去一年的每日 Token 热力图，方向键选择日期" style={{ '--activity-weeks': calendar.weeks } as CSSProperties}>
         {calendar.months.map(month => <span className="activity-month" key={month.key} style={{gridColumn:month.column,gridRow:1,justifySelf:month.column===calendar.weeks+1?'end':undefined}}>{month.title}</span>)}
         {['日','一','二','三','四','五','六'].map((label,row) => <span className="activity-weekday" key={row} style={{gridColumn:1,gridRow:row+2}}>{label}</span>)}
         {calendar.cells.map(({day,column,row,intensity},index) => {
-          const detail = `${day.date} · 已收到 Token：${tokens(day.totals.total_tokens)}`;
+          const detail = `${day.date} · Token：${usageTokens(usageDecimal(day.totals, 'total_tokens'))}`;
           return <Tooltip key={day.date} title={detail} trigger={['hover','focus']} styles={{root:{maxWidth:'calc(100vw - 24px)'}}} destroyOnHidden>
             <button type="button" className={`activity-cell ${intensity}`} style={{gridColumn:column,gridRow:row}} aria-label={detail} tabIndex={focused===day.date?0:-1}
               ref={element=>{if(element) buttons.current.set(day.date,element);else buttons.current.delete(day.date);}}
@@ -62,8 +64,8 @@ export function ActivityHeatmap({ days }: { days: Day[] }) {
         })}
       </div>
     </div>
-    <div className="activity-legend" aria-label="Token 活跃度由少到多，灰色表示未知">
-      <span className="activity-cell unknown" />未知<span className="legend-gap" />少
+    <div className="activity-legend" aria-label="Token 活跃度由少到多">
+      少
       {['none','level-1','level-2','level-3','level-4'].map(level => <span key={level} className={`activity-cell ${level}`} />)}多
     </div>
   </div>;
