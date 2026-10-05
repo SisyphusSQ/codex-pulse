@@ -5,7 +5,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { createQueryClient } from '../App';
 import { api } from '../api/client';
-import { summaryFixture } from '../test/statisticsFixture';
+import { summaryFixture, unknownTotals } from '../test/statisticsFixture';
 import { dayjs, dollars, integer } from '../format';
 import type {Summary} from '../api/statistics';
 import Overview from './Overview';
@@ -47,8 +47,8 @@ describe('overview facts',()=>{
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):success(String(path).includes('/usage')?usageFrom(summaryFixture()):summaryFixture()));
     render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
     expect((await screen.findAllByText('90071992.5亿')).length).toBeGreaterThan(0);
-    expect(screen.getByText('已知金额小计，含未定价记录 · 不是实际账单')).toBeInTheDocument();
-    expect(screen.getByRole('button',{name:/采集证据陈旧/})).toBeInTheDocument();expect(await screen.findByText('年度覆盖未确认 · 近期采集')).toBeInTheDocument();
+    expect(screen.queryByText(/不是实际账单/)).not.toBeInTheDocument();
+    expect(screen.getByText(/采集陈旧 · 更新/)).toBeInTheDocument();expect(screen.queryByText(/覆盖未确认/)).not.toBeInTheDocument();
     const user=userEvent.setup();await user.click(screen.getByRole('combobox',{name:'Provider'}));
     await user.click(await screen.findByText('Cursor',{selector:'.ant-select-item-option-content'}));
     await waitFor(()=>expect(fetcher.mock.calls.some(([path])=>new URL(String(path),'http://localhost').searchParams.get('provider')==='cursor')).toBe(true));
@@ -57,6 +57,31 @@ describe('overview facts',()=>{
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):new Response('',{status:503}));
     await user.click(screen.getByRole('button',{name:'刷新'}));
     await screen.findByText('刷新失败，以下保留上次读取的数据');expect(screen.getAllByText('$123.46').length).toBeGreaterThan(0);
+  });
+  it('shows zero for an empty range and annual metrics without rewriting API values',async()=>{
+    const fixture=summaryFixture();fixture.totals={...unknownTotals};fixture.heatmap_totals={...unknownTotals};
+    fixture.heatmap=[{...fixture.heatmap[0],totals:{...unknownTotals}}];
+    fixture.heatmap_activity={total_tokens:null,peak_daily_tokens:null,active_days:null,current_streak_days:null,longest_streak_days:null,observed_days:0,unknown_days:365};
+    fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:fixture.range,items:[],scope:'collector_copies_may_overlap'}):success(fixture));
+    render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
+    await screen.findByText('近 365 天 Token 总量');
+    const annual=within(document.querySelector('.annual-totals') as HTMLElement);
+    expect(annual.getByText('近 365 天 Token 总量').closest('.ant-statistic')).toHaveTextContent('0');
+    expect(annual.getByText('近 365 天 API 等价成本').closest('.ant-statistic')).toHaveTextContent('$0.00');
+    expect(annual.getByText('当前连续天数').closest('.ant-statistic')).toHaveTextContent('0天');
+    const range=within(document.querySelector('.summary-band') as HTMLElement);
+    expect(range.getByText('当前范围 API 等价成本').closest('.ant-statistic')).toHaveTextContent('$0.00');
+    expect(screen.queryByText('未知')).not.toBeInTheDocument();expect(fixture.totals.total_tokens).toBeNull();
+  });
+  it('keeps unpriced usage as a dash with a short tooltip',async()=>{
+    const fixture=summaryFixture();fixture.totals.cost_micro_usd=null;
+    fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):success(fixture));
+    render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
+    await screen.findByText('当前范围 API 等价成本');
+    const cost=screen.getByText('当前范围 API 等价成本').closest('.ant-statistic')!;
+    expect(cost).toHaveTextContent('—');expect(cost).not.toHaveTextContent('$0.00');
+    await userEvent.setup().hover(within(cost as HTMLElement).getByText('—'));
+    expect(await screen.findByText('缺少价格或计费数据')).toBeInTheDocument();
   });
   it('does not turn a failed initial query into an empty range',async()=>{
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):new Response('',{status:503}));
@@ -75,7 +100,7 @@ describe('overview facts',()=>{
     const annual=within(document.querySelector('.annual-totals') as HTMLElement);
     expect(annual.getByText('单日 Token 使用峰值').closest('.ant-statistic')).toHaveTextContent('10万');
     expect(annual.getByText('最长连续天数').closest('.ant-statistic')).toHaveTextContent('4天');
-    expect(annual.getByText('当前连续天数').closest('.ant-statistic')).toHaveTextContent('未知');
+    expect(annual.getByText('当前连续天数').closest('.ant-statistic')).toHaveTextContent('—');
     expect(screen.getByRole('link',{name:'查看账号额度与节奏'})).toHaveAttribute('href','/quota');
     await screen.findByRole('img',{name:'按自然日的用量趋势'});
     const activity=screen.getByText('全年活动').closest('.ant-card')!;

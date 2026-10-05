@@ -19,3 +19,14 @@ it('shows estimated and reported separately, with full raw model filter',async()
 it('leaves unknown model day buckets empty',()=>{const d=data();d.trend.push({...d.trend[0],date:'2026-10-02'});const o=usageChartOption(d,'cost',['codex:gpt-6.1-sol']);const series=o.series as {data:(number|null)[];type:string;stack?:string}[];expect(series[0].data).toEqual([123.456789,null]);expect(series[0].type).toBe('bar');expect(series[0].stack).toBeUndefined();});
 
 it('stacks model bars while retaining zero, missing and partial costs',()=>{const d=data();d.models.push({...d.models[0],model:'other'});d.model_days.push({provider:'codex',model:'other',date:'2026-10-01',totals:{...d.totals,cost_micro_usd:'0'}});d.trend.push({...d.trend[0],date:'2026-10-02'});const o=usageChartOption(d,'cost',['codex:gpt-6.1-sol','codex:other']);const series=o.series as {type:string;stack:string;data:(number|null)[]}[];expect(series.every(s=>s.type==='bar'&&s.stack==='models')).toBe(true);expect(series[1].data).toEqual([0,null]);const tooltip=o.tooltip as {formatter(p:unknown):string};expect(tooltip.formatter([{seriesName:'Codex · gpt-6.1-sol',dataIndex:0,value:123.456789}])).toContain('已知小计');});
+
+it('uses zeros only for absent overview model buckets while retaining unpriced records',()=>{
+ const d=data();d.trend.push({...d.trend[0],date:'2026-10-02'},{...d.trend[0],date:'2026-10-03'});
+ d.model_days.push({...d.model_days[0],date:'2026-10-03',totals:{...d.totals,cost_micro_usd:null}});
+ const o=usageChartOption(d,'cost',['codex:gpt-6.1-sol'],true);
+ expect((o.series as {data:(number|null)[]}[])[0].data).toEqual([123.456789,0,null]);
+ const tooltip=o.tooltip as {formatter(p:unknown):string};
+ expect(tooltip.formatter([{seriesName:'Codex · gpt-6.1-sol',dataIndex:1,value:0}])).toContain('$0.00');
+ expect(tooltip.formatter([{seriesName:'Codex · gpt-6.1-sol',dataIndex:2,value:null}])).toContain('—');
+ expect(d.model_days).toHaveLength(2);expect(d.model_days[1].totals.cost_micro_usd).toBeNull();
+});
