@@ -103,3 +103,23 @@ SQMC04 生产 Server 已先切至 `v0.16.0-3904b8a`，一致停服数据库备�
 未执行：新版 App 的真实 Home/UI 验收、个人数据上传、独立 MySQL、全仓长测/race、CI、签名、公证、commit/push、发版或生产部署。缺少独立起始时间的请求仍未计价；任何未计价请求都会使完整费用合计 unknown。部署升级后旧历史将在后续同步遍历或既有全量补传中更新，本次未操作生产数据。
 
 本次 diff 安全自查：认证、CSRF、来源权限与幂等机制保持原规则；无新增服务端外部请求或执行入口，无凭据/正文/个人路径落库或上报；前端只展示 Go 计算结果，金额使用既有有界整数精度。
+
+## v0.16.1 发布与三机部署（2026-10-06）
+
+用户确认按 Server → SQMC04 试点 → 公开发行及更新源 → SQMC05/SQMC03 的流程执行。实现及 CHANGELOG 经 [PR #199](https://github.com/SisyphusSQ/codex-pulse/pull/199) 合并；SQMC04、SQMC05 的干净 main 分别完成 `pull --ff-only`，发行源码冻结为 `53bcfc952b1c4a61fc00461c6c01d5d954a72a30`。signed annotated tag `v0.16.1` 的签名及远端 peeled commit 均已读回。
+
+SQMC05 从同一 commit 构建 Mac App/Helper 与内嵌 Web 的 Darwin arm64 Server 包。App 构建显式使用 `--skip-app-tests`；本次按约定未重复执行测试，复用上节的开发测试证据。最终 ZIP 和只读挂载的 DMG 均通过 Bundle/build、布局及 ad-hoc codesign 完整性读回。Gatekeeper 预期拒绝（exit 3）、stapler 无票据（exit 65）；未执行 Developer ID 签名或 Apple 公证，公开说明按实际信任等级披露。
+
+[GitHub stable Release v0.16.1](https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.16.1) 已公开、非 Draft、非 prerelease，含 Mac DMG/ZIP、Server 包、两份摘要及两份说明共七个资产。七个资产通过匿名公开下载与候选 SHA-256 比对，下载后的 Mac 签名及 DMG 内容再次读回。之后才更新固定 Sparkle feed 至 0.16.1/build 68；普通和避缓存 URL 均与已签名候选字节一致。签名私钥只在 SQMC05 既有 Keychain 与 stdin 中参与操作，临时签名 LaunchAgent 已卸载。
+
+SQMC04 生产 Server 已切至发行目录 `v0.16.1-53bcfc9`，实际 CLI 版本为 `v0.16.1`、Git commit `53bcfc9`，ready 200。数据库一致备份及旧发行目录保留，原私有配置未变；中心 schema v5 与 checksum 保持一致，DEV 未切换。三台 Mac 均安装 0.16.1/build 68，旧 App、Preferences、事实/队列/凭据数据库备份保留；原配对、600 秒同步间隔及补传范围未变。三台安装现场均为运行状态，更新后 App/Helper 正常；SQLite v37、Preferences v5、真实 Home 物理身份、显式环境/Helper 参数和 0700 runtime 已逐机读回。SQMC03 的独立源码分支未切换。
+
+三机 Helper SHA-256 均为 `587998918f0b1d90bb1c80f548be0ae935e4d891e9fce4034df7da360144d59a`。ZIP 为 `1974c1cf17934fa60ca8a8f714372e38fecab87c5cfa6fab5cc4ab90e43e8d3b`，Server 包为 `72f21455e7bb7666c72b0f1d0c3aee05c55de1755797bab3e2fdc8d5992f69cd`；完整资产摘要保存在公开 Release。
+
+SQMC04 试点读回 DSH 价格目录的 OpenAI 历史版本和完整会话的非零费用。通过既有“全量补传”重发当前范围，未改变起点、重扫日志或清空队列。固定的本机 220 条 Codex usage 全部保留且事实未变；中心原有 1,876 条 DSH 贡献全部保留，模型与 Token 数未变。其中原有 198 条 Codex 贡献，197 条补为已计价，1 条缺独立请求开始时间仍未计价。现场新记录继续增长；对读回时 244 条已计价 Codex 贡献逐条核对费用与 `openai-api-2026-09-29`，零价格差异。此为实际历史修订与定向 Mac → 中心证据，不代表三机完整业务 E2E 或长期稳定性。
+
+用户询问概览空值时，读回 17 个会话中 16 个 exact、1 个 partial；后者记录 104 次请求但只有 103 条 usage。现有 `markMissingUsage` 故意将包含缺 usage 会话的完整 Token/费用合计保留为未知；年度摘要无法与完整合计对账时也不显示完整值，已知模型与趋势仍显示。费用方面，缺独立请求起点的重试同样保留未知；不把缺失值补零，也不承诺下一次同步能补齐。此次未改变这些既有规则。
+
+全量补传在本轮读回时仍由既有队列后台推进；上述 DSH 历史费用已收到，未声称所有客户端历史补传已结束。退出 App 会暂停，下次启动继续。未执行全仓长测/race、CI、独立 MySQL 8.4、全新 macOS 用户首启、Sparkle 自动更新界面的完整 E2E 或长期稳定性验收。
+
+上线安全自查：原认证、Origin/CSRF、配对和来源权限保持；发行包不含私有配置、凭据或源日志，备份和原始运行证据只保存在各机私有忽略目录。未关闭系统信任或网络安全控制。
