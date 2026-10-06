@@ -46,7 +46,7 @@ func (s *Statistics) attachLegacyThroughput(ctx context.Context, q statistics_dt
 	result := statistics_vo.ThroughputTurnsView{Items: []statistics_vo.ThroughputTurnView{}, Limit: limit}
 	ids := make([]string, 0, len(items))
 	for _, item := range items {
-		if item.Provider == "codex" {
+		if item.Provider == "codex" || item.Provider == "dsh" {
 			ids = append(ids, item.ID)
 		}
 	}
@@ -88,7 +88,7 @@ func (s *Statistics) attachLegacyThroughput(ctx context.Context, q statistics_dt
 	for i := range items {
 		item := &items[i]
 		reason := "unsupported_provider"
-		if item.Provider == "codex" {
+		if item.Provider == "codex" || item.Provider == "dsh" {
 			reason = "not_reported"
 		}
 		view := throughputView(reportingv1.ThroughputMeasures{Status: "unavailable", Reason: reason})

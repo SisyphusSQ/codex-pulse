@@ -49,7 +49,7 @@ func validProviderIntent(value ProviderIntent) bool {
 func validProviderPreferences(value ProviderPreferences) bool {
 	return validProviderIntent(value.Codex.Intent) &&
 		validProviderIntent(value.Cursor.Intent) &&
-		validProviderIntent(value.Grok.Intent)
+		validProviderIntent(value.Grok.Intent) && validProviderIntent(value.DSH.Intent)
 }
 
 func validDetachedHomes(

@@ -14,7 +14,9 @@ import (
 var ErrVersion = errors.New("unsupported reporting version")
 var ErrInvalid = errors.New("invalid reporting facts")
 
-func provider(value string) bool { return value == "codex" || value == "cursor" || value == "grok" }
+func provider(value string) bool {
+	return value == "codex" || value == "cursor" || value == "grok" || value == "dsh"
+}
 func text(value string, max int) bool {
 	return utf8.ValidString(value) && utf8.RuneCountInString(value) <= max && !strings.ContainsRune(value, 0)
 }
@@ -41,7 +43,7 @@ func (b Batch) validate(factBudget int) error {
 	if b.Version != Version {
 		return ErrVersion
 	}
-	if !identifier(b.ID, 36) || len(b.ID) != 36 || len(b.Sessions) > 32 || len(b.Accounts) > 32 || len(b.Bindings) > 32 || len(b.Quotas) > 1000 || len(b.Credits) > 100 || len(b.Status) > 3 || len(b.AccountUsage) > 32 {
+	if !identifier(b.ID, 36) || len(b.ID) != 36 || len(b.Sessions) > 32 || len(b.Accounts) > 32 || len(b.Bindings) > 32 || len(b.Quotas) > 1000 || len(b.Credits) > 100 || len(b.Status) > 4 || len(b.AccountUsage) > 32 {
 		return ErrInvalid
 	}
 	if len(b.Sessions)+len(b.Accounts)+len(b.Bindings)+len(b.Quotas)+len(b.Credits)+len(b.Status)+len(b.AccountUsage) == 0 {
@@ -56,7 +58,7 @@ func (b Batch) validate(factBudget int) error {
 	}
 	seen := make(map[string]bool)
 	for _, snapshot := range b.Sessions {
-		if !provider(snapshot.Provider) || !slices.Contains([]string{"", "light_index", "strict_index", "cursor_local", "cursor_dashboard", "grok_local"}, snapshot.SourceKind) || !slices.Contains([]string{"", "session", "unassigned_usage"}, snapshot.SessionKind) || !identifier(snapshot.HomeID, 128) || !identifier(snapshot.SessionID, 255) || snapshot.Revision <= 0 || !timestamp(snapshot.CollectedAtMS) || !timestamp(snapshot.HistoryStartAtMS) || !text(snapshot.Title, 512) || !identifier(snapshot.ProjectID, 255) || !text(snapshot.ProjectName, 255) || !optionalTimestamp(snapshot.CreatedAtMS) || !optionalTimestamp(snapshot.LastActiveAtMS) || len(snapshot.Contributions)+len(snapshot.Invocations) > factBudget {
+		if !provider(snapshot.Provider) || !slices.Contains([]string{"", "light_index", "strict_index", "cursor_local", "cursor_dashboard", "grok_local", "dsh_local"}, snapshot.SourceKind) || !slices.Contains([]string{"", "session", "unassigned_usage"}, snapshot.SessionKind) || !identifier(snapshot.HomeID, 128) || !identifier(snapshot.SessionID, 255) || snapshot.Revision <= 0 || !timestamp(snapshot.CollectedAtMS) || !timestamp(snapshot.HistoryStartAtMS) || !text(snapshot.Title, 512) || !identifier(snapshot.ProjectID, 255) || !text(snapshot.ProjectName, 255) || !optionalTimestamp(snapshot.CreatedAtMS) || !optionalTimestamp(snapshot.LastActiveAtMS) || len(snapshot.Contributions)+len(snapshot.Invocations) > factBudget {
 			return ErrInvalid
 		}
 		if snapshot.Chunk != nil && !validChunk(snapshot) {

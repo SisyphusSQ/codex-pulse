@@ -597,6 +597,8 @@ func (runtime *applicationControlRuntime) AccountSnapshot(
 	switch provider {
 	case agentprovider.Cursor:
 		return runtime.cursorAccountSnapshot(operationContext)
+	case agentprovider.DSH:
+		return core.AccountSnapshot{}, nil
 	case agentprovider.Grok:
 		return runtime.grokAccountSnapshot(operationContext)
 	case agentprovider.Codex:

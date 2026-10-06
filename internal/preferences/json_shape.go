@@ -90,6 +90,9 @@ func validateV3JSONShape(content []byte) error {
 }
 
 func validateCurrentJSONShape(content []byte) error {
+	return validateV4OrCurrentJSONShape(content, true)
+}
+func validateV4OrCurrentJSONShape(content []byte, current bool) error {
 	if err := validateJSONDocument(content); err != nil {
 		return err
 	}
@@ -123,18 +126,23 @@ func validateCurrentJSONShape(content []byte) error {
 	if _, err := decodeObjectField(root, "codex_accounts", "retain_quota_history"); err != nil {
 		return err
 	}
-	if err := validateProvidersJSON(root["providers"]); err != nil {
+	if err := validateProvidersJSONFor(root["providers"], current); err != nil {
 		return err
 	}
 	return validateSharedPreferencesObjects(root)
 }
 
-func validateProvidersJSON(raw json.RawMessage) error {
-	providers, err := decodeRequiredObject(raw, "codex", "cursor", "grok")
+func validateProvidersJSON(raw json.RawMessage) error { return validateProvidersJSONFor(raw, false) }
+func validateProvidersJSONFor(raw json.RawMessage, current bool) error {
+	names := []string{"codex", "cursor", "grok"}
+	if current {
+		names = append(names, "dsh")
+	}
+	providers, err := decodeRequiredObject(raw, names...)
 	if err != nil {
 		return err
 	}
-	for _, name := range []string{"codex", "cursor", "grok"} {
+	for _, name := range names {
 		if _, err := decodeRequiredObject(providers[name], "intent"); err != nil {
 			return err
 		}

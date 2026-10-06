@@ -18,11 +18,11 @@ Codex Pulse 以一个明确的客户端上下文查询和展示数据。产品 U
 
 `auto + available` 默认启用；显式 `disabled` 在 restart、wake、foreground、数据源重新出现和应用升级后都必须保持关闭。Discovery 只允许路径解析、`lstat/stat`、类型/权限和已存在安全探针读取的物理身份，不得打开 Session/JSONL 正文、Cursor SQLite 内容、Grok `auth.json`，也不得发网络请求或写源目录。Reason code 只使用 `available`、`not_found`、`permission_denied`、`unsafe_path`、`invalid_type`、`probe_failed`、`disabled`、`disabling`、`unchecked`。
 
-关闭顺序固定为：先拒绝新 admission，再取消 operation context，再 drain 已接纳任务。旧 generation 在 stable disabled 后不得发布 Store、cache 或 invalidation。当前页面不得把 disabled Provider 的历史快照冒充当前事实；历史仍保存在 Store。`DashboardSummary` 只聚合 effective enabled Provider；全部关闭时返回 complete known-empty，而不是 service unavailable。direct query 命中显式 disabled 返回稳定错误 `provider_disabled`（`retryable=false`）；unavailable 保持可恢复。全局手动刷新仍按 `codex → cursor → grok` 回执，disabled 项为 `skipped_disabled`。
+关闭顺序固定为：先拒绝新 admission，再取消 operation context，再 drain 已接纳任务。旧 generation 在 stable disabled 后不得发布 Store、cache 或 invalidation。当前页面不得把 disabled Provider 的历史快照冒充当前事实；历史仍保存在 Store。`DashboardSummary` 只聚合 effective enabled Provider；全部关闭时返回 complete known-empty，而不是 service unavailable。direct query 命中显式 disabled 返回稳定错误 `provider_disabled`（`retryable=false`）；unavailable 保持可恢复。全局手动刷新仍按 `codex → cursor → grok → dsh` 回执，disabled 项为 `skipped_disabled`。
 
-子开关从属于主开关：Codex 沿用 quota / reset credits；Cursor 新增 `cursor_online_enabled` 统一控制 Dashboard 月额度和 Grok Bot 在线请求，本地 snapshot 仍受 Cursor 主开关控制；Grok 沿用 quota / credential auto-refresh。主开关关闭期间不修改子开关持久值。Preferences schema 为 v4，并新增默认开启的 Codex 账号额度历史保留设置；无 Codex Home 时 `codex_home` 可省略，Onboarding.Completed 只表示 preferences 已初始化。握手为 `core-rpc-v9`，控制面为 `provider-control-v1`。application SQLite schema 为 v34。
+子开关从属于主开关：Codex 沿用 quota / reset credits；Cursor 新增 `cursor_online_enabled` 统一控制 Dashboard 月额度和 Grok Bot 在线请求，本地 snapshot 仍受 Cursor 主开关控制；Grok 沿用 quota / credential auto-refresh。主开关关闭期间不修改子开关持久值。Preferences schema 为 v5，并新增默认开启的 Codex 账号额度历史保留设置；无 Codex Home 时 `codex_home` 可省略，Onboarding.Completed 只表示 preferences 已初始化。握手为 `core-rpc-v9`，控制面为 `provider-control-v1`。application SQLite schema 为 v36。
 
-空 `ProviderScope` 仍归一为 `codex`，以兼容旧请求；未知非空值必须失败，不得默认成 Codex 或 Cursor。Router、AccountSnapshot、PricingCatalog 和 Swift 展示必须显式三路分发，禁止 `if cursor else Codex` 把 Grok 漏进另一家客户端。关闭后的 Router 必须在调用后端前拒绝 disabled Provider。
+空 `ProviderScope` 仍归一为 `codex`，以兼容旧请求；未知非空值必须失败，不得默认成 Codex 或 Cursor。Router、AccountSnapshot、PricingCatalog 和 Swift 展示必须显式四路分发，禁止 `if cursor else Codex` 把 Grok 漏进另一家客户端。关闭后的 Router 必须在调用后端前拒绝 disabled Provider。
 
 额度手动刷新沿用同一个 `RequestQuotaRefresh` RPC，并与额度查询一样携带 `ProviderScope`；回执必须回显 `ProviderContext.effective_provider`，Swift 只接受与发起请求时客户端一致的回执。空 scope 继续走 Codex durable quota coordinator；Cursor 与 Grok 只接受 `source=quota`，分别同步触发 Cursor Dashboard 月额度与 Grok billing credits collector，成功提交后失效对应只读快照并通知客户端重查。Cursor/Grok 不支持 `reset_credits`，不得把外部客户端刷新误送给 Codex。界面上 Codex 保留“刷新数据”菜单及额度/重置次数两项，Cursor 与 Grok 在同一位置显示直接“刷新额度”按钮。
 
@@ -57,7 +57,7 @@ Cursor 页面查询优先读取已提交 snapshot，并在进程内按 generatio
 | Cursor 内 `cursor-grok-*` 模型 | Cursor Models 月额度桶 | `GetCurrentPeriodUsage` / usage event 的月账期 | Grok Bot 周额度，或 Grok 客户端 billing credits |
 | 独立 Grok 客户端 | `grok` Agent Provider | CLI proxy `GET /billing?format=credits` | Cursor Dashboard 任一窗口 |
 
-当前产品仍然只有三个 Agent Provider：`codex` / `cursor` / `grok`。Grok Bot 不是第四个客户端。
+当前产品仍然只有四个 Agent Provider：`codex` / `cursor` / `grok` / `dsh`。Grok Bot 仍属于 Cursor，不是独立客户端。
 
 ## 身份、合并与持久化
 
@@ -191,3 +191,7 @@ Preferences 提供两个独立开关：`online.grok_quota_enabled` 控制 billin
 Cursor collector 在写盘前丢弃 prompt、response、thought、tool input/output、FTS body、tracked file content、browser logs/cookies、邮箱、原始路径和未知字段。Grok collector 在写盘前丢弃 `updates.jsonl` 正文与 tool payload、`chat_history.jsonl`、`system_prompt.txt`、`session_search.sqlite` 的 title/content、`auth.json` 密钥材料、完整路径和未知字段。公共 DTO、日志与提交版证据不得包含绝对路径、原始 ID、内容或凭据。Cursor Desktop access token 与 Grok `auth.json` Bearer / refresh token 都只在对应网络调用及原子凭据更新期间存在于 Helper 内存，不写入 preferences、日志、Codex Pulse 数据库或仓库。
 
 单元、contract、CI 和 deterministic smoke 使用 synthetic/empty Codex、Cursor 与 Grok Home。`CODEX_PULSE_CURSOR_HOME` 与 `CODEX_PULSE_GROK_HOME` 只用于给这些进程显式绑定隔离的绝对测试根目录。真实产品验收可只读访问真实 Codex / Cursor / Grok 数据，但必须写入私有 mode `0700` runtime，并只保存脱敏聚合证据。Grok 验收不得用 isolated / empty Home 冒充真实产品结论，也不得把 Cursor 内的 Grok 模型用量当作 Grok 客户端证据。
+
+## DSH
+
+第四个客户端的来源格式、分叉和重试归属、美元峰谷规则、Mac/中心范围、未知语义和隐私边界见 [DSH 设计](dsh.md)。DSH 不提供由本地日志无法证明的账户余额或官方额度。

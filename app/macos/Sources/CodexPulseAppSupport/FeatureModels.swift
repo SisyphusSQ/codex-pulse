@@ -217,7 +217,8 @@ public struct SettingsDraft: Equatable, Sendable {
     public var retainCodexAccountQuotaHistory: Bool
     public var codexIntent: Codexpulse_Core_V1_ProviderIntent
     public var cursorIntent: Codexpulse_Core_V1_ProviderIntent
-    public var grokIntent: Codexpulse_Core_V1_ProviderIntent
+    public var dshIntent: Codexpulse_Core_V1_ProviderIntent
+ public var grokIntent: Codexpulse_Core_V1_ProviderIntent
 
     public init(_ response: Codexpulse_Core_V1_SettingsResponse) {
         let snapshot = response.snapshot
@@ -241,6 +242,7 @@ public struct SettingsDraft: Equatable, Sendable {
         codexIntent = catalog.state(for: .codex)?.intent ?? .auto
         cursorIntent = catalog.state(for: .cursor)?.intent ?? .auto
         grokIntent = catalog.state(for: .grok)?.intent ?? .auto
+        dshIntent = catalog.state(for: .dsh)?.intent ?? .auto
     }
 
     public func makeRequest(
@@ -307,6 +309,10 @@ public struct SettingsDraft: Equatable, Sendable {
                 provider: .grok,
                 intent: editable.contains("providers.grok.intent") ? grokIntent : current.grokIntent
             ),
+            providerUpdate(
+                provider: .dsh,
+                intent: editable.contains("providers.dsh.intent") ? dshIntent : current.dshIntent
+            ),
         ]
         return request
     }
@@ -332,6 +338,7 @@ public struct SettingsDraft: Equatable, Sendable {
         case .codex: codexIntent
         case .cursor: cursorIntent
         case .grok: grokIntent
+        case .dsh: dshIntent
         }
     }
 
@@ -340,6 +347,7 @@ public struct SettingsDraft: Equatable, Sendable {
         case .codex: codexIntent = intent
         case .cursor: cursorIntent = intent
         case .grok: grokIntent = intent
+        case .dsh: dshIntent = intent
         }
     }
 

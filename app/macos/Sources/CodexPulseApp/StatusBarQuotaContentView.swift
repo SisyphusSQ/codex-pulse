@@ -88,6 +88,9 @@ final class StatusBarQuotaContentView: NSView {
     private var secondaryFont: NSFont { .systemFont(ofSize: 9, weight: .semibold) }
     private var fallbackFont: NSFont { .systemFont(ofSize: 11, weight: .medium) }
 
+    // DSH uses a fixed decorative indicator; it has no official remaining quota.
+    private var indicatorPercent: Double? { provider == .dsh ? 100 : summary?.remainingPercent }
+
     private var cursorFallbackLines: [String]? {
         let lines = fallbackText.components(separatedBy: " · ")
         return lines.count == 2 ? lines : nil
@@ -173,7 +176,7 @@ final class StatusBarQuotaContentView: NSView {
             radius: ringRect.width / 2,
             startAngle: 90,
             sweepAngle: 360,
-            percent: summary.remainingPercent,
+            percent: indicatorPercent,
             color: accentColor(summary),
             lineWidth: 4.2
         )
@@ -199,7 +202,7 @@ final class StatusBarQuotaContentView: NSView {
             radius: radius,
             startAngle: 220,
             sweepAngle: 260,
-            percent: summary.remainingPercent,
+            percent: indicatorPercent,
             color: accentColor(summary),
             lineWidth: 4.2
         )
@@ -226,12 +229,12 @@ final class StatusBarQuotaContentView: NSView {
             radius: radius,
             startAngle: 180,
             sweepAngle: 180,
-            percent: summary.remainingPercent,
+            percent: indicatorPercent,
             color: accentColor(summary),
             lineWidth: 3.5
         )
 
-        guard let percent = summary.remainingPercent else { return }
+        guard let percent = indicatorPercent else { return }
         let progress = CGFloat(max(0, min(100, percent))) / 100
         let angle = (180 - progress * 180) * .pi / 180
         let needleEnd = NSPoint(
@@ -289,6 +292,7 @@ final class StatusBarQuotaContentView: NSView {
     }
 
     private func accentColor(_ summary: StatusBarQuotaPresentation) -> NSColor {
+        if provider == .dsh { return .systemGreen }
         guard summary.dataState.preservesRemainingColor else { return .secondaryLabelColor }
         switch QuotaLevel(remainingPercent: summary.remainingPercent) {
         case .healthy: return NSColor.systemGreen

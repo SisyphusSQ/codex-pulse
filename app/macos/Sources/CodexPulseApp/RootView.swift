@@ -40,7 +40,11 @@ struct RootView: View {
                 if !model.enabledProviders.isEmpty {
                 Section(localization.text("sidebar.section.usage")) {
 					ForEach(AppFeature.usageFeatures(for: model.selectedProvider)) { section in
-                        Label(section.title(localization: localization), systemImage: section.symbol)
+                        Label(
+                            model.selectedProvider == .dsh && section == .quotaUsage
+                                ? localization.textValue("用量") : section.title(localization: localization),
+                            systemImage: section.symbol
+                        )
                             .tag(section)
                     }
                 }
@@ -133,8 +137,13 @@ struct RootView: View {
         )
     }
 
+    private var selectedFeatureTitle: String {
+        model.selectedProvider == .dsh && model.selectedFeature == .quotaUsage
+            ? localization.textValue("用量") : model.selectedFeature.title(localization: localization)
+    }
+
     private var navigationTitle: String {
-        let featureTitle = model.selectedFeature.title(localization: localization)
+        let featureTitle = selectedFeatureTitle
         if model.selectedFeature == .apiSubscriptions
             || model.selectedFeature == .dashboardSummary
             || model.selectedFeature == .settings
@@ -165,7 +174,7 @@ struct RootView: View {
 
     private var currentReloadTitle: String {
         localization.format(
-            "重新加载「%@」", model.selectedFeature.title(localization: localization)
+            "重新加载「%@」", selectedFeatureTitle
         )
     }
 
@@ -216,8 +225,6 @@ struct RootView: View {
                 RuntimeAwarePage(model: model) { QuotaUsageView(model: model) }
             case .accountQuotas:
                 RuntimeAwarePage(model: model) { CodexAccountQuotasView(model: model) }
-            case .invocationUsage:
-                RuntimeAwarePage(model: model) { InvocationUsageView(model: model) }
             case .apiSubscriptions:
                 RuntimeAwarePage(model: model) { APISubscriptionsView(model: model) }
             case .localStatus:
@@ -243,7 +250,7 @@ struct NoEnabledProviderView: View {
         ContentUnavailableView {
             Label("尚未启用客户端", systemImage: "switch.2")
         } description: {
-            Text("打开设置后可以启用 Codex、Cursor 或 Grok。")
+            Text("打开设置后可以启用 Codex、Cursor、Grok 或 DSH。")
         } actions: {
             Button("打开设置") { onOpenSettings() }
                 .accessibilityIdentifier("empty-providers.open-settings")
@@ -303,19 +310,13 @@ struct OverviewStateView: View {
 
     @ViewBuilder
     private func overviewContent(_ overview: OverviewPresentation) -> some View {
-        if let provider = model.selectedProvider, provider == .cursor || provider == .grok {
+        if let provider = model.selectedProvider, provider == .cursor || provider == .grok || provider == .dsh {
             CursorOverviewContentView(
                 provider: provider,
                 overview: overview,
 				selectedRange: model.overviewRange,
 				onSelectRange: model.selectOverviewRange,
-				onNavigate: { feature in
-					if feature == .invocationUsage {
-						model.navigateToInvocationUsageFromOverview()
-					} else {
-						onNavigate(feature)
-					}
-				},
+				onNavigate: onNavigate,
 				onSelectProject: { projectKey in
 					model.projectOptions.range = model.overviewRange
 					model.projectOptions.exactRange = overview.contentRange
@@ -335,13 +336,7 @@ struct OverviewStateView: View {
             overview: overview,
             selectedRange: model.overviewRange,
             onSelectRange: model.selectOverviewRange,
-            onNavigate: { feature in
-                if feature == .invocationUsage {
-                    model.navigateToInvocationUsageFromOverview()
-                } else {
-                    onNavigate(feature)
-                }
-            },
+            onNavigate: onNavigate,
             onSelectProject: { projectKey in
                 model.projectOptions.range = model.overviewRange
                 model.projectOptions.exactRange = overview.contentRange
@@ -384,6 +379,7 @@ private struct CursorOverviewContentView: View {
 	private var ranges: [DateRangePreset] {
 		switch provider {
 		case .grok: [.quotaWeek, .quotaMonth, .today, .sevenDays, .thirtyDays]
+		case .dsh: [.today, .sevenDays, .thirtyDays]
 		case .cursor: [.quotaMonth, .today, .sevenDays, .thirtyDays]
 		case .codex: [.quotaWeek, .today, .sevenDays, .thirtyDays]
 		}
@@ -401,7 +397,7 @@ private struct CursorOverviewContentView: View {
 					if summary.showsRecentActivityFallback || summary.usesLastKnownTodayData {
 						activityNotice(summary)
 					}
-					cursorQuotaStatusStrip
+					if provider != .dsh { cursorQuotaStatusStrip }
 					tokenActivitySection
 					consumptionSection(summary)
 					modelSection(summary, fillsProposedHeight: false)
@@ -410,7 +406,6 @@ private struct CursorOverviewContentView: View {
 						OverviewInvocationProfileCard(
 							profile: overview.invocationProfile,
 							rangeLabel: overview.usageRangeLabel,
-							onNavigate: { onNavigate(.invocationUsage) },
 							localization: localization,
 							showsSkillActivity: false,
 							showsAIEditActivity: provider == .cursor
@@ -422,7 +417,7 @@ private struct CursorOverviewContentView: View {
 				.frame(maxWidth: .infinity, alignment: .leading)
 			}
 		}
-		.accessibilityIdentifier(provider == .grok ? "page.overview.grok" : "page.overview.cursor")
+		.accessibilityIdentifier("page.overview.\(provider.rawValue)")
 	}
 
 	private var officialPeriodFellBack: Bool {
@@ -452,7 +447,7 @@ private struct CursorOverviewContentView: View {
 	private var pageHeader: some View {
 		HStack(alignment: .center, spacing: 20) {
 			VStack(alignment: .leading, spacing: 4) {
-				Text(provider == .grok ? "Grok 概览" : "Cursor 概览").font(.largeTitle.bold())
+				Text("\(provider.title) 概览").font(.largeTitle.bold())
 				Text(provider == .grok ? "额度周期、近期趋势与工作归属" : "今日状态、近期趋势与工作归属").foregroundStyle(.secondary)
 			}
 			Spacer()
@@ -753,8 +748,8 @@ private struct CursorOverviewContentView: View {
 			} else {
 				Divider()
 				VStack(alignment: .leading, spacing: 5) {
-					Text(summary.rangeCostBasis == .reported
-						? "Grok 上报费用" : "xAI 参考价估算")
+					Text(provider == .dsh ? "DeepSeek API 公价估算" : (summary.rangeCostBasis == .reported
+						? "Grok 上报费用" : "xAI 参考价估算"))
 						.font(.subheadline.weight(.medium))
 						.foregroundStyle(.secondary)
 					Text(metricText(summary.rangePrimaryCost, cost: true))
@@ -1227,7 +1222,6 @@ private struct OverviewContentView: View {
         OverviewInvocationProfileCard(
             profile: overview.invocationProfile,
             rangeLabel: overview.usageRangeLabel,
-            onNavigate: { onNavigate(.invocationUsage) },
             localization: localization
         )
     }
@@ -1335,7 +1329,6 @@ private struct OverviewContentView: View {
 private struct OverviewInvocationProfileCard: View {
     let profile: OverviewInvocationProfilePresentation
     let rangeLabel: String
-    let onNavigate: () -> Void
     let localization: AppLocalization
 	let showsSkillActivity: Bool
 	let showsAIEditActivity: Bool
@@ -1343,14 +1336,12 @@ private struct OverviewInvocationProfileCard: View {
 	init(
 		profile: OverviewInvocationProfilePresentation,
 		rangeLabel: String,
-		onNavigate: @escaping () -> Void,
 		localization: AppLocalization,
 		showsSkillActivity: Bool = true,
 		showsAIEditActivity: Bool = false
 	) {
 		self.profile = profile
 		self.rangeLabel = rangeLabel
-		self.onNavigate = onNavigate
 		self.localization = localization
 		self.showsSkillActivity = showsSkillActivity
 		self.showsAIEditActivity = showsAIEditActivity
@@ -1362,8 +1353,6 @@ private struct OverviewInvocationProfileCard: View {
                 Text(localization.textValue("调用画像"))
                     .font(.headline)
                 Spacer()
-                Button(localization.textValue("查看完整调用统计"), action: onNavigate)
-                    .buttonStyle(.link)
             }
             Text(localization.format(
                 "%@ · %@",

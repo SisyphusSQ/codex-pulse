@@ -81,3 +81,9 @@ CoreService 新增 `FullSyncReporting(Empty)`，精确握手为 core-rpc-v9。�
 ## TOO-524 调用字段退出业务上报
 
 新Helper导出与新队列不包含Invocation。中心不写调用表、不参与调用仲裁与统计；既有历史表保留，原生工具/技能功能保留。v1 Invocation与分片计数仍保留供升级前不可变待传队列、旧客户端摘要校验和重放；不能原位删掉旧正文中的字段。旧来源payload保留重放所需的原内容，canonical投影移除调用。三机需分别升级Helper，中心上线本身不能证明所有发送方已停止新调用导出。参见 [中心优化设计](../../../../docs/design/details/multi-machine-reporting/center-overview.md)。
+
+## DSH
+
+Provider 白名单新增 `dsh`，Session SourceKind 为 `dsh_local`；DeviceStatus 每批最多四个独立客户端。DSH 本机 Session ID 已由源 header ID 派生 hash，Home 继续使用安装级 HMAC。Contribution 输入包含未缓存、缓存读和缓存写，reasoning 为输出子集；采用 `event_cost`，USD 成本与 `:peak` / `:off_peak` 历史版本一同上报，中心不按当前价格重算。
+
+`dsh_local` 也可携带现有 cache_usage/throughput v1 安全胶囊，生命周期基准与历史裁剪边界不变。无可验证官方额度或账户时不生成相关观测，不导出工具调用。Server 应先于 App 升级；旧中心拒绝 DSH 时保留不可变队列，不能当成成功确认。详见 [DSH 设计](../../../../docs/design/details/providers/dsh.md)。

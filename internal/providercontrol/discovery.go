@@ -40,6 +40,27 @@ func DefaultProbes(_ PreferencesReader, defaultCodexHome func() string) ProbeSet
 			}
 			return firstAvailable(probeDirectory(projectsRoot), probeFile(stateDatabase))
 		},
+		DSH: func(ctx context.Context) ProbeResult {
+			if ctx.Err() != nil {
+				return ProbeResult{State: DiscoveryInvalid, ReasonCode: ReasonProbeFailed}
+			}
+			home := strings.TrimSpace(os.Getenv("CODEX_PULSE_DSH_HOME"))
+			if home == "" {
+				home = strings.TrimSpace(os.Getenv("DSH_HOME"))
+			}
+			if home == "" {
+				userHome, err := os.UserHomeDir()
+				if err != nil {
+					return ProbeResult{State: DiscoveryInvalid, ReasonCode: ReasonProbeFailed}
+				}
+				home = filepath.Join(userHome, ".dsh")
+			}
+			root := strings.TrimSpace(os.Getenv("CODEX_PULSE_DSH_SESSIONS_ROOT"))
+			if root == "" {
+				root = filepath.Join(home, "sessions")
+			}
+			return probeDirectory(root)
+		},
 		Grok: func(ctx context.Context) ProbeResult {
 			if err := ctx.Err(); err != nil {
 				return ProbeResult{State: DiscoveryInvalid, ReasonCode: ReasonProbeFailed}

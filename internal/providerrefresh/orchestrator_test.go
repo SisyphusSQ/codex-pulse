@@ -77,7 +77,7 @@ func TestOrchestratorReturnsStableProviderOrderAndPartialResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Refresh() error = %v", err)
 	}
-	if receipt.Trigger != TriggerManual || len(receipt.Providers) != 3 {
+	if receipt.Trigger != TriggerManual || len(receipt.Providers) != 4 {
 		t.Fatalf("receipt = %#v", receipt)
 	}
 	if receipt.Providers[0].Provider != agentprovider.Codex ||
@@ -371,7 +371,7 @@ func TestOrchestratorSkipsDisabledProviderWithoutCallingAdapter(t *testing.T) {
 		SchemaVersion: preferences.CurrentPreferencesSchemaVersion,
 		Revision:      1,
 		Onboarding:    preferences.OnboardingPreferences{Version: preferences.CurrentOnboardingVersion, Completed: true},
-		Providers: preferences.ProviderPreferences{
+		Providers: preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 			Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 			Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 			Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
@@ -410,7 +410,7 @@ func TestOrchestratorSkipsDisabledProviderWithoutCallingAdapter(t *testing.T) {
 	if grok.calls.Load() != 1 || codex.calls.Load() != 1 {
 		t.Fatalf("sibling adapter calls cursor=%d grok=%d codex=%d", cursor.calls.Load(), grok.calls.Load(), codex.calls.Load())
 	}
-	if len(receipt.Providers) != 3 ||
+	if len(receipt.Providers) != 4 ||
 		receipt.Providers[1].Provider != agentprovider.Cursor ||
 		receipt.Providers[1].Status != StatusSkippedDisabled {
 		t.Fatalf("receipt = %#v", receipt)

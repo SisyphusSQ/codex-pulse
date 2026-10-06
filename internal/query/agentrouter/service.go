@@ -40,6 +40,7 @@ type QuotaRouter struct {
 	codex  QuotaService
 	cursor ProviderQuotaService
 	grok   ProviderQuotaService
+	dsh    QuotaService
 	states providercontrol.StateReader
 }
 
@@ -128,6 +129,11 @@ func (service *QuotaRouter) quotaBackend(provider string) (QuotaService, error) 
 	switch provider {
 	case agentprovider.Cursor:
 		return service.cursor, nil
+	case agentprovider.DSH:
+		if service.dsh != nil {
+			return service.dsh, nil
+		}
+		return nil, basequery.NewUnavailableFailure(nil)
 	case agentprovider.Grok:
 		return service.grok, nil
 	case agentprovider.Codex:
@@ -159,6 +165,8 @@ type Service struct {
 	cursorUsage      UsageService
 	cursorInvocation InvocationService
 	grokUsage        UsageService
+	dshUsage         UsageService
+	dshInvocation    InvocationService
 	grokInvocation   InvocationService
 	states           providercontrol.StateReader
 }
@@ -181,6 +189,12 @@ func New(
 		grokUsage: grokUsage, grokInvocation: grokInvocation,
 	}, nil
 }
+
+func (service *Service) BindDSH(usage UsageService, invocation InvocationService) {
+	service.dshUsage = usage
+	service.dshInvocation = invocation
+}
+func (router *QuotaRouter) BindDSH(quota QuotaService) { router.dsh = quota }
 
 func (service *Service) BindStates(reader providercontrol.StateReader) {
 	if service == nil {
@@ -384,6 +398,11 @@ func (service *Service) usageBackend(provider string) (UsageService, error) {
 	switch provider {
 	case agentprovider.Cursor:
 		return service.cursorUsage, nil
+	case agentprovider.DSH:
+		if service.dshUsage != nil {
+			return service.dshUsage, nil
+		}
+		return nil, basequery.NewUnavailableFailure(nil)
 	case agentprovider.Grok:
 		return service.grokUsage, nil
 	case agentprovider.Codex:
@@ -397,6 +416,11 @@ func (service *Service) invocationBackend(provider string) (InvocationService, e
 	switch provider {
 	case agentprovider.Cursor:
 		return service.cursorInvocation, nil
+	case agentprovider.DSH:
+		if service.dshInvocation != nil {
+			return service.dshInvocation, nil
+		}
+		return nil, basequery.NewUnavailableFailure(nil)
 	case agentprovider.Grok:
 		return service.grokInvocation, nil
 	case agentprovider.Codex:

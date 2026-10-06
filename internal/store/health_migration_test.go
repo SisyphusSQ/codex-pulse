@@ -15,7 +15,7 @@ import (
 
 func TestApplicationSchemaV14CreatesHealthEvaluatorEventAllowlist(t *testing.T) {
 	t.Parallel()
-	if applicationSchemaVersion != applicationSchemaV35Version {
+	if applicationSchemaVersion != applicationSchemaV37Version {
 		t.Fatalf("applicationSchemaVersion = %d, want 34", applicationSchemaVersion)
 	}
 	const wantChecksum = "684650b2128c1aeb7db65433d6f6e3349111fff714804e694dfa98c097ed11af"

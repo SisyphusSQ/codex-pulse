@@ -35,7 +35,7 @@ func (s *Statistics) attachThroughput(ctx context.Context, q statistics_dto.Stat
 	result = statistics_vo.ThroughputTurnsView{Items: []statistics_vo.ThroughputTurnView{}, Limit: limit}
 	ids := []string{}
 	for _, item := range items {
-		if item.Provider == "codex" {
+		if item.Provider == "codex" || item.Provider == "dsh" {
 			ids = append(ids, item.ID)
 		}
 	}
@@ -54,7 +54,7 @@ func (s *Statistics) attachThroughput(ctx context.Context, q statistics_dto.Stat
 	}
 	// 旧库摘要首次补建期间，维持原有指标语义；后台只需重建一次。
 	for _, item := range items {
-		if item.Provider != "codex" {
+		if item.Provider != "codex" && item.Provider != "dsh" {
 			continue
 		}
 		id := item.ID
@@ -80,7 +80,7 @@ func (s *Statistics) attachThroughput(ctx context.Context, q statistics_dto.Stat
 		}
 		item.CacheHitRate = cacheHitRateView(chosen, owner, item.Provider, nil)
 		reason := "not_reported"
-		if item.Provider != "codex" {
+		if item.Provider != "codex" && item.Provider != "dsh" {
 			reason = "unsupported_provider"
 		}
 		view := throughputView(reportingv1.ThroughputMeasures{Status: "unavailable", Reason: reason})

@@ -35,8 +35,12 @@ func (s *Statistics) usage(ctx context.Context, q statistics_dto.StatisticsQuery
 		totals, _ := read.total.finish(known)
 		out = statistics_vo.UsageResponse{Range: statisticsRange(q), Scope: read.scope(), Totals: totals, Coverage: read.coverage(s.now()), Models: []statistics_vo.UsageModel{}, ModelDays: []statistics_vo.UsageModelDay{}, Trend: read.trend(), Providers: statisticsSlices(read.providers, known), CursorPools: statisticsSlices(read.cursorPools, known)}
 		cacheProvider := q.Provider
-		if cacheProvider == "" && len(read.providerSeen) == 1 && read.providerSeen["codex"] {
-			cacheProvider = "codex"
+		if cacheProvider == "" && len(read.providerSeen) == 1 && (read.providerSeen["codex"] || read.providerSeen["dsh"]) {
+			if read.providerSeen["dsh"] {
+				cacheProvider = "dsh"
+			} else {
+				cacheProvider = "codex"
+			}
 		}
 		out.CacheHitRate = rangeCacheHitRate(read.total, cacheProvider)
 		sum := new(big.Int)

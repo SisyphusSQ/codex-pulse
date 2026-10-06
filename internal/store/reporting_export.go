@@ -38,7 +38,7 @@ func (r *Repository) ReportingPage(ctx context.Context, provider string, source 
 		switch provider {
 		case "codex":
 			return exportReportingCodex(db, source, after, &page)
-		case "cursor", "grok":
+		case "cursor", "grok", "dsh":
 			return exportReportingAgent(db, provider, source, after, &page)
 		default:
 			return ErrReportingSource
@@ -308,6 +308,17 @@ func exportReportingAgent(db *gorm.DB, provider string, source ReportingSource, 
 		}
 		assignReportingIDs(&s)
 		s.Contributions = reportingRange(s.Contributions, source.StartAtMS)
+		if provider == "dsh" && source.StartAtMS > 0 {
+			s.HistoryStartAtMS = source.StartAtMS
+			if s.CacheUsage != nil {
+				s.CacheUsage.InputTokens = nil
+				s.CacheUsage.CachedInputTokens = nil
+				s.CacheUsage.Reason = "history_filtered"
+			}
+			if s.Throughput != nil {
+				s.Throughput = &reportingv1.ThroughputCapsule{Version: 1, Basis: "closed_turn_lifetime_output", RecentTurns: []reportingv1.ThroughputTurn{}, Measures: reportingv1.ThroughputMeasures{Status: "unavailable", Reason: "history_filtered"}}
+			}
+		}
 		page.Sessions = append(page.Sessions, s)
 		page.Next = id
 	}
@@ -315,6 +326,9 @@ func exportReportingAgent(db *gorm.DB, provider string, source ReportingSource, 
 }
 
 func exportReportingAgentUsage(db *gorm.DB, provider, id string, s *reportingv1.SessionSnapshot) error {
+	if provider == "dsh" {
+		return exportReportingDSHUsage(db, id, s)
+	}
 	var rows []struct {
 		OccurredAtMS                                                                                   int64
 		ModelKey                                                                                       *string
@@ -436,7 +450,7 @@ func (r *Repository) ReportingPartition(ctx context.Context, provider string) (k
 
 // ReportingStatus reads coverage independently of online/pairing state.
 func (r *Repository) ReportingStatus(ctx context.Context, provider string, source ReportingSource) (status reportingv1.DeviceStatus, err error) {
-	if provider != "codex" && provider != "cursor" && provider != "grok" {
+	if provider != "codex" && provider != "cursor" && provider != "grok" && provider != "dsh" {
 		return status, ErrReportingSource
 	}
 	status = reportingv1.DeviceStatus{Provider: provider, Status: "source_unavailable"}

@@ -30,6 +30,10 @@ swift run --package-path app/macos codex-pulse-app-tests
 - 切换独立 `credentials.db` 之前，真实 Home gate 曾读回 `api_subscriptions=deepseek_current+opencode_go_current unavailable=none ui_pages=9 shutdown=clean`，并人工读回统一热力图、四项选中日指标、蓝色余额趋势和 DeepSeek 两个采样估算字段。该历史结果证明当时的只读查询与 UI 闭环，不作为新凭据存储、无系统授权弹窗或当前凭据配置状态的验证证据。
 - 切换后使用显式真实 Codex Home 和既有私有 development runtime 重跑 gate，读回 `api_subscriptions=deepseek_unconfigured+opencode_go_unconfigured unavailable=none ui_pages=9 native_surfaces=window+status_item+popover shutdown=clean`。`credentials.db` 与 `codex-pulse.db` 是不同 inode，目录为 `0700`、两个数据库均为 `0600`，新凭据表记录数为 `0`；App/Helper 正常启动且 socket ready，Swift 生产代码不再导入 `Security` 或访问 Keychain。旧 Keychain item 未读取、迁移或删除，因此该次验收没有调用 DeepSeek/OpenCode Go 线上接口，用户需要在新设置页重新录入一次。
 
+## 2026-10-06 页面调整
+
+按用户要求移除独立“调用统计”页面与全部导航入口；概览保留调用画像摘要。原生页面 smoke 数量为 10。旧的 `invocationUsage` 页面偏好按现有未知页面规则恢复到概览。下述增量记录保留为历史。
+
 ## 2026-08-07 Tool / Skill 调用统计增量
 
 - 新增第八个原生导航页面“调用统计”，通过 `InvocationUsage` RPC 查询今天/最近 7 天/最近 30 天的 Tool 调用与 Skill 检测活动；支持全部来源、结构化事件和内容检测筛选。

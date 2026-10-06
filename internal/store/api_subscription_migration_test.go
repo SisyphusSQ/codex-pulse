@@ -15,7 +15,7 @@ func TestApplicationMigrationAddsAPISubscriptionBalanceHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MigrateApplicationSchema() error = %v", err)
 	}
-	if report.TargetVersion != applicationSchemaV35Version {
+	if report.TargetVersion != applicationSchemaVersion {
 		t.Fatalf("migration target = %d, want 34", report.TargetVersion)
 	}
 	if err := database.View(context.Background(), func(ctx context.Context, connection *gorm.DB) error {

@@ -49,7 +49,7 @@ func TestQuotaCurrentAndSettingsReturnVersionedRedactedFacts(t *testing.T) {
 		!settings.Snapshot.Online.GrokAutoRefreshEnabled ||
 		!settings.Snapshot.Online.CursorOnlineEnabled ||
 		!settings.Snapshot.CodexAccounts.RetainQuotaHistory ||
-		len(settings.Snapshot.Providers) != 3 ||
+		len(settings.Snapshot.Providers) != 4 ||
 		settings.Snapshot.Providers[0].Provider != "codex" ||
 		settings.Snapshot.Providers[0].Intent != "PROVIDER_INTENT_AUTO" ||
 		settings.Snapshot.Providers[1].Intent != "PROVIDER_INTENT_AUTO" ||

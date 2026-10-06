@@ -173,7 +173,7 @@ func TestProviderDisableCancelsAndDrainsAccountRead(t *testing.T) {
 		readDone <- readErr
 	}()
 	<-started
-	result, err := controller.Apply(ctx, preferences.ProviderPreferences{
+	result, err := controller.Apply(ctx, preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},

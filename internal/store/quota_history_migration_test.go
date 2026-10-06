@@ -16,7 +16,7 @@ func TestQuotaHistoryAssociationMigrationCreatesReversibleLinkOnly(t *testing.T)
 	if err := NewRepository(database).EnsureApplicationSchema(context.Background()); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	if applicationSchemaVersion != applicationSchemaV35Version {
+	if applicationSchemaVersion != applicationSchemaV37Version {
 		t.Fatalf("applicationSchemaVersion = %d, want 34", applicationSchemaVersion)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, int64(applicationSchemaVersion))

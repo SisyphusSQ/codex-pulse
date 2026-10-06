@@ -13,6 +13,7 @@ import (
 	quotaquery "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/dshprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/grokprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
@@ -123,6 +124,24 @@ func composeCoreGraph(
 	if controller != nil {
 		grokService.BindBeginner(controller)
 	}
+	dshConfig, dshConfigErr := dshprovider.DefaultConfig()
+	var dshService *dshprovider.QueryService
+	if dshConfigErr != nil {
+		dshService, err = dshprovider.NewDisabledQueryService()
+	} else {
+		var dshCollector *dshprovider.Collector
+		dshCollector, err = dshprovider.NewCollector(repository, dshConfig)
+		if err == nil {
+			dshService, err = dshprovider.NewQueryService(dshCollector, repository)
+		}
+	}
+	if err != nil {
+		return nil, errors.Join(core.ErrService, err)
+	}
+	if controller != nil {
+		dshService.BindBeginner(controller)
+	}
+	dshService.SetRefreshNotifier(func() { _ = invalidation.Notify(context.Background(), core.InvalidationIndex) })
 	providerRouter, err := agentrouter.New(
 		usageService, invocationService, cursorService, cursorService, grokService, grokService,
 	)
@@ -132,6 +151,7 @@ func composeCoreGraph(
 	if controller != nil {
 		providerRouter.BindStates(controller)
 	}
+	providerRouter.BindDSH(dshService, dshService)
 	pricingService, err := pricingcatalog.NewService(repository, time.Now)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
@@ -156,6 +176,7 @@ func composeCoreGraph(
 	if controller != nil {
 		quotaRouter.BindStates(controller)
 	}
+	quotaRouter.BindDSH(dshService)
 	summaryService, err := dashboardsummary.New(providerRouter, quotaRouter, time.Now)
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
@@ -195,6 +216,7 @@ func composeCoreGraph(
 	orchestrator, err := providerrefresh.New(providerrefresh.Config{
 		Cursor:       providerrefresh.NewCursorAdapter(cursorService, time.Now),
 		Grok:         providerrefresh.NewGrokAdapter(grokService, time.Now),
+		DSH:          providerrefresh.NewDSHAdapter(dshService, time.Now),
 		Controller:   controller,
 		Invalidation: invalidationAdapter{notifier: invalidation},
 		Now:          time.Now,

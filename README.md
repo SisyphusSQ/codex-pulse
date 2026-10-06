@@ -12,11 +12,11 @@ Codex Pulse is a local-first, native macOS app. It turns Codex and Cursor sessio
 
 ## Key features
 
-- **Menu bar:** Pin Codex quota, Cursor's exact usage, or Grok credits without changing the provider selected in the main window. If every client is disabled, the menu bar shows `Codex Pulse --`.
+- **Menu bar:** Pin Codex quota, Cursor's exact usage, Grok credits, or DSH token usage without changing the provider selected in the main window. If every client is disabled, the menu bar shows `Codex Pulse --`.
 - **Usage analytics:** Explore tokens, models, API-equivalent cost, and activity distribution across overview, session, and project pages.
 - **Session cache hit rate:** See cached input as a percentage of all input tokens in Codex session lists and details. Missing or invalid counters stay unavailable.
 - **Provider controls:** Enable or disable Codex, Cursor, and Grok independently in Settings. Discovery is metadata-only. A disabled client stays off across restart, wake, and rediscovery. The main window and popover only list enabled clients; Settings stays reachable when none are enabled.
-- **Provider context:** Switch the main window among enabled Codex, Cursor, and Grok clients; every query remains scoped to one provider and unsupported metrics stay explicitly unavailable.
+- **Provider context:** Switch the main window among enabled Codex, Cursor, Grok, and DSH clients; every query remains scoped to one provider and unsupported metrics stay explicitly unavailable.
 - **Data status:** Inspect provider-grouped sources, local indexing, and background jobs to understand whether reported results are complete.
 - **Codex Pro tier:** The current ChatGPT account maps App Server `prolite` to `Pro 5×` and `pro` to `Pro 20×`. Missing, unsupported, or conflicting plan evidence stays `Pro · 档位未知`.
 - **Codex accounts:** Settings keeps detected and manual Codex accounts on this Mac. A separate Account Quotas page gives the current and retained historical ChatGPT accounts the same compact account-card visual, then renders only the quota windows actually returned for each account. Every window is labeled from its real duration and shows its last verified percentage, reset time, state, and collection time. Historical cards are read-only. Settings controls whether future confirmed account switches retain the previous quota snapshot and provides an explicit cleanup action; this never changes Home-level sessions, tokens, projects, or cost attribution.
@@ -76,7 +76,7 @@ All indexing and analytics run locally. Cursor usage and spending can additional
 
 The original Codex and Cursor files remain managed by their applications. Codex Pulse stores only the allowlisted indexes, aggregates, lineage digests, and runtime state required by the product, and never modifies original session content.
 
-On first launch, the Go Helper initializes Preferences v4 even when Codex Home is missing. A metadata-only safety probe of `${CODEX_HOME:-$HOME/.codex}` runs without reading session bodies; a safe Home is stored as a stable identity. If the directory does not exist or the probe fails, Codex Pulse still starts: Settings, Cursor, and Grok remain available, while Codex indexing, quota, and account work stay unavailable until a Home is configured. Changing Codex Home later still requires explicit confirmation in Settings. Disabling a provider stops local collection, online requests, credential refresh, query-triggered refresh, and current summaries; history, progress, and sub-switch preferences are kept. Settings previews legacy unassigned local quota history and uses it for the current account's historical charts only after explicit, reversible confirmation. The current handshake is `core-rpc-v9` with `provider-control-v1`.
+On first launch, the Go Helper initializes Preferences v5 even when Codex Home is missing. A metadata-only safety probe of `${CODEX_HOME:-$HOME/.codex}` runs without reading session bodies; a safe Home is stored as a stable identity. If the directory does not exist or the probe fails, Codex Pulse still starts: Settings, Cursor, Grok, and DSH remain available, while Codex indexing, quota, and account work stay unavailable until a Home is configured. Changing Codex Home later still requires explicit confirmation in Settings. Disabling a provider stops local collection, online requests, credential refresh, query-triggered refresh, and current summaries; history, progress, and sub-switch preferences are kept. Settings previews legacy unassigned local quota history and uses it for the current account's historical charts only after explicit, reversible confirmation. The current handshake is `core-rpc-v9` with `provider-control-v1`.
 
 ## How it works
 
@@ -172,3 +172,7 @@ Start with these documents for more detail:
 可选中心位于 [server/](server/README.md)，React/AntD Web 通过 Go `embed` 编入 Server，以单个二进制提供同源页面和 API；构建运行和 SQLite/MySQL 备份入口见 [运行说明](server/docs/test/operations.md)。原生 App 仍为本地采集与 UI，设置中配对、选择历史范围并显式启用上报；退出停止，下次增量补采。中心仅接收白名单元数据、统计、配额和 TPS，不接收原始记录或 Agent 凭据。中心启动自动初始化或升级已登记的表结构；[开发与正式配置](server/config/README.md)的本地账密副本已 Git 忽略，采用二进制部署。DEV 与生产已完成 SeekDB/MySQL 协议部署，三台 Mac 已更新至 v0.15.1/build 64；独立 MySQL 8.4 与三机完整故障矩阵仍待验收，现场边界见[联调与发布读回](docs/test/multi-machine-reporting.md)。
 
 首次打开中心地址会显示浏览器授权页；部署者在 Server 终端使用服务的同一配置运行 `db bootstrap`，取得 10 分钟有效的一次性管理员码，再在浏览器输入。浏览器会话当前有效期为 14 天；全部浏览器授权失效时可通过同一命令恢复，无须重建数据库。完整流程见[首次浏览器授权与访问恢复](server/README.md#首次浏览器授权与访问恢复)。
+
+### DSH / DeepSeek Harness
+
+DSH Mac 桌面版默认从 `~/.dsh/sessions` 导入官方 V3/V4 JSONL 和 Zstd 会话，支持现有 Session、项目、模型、缓存、活动、吞吐量、本地工具统计和可选中心上报。Mac 和中心 Web 均保持独立 `dsh` 客户端范围。全部费用以美元展示，按请求起始时间适配 DeepSeek 峰谷 API 公价；桌面账户实际扣费和官方额度不由日志推定。价格、格式、隐私和早期历史 unknown 边界见 [DSH 设计](docs/design/details/providers/dsh.md)，验证见 [DSH 验证记录](docs/test/dsh-provider.md)。

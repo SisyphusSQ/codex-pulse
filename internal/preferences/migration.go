@@ -137,6 +137,22 @@ func decodePreferences(content []byte) (Snapshot, bool, error) {
 		}
 		migrated, err := migrateV3ToV4(legacy)
 		return migrated, true, err
+	case preferencesSchemaV4:
+		if err := validateV4OrCurrentJSONShape(content, false); err != nil {
+			return Snapshot{}, false, err
+		}
+		var value Snapshot
+		decoder := json.NewDecoder(bytes.NewReader(content))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&value); err != nil {
+			return Snapshot{}, false, ErrInvalidPreferences
+		}
+		value.SchemaVersion = CurrentPreferencesSchemaVersion
+		value.Providers.DSH = ProviderPreference{Intent: ProviderIntentAuto}
+		if err := validatePreferences(value); err != nil {
+			return Snapshot{}, false, err
+		}
+		return value, true, nil
 	case CurrentPreferencesSchemaVersion:
 		current, err := decodeCurrentPreferences(content)
 		return current, false, err
@@ -159,6 +175,7 @@ func decodeV3Preferences(content []byte) (v3Snapshot, error) {
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return v3Snapshot{}, fmt.Errorf("%w: trailing JSON", ErrInvalidPreferences)
 	}
+	value.Providers.DSH = ProviderPreference{Intent: ProviderIntentAuto}
 	current := Snapshot{
 		SchemaVersion: CurrentPreferencesSchemaVersion,
 		Revision:      value.Revision, Onboarding: value.Onboarding, CodexHome: CloneCodexHome(value.CodexHome),

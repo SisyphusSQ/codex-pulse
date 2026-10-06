@@ -64,8 +64,8 @@ func (r *Statistics) Status(ctx context.Context, q statistics_dto.StatisticsQuer
 	if q.ClientID != "" {
 		db = db.Where("st.client_id = ?", q.ClientID)
 	}
-	err = db.Order("st.client_id,st.provider").Limit(statistics_dto.MaximumStatisticsClients*3 + 1).Find(&rows).Error
-	if len(rows) > statistics_dto.MaximumStatisticsClients*3 {
+	err = db.Order("st.client_id,st.provider").Limit(statistics_dto.MaximumStatisticsClients*4 + 1).Find(&rows).Error
+	if len(rows) > statistics_dto.MaximumStatisticsClients*4 {
 		return nil, utils.ErrRequestBudget
 	}
 	return

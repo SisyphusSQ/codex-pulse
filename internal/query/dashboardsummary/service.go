@@ -16,7 +16,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
 )
 
-var summaryProviders = []string{agentprovider.Codex, agentprovider.Cursor, agentprovider.Grok}
+var summaryProviders = []string{agentprovider.Codex, agentprovider.Cursor, agentprovider.Grok, agentprovider.DSH}
 
 type UsageQuery interface {
 	UsageCost(context.Context, usagecost.UsageCostRequest) (usagecost.UsageCostResponse, error)

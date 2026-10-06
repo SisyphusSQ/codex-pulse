@@ -6,7 +6,7 @@ import 'dayjs/locale/zh-cn';
 dayjs.extend(utc);dayjs.extend(timezone);dayjs.locale('zh-cn');
 export { dayjs };
 
-export const providerNames: Record<string,string> = { codex: 'Codex', cursor: 'Cursor', grok: 'Grok' };
+export const providerNames: Record<string,string> = { codex: 'Codex', cursor: 'Cursor', grok: 'Grok', dsh: 'DSH' };
 export function integer(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return '未知';
   return new Intl.NumberFormat('zh-CN').format(typeof value === 'number' ? value : BigInt(value));

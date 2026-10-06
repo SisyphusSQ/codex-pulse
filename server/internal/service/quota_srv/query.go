@@ -52,7 +52,7 @@ func ParseQuery(values url.Values) (quota_dto.Query, error) {
 		return q, utils.ErrBadParamInput
 	}
 	q.Provider, q.AccountKey, q.ClientID = values.Get("provider"), values.Get("account_key"), values.Get("client_id")
-	if q.Provider != "" && !slices.Contains([]string{"codex", "cursor", "grok"}, q.Provider) {
+	if q.Provider != "" && !slices.Contains([]string{"codex", "cursor", "grok", "dsh"}, q.Provider) {
 		return q, utils.ErrBadParamInput
 	}
 	if q.AccountKey != "" {

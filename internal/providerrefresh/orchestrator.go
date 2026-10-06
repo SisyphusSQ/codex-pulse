@@ -30,6 +30,7 @@ type Config struct {
 	Codex        CodexRefresher
 	Cursor       CursorRefresher
 	Grok         GrokRefresher
+	DSH          GrokRefresher
 	Controller   *providercontrol.Controller
 	Invalidation InvalidationNotifier
 	Now          func() time.Time
@@ -39,6 +40,7 @@ type Orchestrator struct {
 	codex        CodexRefresher
 	cursor       CursorRefresher
 	grok         GrokRefresher
+	dsh          GrokRefresher
 	controller   *providercontrol.Controller
 	invalidation InvalidationNotifier
 	now          func() time.Time
@@ -63,7 +65,7 @@ func New(config Config) (*Orchestrator, error) {
 		now = time.Now
 	}
 	return &Orchestrator{
-		codex: config.Codex, cursor: config.Cursor, grok: config.Grok,
+		codex: config.Codex, cursor: config.Cursor, grok: config.Grok, dsh: config.DSH,
 		controller: config.Controller, invalidation: config.Invalidation, now: now,
 	}, nil
 }
@@ -177,6 +179,11 @@ func (orchestrator *Orchestrator) refreshAdapter(ctx context.Context, provider, 
 			return UnavailableProvider(agentprovider.Cursor, ComponentsFor(agentprovider.Cursor)...)
 		}
 		return orchestrator.cursor.RefreshProvider(ctx, trigger)
+	case agentprovider.DSH:
+		if orchestrator.dsh == nil {
+			return UnavailableProvider(agentprovider.DSH, ComponentsFor(agentprovider.DSH)...)
+		}
+		return orchestrator.dsh.RefreshProvider(ctx, trigger)
 	default:
 		if orchestrator.grok == nil {
 			return UnavailableProvider(agentprovider.Grok, ComponentsFor(agentprovider.Grok)...)
@@ -243,6 +250,8 @@ func cancelledProvider(provider string) ProviderResult {
 		components = []string{ComponentCodexLocal, ComponentCodexQuota, ComponentCodexResetCredits}
 	case agentprovider.Cursor:
 		components = []string{ComponentCursorLocal, ComponentCursorDashboard, ComponentCursorGrokBot}
+	case agentprovider.DSH:
+		components = []string{ComponentDSHLocal}
 	default:
 		components = []string{ComponentGrokLocal, ComponentGrokBilling}
 	}

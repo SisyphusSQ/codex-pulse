@@ -31,7 +31,7 @@ Codex Pulse 已在每台机器上提供本地使用量与额度观测，但没�
 
 - Go Helper 拥有索引、SQLite、调度、用量、配额与健康口径；Swift 不直接读 SQLite、JSONL 或重算 Go 业务事实。
 - App 通过启动 pipe 提交一次性鉴权材料，并使用私有 UDS 调用 CoreService。Helper 生命周期绑定父进程，不能直接作为独立后台服务启动。
-- 现有 Provider 为 Codex、Cursor、Grok；本方案保留 Provider 维度，能力缺失时保持明确不可用，不为不同 Provider 补造相同额度窗口。
+- 现有 Provider 为 Codex、Cursor、Grok、DSH；本方案保留 Provider 维度，能力缺失时保持明确不可用，不为不同 Provider 补造相同额度窗口。
 - Codex 本地 Session、Token、项目、趋势与成本按当前 Codex Home 聚合；在线 Quota、Pace、Reset Credits 按已确认账号 binding 隔离。
 - Codex 原始账号 ID 当前只短暂存在于内存，以安装级 HMAC 生成本地 scope。不同安装的 scope 不承担跨机器账号身份。
 
@@ -418,3 +418,7 @@ TOO-523 追加模型目录发布时间倒序：Server 独立内嵌官方发布�
 现行中心查询与保留规则见[四周期与查询性能](center-query-performance.md)。
 
 现行中心首页、额度窗口、机器用量、默认排序和授权分组见 [TOO-524 中心用量与授权优化](center-overview.md)。本节更新覆盖旧设计中中心工具/技能上报与展示要求；本机原生功能保留，旧队列兼容边界见新文档。
+
+## DSH 客户端扩展
+
+DSH 复用中心认证、来源隔离、幂等和 canonical 去重，支持 Session、项目、模型、USD 事件费用、缓存及吞吐量胶囊。峰谷价格由本机按已核验的历史版本计算，中心保留版本证据。DSH 不上报工具或正文，不从日志制造账号额度。现有 MySQL provider 字符串与 capsule 表无需 DDL。来源和未知边界见 [DSH](../providers/dsh.md)，验证见 [DSH 验证](../../../test/dsh-provider.md)。

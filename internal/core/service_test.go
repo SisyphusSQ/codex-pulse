@@ -26,6 +26,7 @@ import (
 func TestValidProviderUpdatesRequiresExactProviderSet(t *testing.T) {
 	t.Parallel()
 	valid := []SettingsProviderUpdate{
+		{Provider: agentprovider.DSH, Intent: providercontrol.ProtoIntent(preferences.ProviderIntentAuto)},
 		{Provider: agentprovider.Codex, Intent: providercontrol.ProtoIntent(preferences.ProviderIntentAuto)},
 		{Provider: agentprovider.Cursor, Intent: providercontrol.ProtoIntent(preferences.ProviderIntentEnabled)},
 		{Provider: agentprovider.Grok, Intent: providercontrol.ProtoIntent(preferences.ProviderIntentDisabled)},

@@ -468,6 +468,7 @@ struct SettingsView: View {
                     providerSection(.codex, response: response)
                     providerSection(.cursor, response: response)
                     providerSection(.grok, response: response)
+ providerSection(.dsh, response: response)
                     refreshSection(response)
                     updatesSection(response)
                     uiSection(response)
@@ -481,7 +482,7 @@ struct SettingsView: View {
                         )
                     )
                     LabeledContent("当前状态", value: ProductCopy.status(response.snapshot.home.switchStatus))
-                    Text("没有 Codex Home 时，Cursor、Grok 和设置仍然可用。")
+                    Text("没有 Codex Home 时，Cursor、Grok、DSH 和设置仍然可用。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text("Codex Pulse 只读取本机已启用客户端的数据。")
@@ -646,7 +647,9 @@ struct SettingsView: View {
                 Text("控制 Cursor Dashboard 月额度和 Grok Bot 在线请求；本地快照仍由 Cursor 主开关管理。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            case .grok:
+            case .dsh:
+ Text("读取 DSH 本机 Session 的用量与工具统计；费用以美元按请求时间的官方峰谷价估算。")
+ case .grok:
                 Toggle("启用 Grok 额度采集", isOn: draftBinding(\.grokQuotaEnabled))
                     .disabled(
                         !subSwitchesEnabled || !editable("online.grokQuotaEnabled", response) || settingsAreBusy
@@ -669,6 +672,7 @@ struct SettingsView: View {
         case .codex: "启用 Codex"
         case .cursor: "启用 Cursor"
         case .grok: "启用 Grok"
+ case .dsh: "启用 DSH"
         }
     }
 

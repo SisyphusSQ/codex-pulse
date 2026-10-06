@@ -59,6 +59,8 @@ func (e *Exporter) source(ctx context.Context, provider string, start int64) (st
 		s.HomeID = e.state.HomeID("codex-home", h.Path, h.DeviceID, strconv.FormatInt(h.Inode, 10))
 	case "cursor":
 		intent = prefs.Providers.Cursor.Intent
+	case "dsh":
+		intent = prefs.Providers.DSH.Intent
 	case "grok":
 		intent = prefs.Providers.Grok.Intent
 	default:
@@ -101,6 +103,10 @@ func (e *Exporter) Status(ctx context.Context, provider string, start int64) (re
 				}
 			case "cursor":
 				if prefs.Providers.Cursor.Intent == preferences.ProviderIntentDisabled {
+					status = "disabled"
+				}
+			case "dsh":
+				if prefs.Providers.DSH.Intent == preferences.ProviderIntentDisabled {
 					status = "disabled"
 				}
 			case "grok":

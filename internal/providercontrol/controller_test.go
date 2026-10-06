@@ -106,7 +106,7 @@ func TestBeginRejectsDisabledAndUnavailable(t *testing.T) {
 	if _, err := controller.Begin(context.Background(), agentprovider.Cursor); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("Begin(auto missing) error = %v, want unavailable", err)
 	}
-	result, err := controller.Apply(context.Background(), preferences.ProviderPreferences{
+	result, err := controller.Apply(context.Background(), preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
@@ -146,7 +146,7 @@ func TestLateWriterCannotCommitAfterDisable(t *testing.T) {
 		operation.Finish()
 	}()
 	<-entered
-	result, err := controller.Apply(context.Background(), preferences.ProviderPreferences{
+	result, err := controller.Apply(context.Background(), preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
@@ -185,7 +185,7 @@ func TestDisableWaitsForHeldCommitLease(t *testing.T) {
 	}
 	done := make(chan TransitionResult, 1)
 	go func() {
-		result, applyErr := controller.Apply(context.Background(), preferences.ProviderPreferences{
+		result, applyErr := controller.Apply(context.Background(), preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 			Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 			Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 			Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
@@ -232,7 +232,7 @@ func TestDisableTimeoutContinuesDrainInBackground(t *testing.T) {
 	}
 	applyCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	result, err := controller.Apply(applyCtx, preferences.ProviderPreferences{
+	result, err := controller.Apply(applyCtx, preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
@@ -261,7 +261,7 @@ func TestDiscoveryReasonAndGenerationChangeWithVisibleState(t *testing.T) {
 	probes := &recordingProbes{result: ProbeResult{
 		State: DiscoveryMissing, ReasonCode: ReasonNotFound,
 	}}
-	controller, err := NewController(testPreferences(preferences.ProviderPreferences{
+	controller, err := NewController(testPreferences(preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
@@ -292,7 +292,7 @@ func TestDiscoveryReasonAndGenerationChangeWithVisibleState(t *testing.T) {
 func TestExplicitDisabledSourceReappearingStaysDisabled(t *testing.T) {
 	t.Parallel()
 	probes := &recordingProbes{result: ProbeResult{State: DiscoveryMissing, ReasonCode: ReasonNotFound}}
-	controller, err := NewController(testPreferences(preferences.ProviderPreferences{
+	controller, err := NewController(testPreferences(preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
@@ -300,7 +300,7 @@ func TestExplicitDisabledSourceReappearingStaysDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewController() error = %v", err)
 	}
-	if _, err := controller.Apply(context.Background(), preferences.ProviderPreferences{
+	if _, err := controller.Apply(context.Background(), preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
