@@ -62,3 +62,25 @@ npm test -- --run src/pages/Usage.test.tsx src/pages/Overview.test.tsx src/pages
 复用原私有 runtime 与真实 Home 启动，回读 schema v37、preferences 与 App/Helper 环境及私有 socket 参数。真实列表显示 11 个会话，其中 10 个具有官方标题记录；列表与选中会话详情的名称一致。客户端留在会话页供用户查看。原始证据只保留在 `.artifacts/`，不记录真实标题文本。本次未执行生产中心上传或部署。
 
 本次标题 diff 安全自查：仅接入有界标题元数据，沿用现有会话身份、认证与上报权限；正文/凭据不新增持久化，未新增外部请求或执行入口。
+
+## v0.16.0 发布与三机部署（2026-10-06）
+
+用户确认 v0.16.0/build 67、Server 先升级后 Mac、三机更新，提交和发版收尾不重复测试。已上线 TOO-530 通知改动先通过 [PR #196](https://github.com/SisyphusSQ/codex-pulse/pull/196) 合入 main，DSH 与发行归档通过 [PR #197](https://github.com/SisyphusSQ/codex-pulse/pull/197) 合并。两台发行相关机器的干净 main 经 `pull --ff-only` 同步，源码冻结为 `3904b8ad8d1d5d9465e7ac01ea6e9e70aba730c0`；signed annotated tag `v0.16.0` 的远端 peeled commit 与其一致。
+
+SQMC05 构建 Mac DMG、Sparkle 更新 ZIP 和内嵌 Web 的 Darwin arm64 Server 包。Mac 构建显式跳过 App 测试；Server 首次因未安装 Web 依赖缺少 tsc，按既有锁文件安装后构建成功。发行资产仍为完整 ad-hoc 签名，非 Developer ID/Apple 公证；DMG 只读挂载确认 App 与 Applications 链接、版本/build 和 codesign 完整性。Gatekeeper 预期拒绝（exit 3），stapler 无票据（exit 65），公开说明如实披露。
+
+[GitHub stable Release v0.16.0](https://github.com/SisyphusSQ/codex-pulse/releases/tag/v0.16.0) 已公开、非 Draft、非 prerelease，含 DMG、ZIP、Server 包、两份摘要与两份说明共七个资产。SQMC04 的首轮大文件上传因 GitHub 408 失败，改由 SQMC05 上传相同资产成功。更新源曾在上传完成前推进，发现后立即恢复上一版；正式发行公开、七个资产经公开下载核对摘要后，再将固定 Sparkle feed 切至 0.16.0/build 67。最终 feed 与已签名候选字节一致，普通及避缓存 URL 均读回；临时签名 LaunchAgent 已卸载。
+
+SQMC04 生产 Server 已先切至 `v0.16.0-3904b8a`，一致停服数据库备份和旧 `v0.15.3-too530-4131560` 发行保留，私有配置未变；LaunchAgent running、ready 200，schema v5 与 checksum 均未改变。DEV 服务未切换。三机客户端安装结果：
+
+| 机器 | 安装版本 | 运行及迁移 | 原配置与备份 |
+| --- | --- | --- | --- |
+| SQMC04 | 0.16.0 / 67 | App/Helper 正常，SQLite v37、Preferences v5 | 真实 Home 物理身份、显式环境/Helper 参数及 0700 runtime 已读回；配对、启用、600 秒同步与补传范围保留；旧 App 和事实/队列/凭据库备份保留 |
+| SQMC03 | 0.16.0 / 67 | 原本关闭，保持关闭；迁移留待下次启动 | 真实 Home 身份和原偏好/上报配置未变，旧 App 与数据库备份保留；未改动该机独立开发分支 |
+| SQMC05 | 0.16.0 / 67 | App/Helper 正常，SQLite v37、Preferences v5 | 真实 Home 物理身份、显式环境/Helper 参数及 0700 runtime 已读回；原配对、启用、600 秒同步与补传范围保留；旧 App 和数据库备份保留 |
+
+三个内嵌 Helper SHA-256 一致：`25346484a5873a897a15c3e2255d01a9514912c9cda01cc0cc254302a65d3bb2`。发行 ZIP：`6d56972a2648ad9062f5333b79b18809cde007b8d4f21505e4344f47b4649dea`；DMG：`4930933f4f0bfde2f9e8e7c5916f5de8b19705ff75c0b7abb5a9436cc0e0e47d`；Server 包：`9a3557aba79021c21b4d1e619f5fedc3154864ccef95ad135793ef94e756cb91`。
+
+生产中心已自然接收 DSH 的 11 个会话及标题。原日志仍持续增长，本机最新事实与中心上次同步快照可随 600 秒同步间隔暂时不同；没有把这一运行读回描述成完整 Mac→Server→Web E2E 或长期稳定性验收。此前列出的全仓长测、CI、独立 MySQL 8.4、完整业务 E2E、Sparkle 更新 UI E2E、全新 macOS 用户首启、公证等未执行项仍保留。GitHub Actions 按已有仓库决定保持关闭。
+
+发布安全自查：原认证、设备配对、权限和网络入口保留；发行包无私有配置、凭据或原始日志，私有备份/日志仅存放于各机忽略的发行证据目录。本次按约定未重复执行测试，构建和发行/安装结果读回不作为新增测试结论。
