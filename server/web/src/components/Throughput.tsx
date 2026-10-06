@@ -1,5 +1,6 @@
 import {decimalSorter} from './sorting';
-import { Alert, Card, Select, Statistic, Table, Tag, Tooltip, Typography } from 'antd';
+import { Card, Select, Statistic, Table, Tag, Tooltip, Typography } from 'antd';
+import { EvidenceIcon } from './EvidenceIcon';
 import type { ThroughputStats, ThroughputTurns } from '../api/records';
 import { dateTime, integer, tokens } from '../format';
 
@@ -12,8 +13,8 @@ export function ThroughputPanel({value,turns,zone,sourceName,onLimit}:{value?:Th
  return <Card title="会话活跃期间平均输出 TPS" className="section-card"><Typography.Paragraph type="secondary">整个会话的已结束轮次输出量 / 活跃区间并集秒数。轮间空闲不计入，轮内思考、工具与等待计入；日期、模型筛选及下方轮次条数不改变这个生命周期平均值。</Typography.Paragraph>
  <div className="metric-grid"><div><div className="metric-label">平均输出 TPS</div><Statistic aria-label="average-output-tps" value={tps(value?.average_output_milli_tps)} suffix={value?.average_output_milli_tps!=null?'TPS':undefined} />{value?.status==='partial'&&<Tag color={value.conflict?'red':'gold'}>部分数据</Tag>}{value?.reason&&<div className="metric-note">{throughputReasons[value.reason]??'指标暂不可用'}</div>}</div><div><div className="metric-label">参与统计的输出 Token</div><Statistic value={tokens(value?.output_tokens)} /></div><div><div className="metric-label">活跃时长</div><Statistic value={activeDuration(value?.active_duration_ms)} /></div></div>
  <Typography.Paragraph type="secondary">参与 {integer(value?.included_turns)} 轮 · 排除 {integer(value?.excluded_turns)} 轮 · 未结束 {integer(value?.open_turns)} 轮 · 无归属事件 {integer(value?.unattributed_events)} · {durationSources[value?.duration_source??'']??'暂无时间证据'}{sourceName?` · 采集来源：${sourceName}`:''}</Typography.Paragraph>
- {value?.conflict&&<Alert type="warning" showIcon title="来源 TPS 证据不一致" description="当前保留已接受来源的统计和轮次摘要。可按采集来源筛选核对，不能把各设备平均相加。" />}
- {value?.status==='unavailable'&&<Alert type="info" showIcon title={throughputReasons[value.reason]??'TPS 暂不可用'} />}
+ {value?.conflict&&<div className="metric-note"><Tag color="red">来源 TPS 证据不一致</Tag><EvidenceIcon label="TPS 来源冲突说明" warning><p>当前保留已接受来源的统计和轮次摘要。可按采集来源筛选核对，不能把各设备平均相加。</p></EvidenceIcon></div>}
+ {value?.status==='unavailable'&&!value.reason&&<div className="metric-note" role="status">TPS 暂不可用</div>}
  <div className="page-heading section-card"><Typography.Title level={4}>最近轮次</Typography.Title><Select aria-label="最近 TPS 轮次条数" value={turns?.limit??20} onChange={onLimit} options={[10,20,50].map(n=>({value:n,label:`最近 ${n} 条`}))} /></div>
  <Typography.Paragraph type="secondary">全部轮次 {integer(turns?.total)} · {turns?.total==null?'尚无已知轮次覆盖':turns.truncated?'当前只显示最近子集，整体平均使用完整指标':'已返回当前可读轮次，覆盖见上方状态'} · 未结束轮次不以当前时间补时长。</Typography.Paragraph>
  <Table size="small" rowKey="key" dataSource={turns?.items??[]} pagination={false} scroll={{x:660}} columns={[{title:'开始',...decimalSorter<{started_at_ms:number|null}>(r=>r.started_at_ms,true),render:(_,r)=>dateTime(r.started_at_ms,zone)},{title:'结束',...decimalSorter<{ended_at_ms:number|null}>(r=>r.ended_at_ms),render:(_,r)=>dateTime(r.ended_at_ms,zone)},{title:'输出 Token',align:'right',...decimalSorter<{throughput:ThroughputStats}>(r=>r.throughput.output_tokens),render:(_,r)=>tokens(r.throughput.output_tokens)},{title:'活跃时长',...decimalSorter<{throughput:ThroughputStats}>(r=>r.throughput.active_duration_ms),render:(_,r)=>activeDuration(r.throughput.active_duration_ms)},{title:'TPS',...decimalSorter<{throughput:ThroughputStats}>(r=>r.throughput.average_output_milli_tps),render:(_,r)=><ThroughputCell value={r.throughput} />}]} />

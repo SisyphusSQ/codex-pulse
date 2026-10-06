@@ -1,6 +1,6 @@
 import {decimalSorter} from './sorting';
 import {useState} from 'react';
-import {Alert,Card,Collapse,Descriptions,Input,Segmented,Select,Table,Tag,Typography} from 'antd';
+import {Card,Collapse,Descriptions,Input,Segmented,Select,Table,Tag,Typography} from 'antd';
 import {Link} from 'react-router-dom';
 import {referenceAmount,sourceLink,type ModelPrice} from '../api/catalog';
 import {dayjs,dateTime,providerNames} from '../format';
@@ -83,7 +83,7 @@ export function ModelPriceCatalog({models,used,provider,initialSearch='',initial
  const versions=[...new Set(models.filter(r=>r.evidence==='historical'&&(!provider||r.provider===provider)).map(r=>r.version).filter(Boolean))];
  return <>
   <div className="catalog-toolbar"><Segmented aria-label="使用目录" value={scope} onChange={value=>setScope(value as Scope)} options={[{value:'related',label:'相关模型'},{value:'used',label:'近30天已使用'},{value:'history',label:'历史计价'}]}/><Input.Search aria-label="搜索模型价格" placeholder="搜索模型" value={search} onChange={event=>setSearch(event.target.value)} allowClear style={{maxWidth:320}}/>{scope==='history'&&<Select aria-label="价格版本" value={version} onChange={setVersion} showSearch={{optionFilterProp:'label'}} options={[{value:'',label:'全部历史价格版本'},...versions.map(value=>({value,label:value}))]}/>}</div>
-  {usageError&&<Alert type="warning" title="已使用模型读取失败，目录仍可查，无法确认使用情况" description={usageError.message}/>}
+
   <div className="metric-note catalog-note">{scope==='history'?'历史费率证据 · 展开查看各版本 · 不改写已记录成本':`API 参考折算 · ${rows.some(r=>r.evidence!=='observed'&&r.unit!=='1M tokens')?'价格单位见模型说明':'USD / 百万 Token'} · 默认基础文本价，特殊条件展开查看`}<span className="catalog-order-note">按发布时间从新到旧 · 未确认日期置后</span></div>
   <Card className="catalog-table"><Table<ModelGroup> rowKey={row=>modelKey(row)} size="small" dataSource={rows} loading={scope==='used'&&usageLoading} pagination={{pageSize:25,showSizeChanger:true,showTotal:n=>`共 ${n} 个模型`}} scroll={{x:920}} locale={{emptyText:scope==='used'&&usageError?'无法确认已使用模型':'没有符合条件的模型'}} expandable={{expandedRowRender:row=><RateDetails row={row}/>}} columns={[
    {title:'模型',width:250,render:(_,row)=><><Typography.Text strong>{row.model}</Typography.Text><div className="metric-note">{row.evidence==='observed'?'参考价未知':row.mode}{row.used&&<Tag>已使用</Tag>}</div>{row.evidence!=='observed'&&row.unit!=='1M tokens'&&<div className="metric-note">{row.currency} / {row.unit}</div>}</>},

@@ -12,6 +12,18 @@ beforeEach(() => { api.setSession(null); window.location.hash = '#/'; fetcher.mo
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('browser authorization', () => {
+  it('shows pairing failure in a notification and preserves the entered code without inserting a form alert', async () => {
+    fetcher.mockImplementation(async path => new Response('', { status: path === '/api/v1/session' ? 401 : 409 }));
+    render(<PulseApp queryClient={createQueryClient()} />);
+    const code = await screen.findByLabelText('浏览器配对码');
+    const user = userEvent.setup();
+    await user.type(code, 'AAAA-BBBB-CCCC-DDDD');
+    await user.click(screen.getByRole('button', { name: '配对并进入' }));
+    await screen.findByText('浏览器配对未完成');
+    expect(code).toHaveValue('AAAA-BBBB-CCCC-DDDD');
+    expect(document.querySelector('.sign-in-card .ant-alert')).toBeNull();
+    expect(screen.getByRole('alert')).toHaveTextContent('数据发生冲突');
+  });
   it('pairs once, clears the code, uses real empty data, and revokes on logout', async () => {
     fetcher.mockImplementation(async (path) => {
       if (path === '/api/v1/session') return new Response('', { status: 401 });

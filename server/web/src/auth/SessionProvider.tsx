@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '../api/client';
@@ -20,6 +20,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionState['status']>('loading');
   const [error, setError] = useState<Error | null>(null);
   const [reload, setReload] = useState(0);
+  const retry = useCallback(() => { setStatus('loading'); setReload(value => value + 1); }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -62,7 +63,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setStatus('anonymous');
   }
 
-  return <SessionContext.Provider value={{ session, status, error, signIn, logout, retry: () => { setStatus('loading'); setReload((n) => n + 1); } }}>{children}</SessionContext.Provider>;
+  return <SessionContext.Provider value={{ session, status, error, signIn, logout, retry }}>{children}</SessionContext.Provider>;
 }
 
 export function useSession() {

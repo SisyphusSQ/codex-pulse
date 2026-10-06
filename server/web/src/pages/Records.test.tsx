@@ -1,5 +1,6 @@
 import {MemoryRouter} from 'react-router-dom';
 import {OperationNotifications} from '../components/OperationNotifications';
+import {QueryNotifications} from '../components/QueryNotifications';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -21,6 +22,25 @@ const records=(items:unknown[],page=1,total=30)=>({items,page:{page,limit:25,tot
 beforeEach(()=>{api.setSession({client_id:'synthetic',name:'合成',purpose:'admin',csrf:'synthetic-csrf',expires_at_ms:null});fetcher.mockReset();vi.stubGlobal('fetch',fetcher);});
 afterEach(()=>{vi.unstubAllGlobals();vi.restoreAllMocks();});
 describe('server records and explicit project relationship',()=>{
+ it.each(['sessions','projects'] as const)('retains cached %s records and selected details on failed refresh',async kind=>{
+  const id='a'.repeat(64),title='保留的记录';
+  fetcher.mockImplementation(async path=>{
+   const url=new URL(String(path),'http://localhost');
+   if(url.pathname==='/api/v1/devices/status')return success([]);
+   if(url.pathname===`/api/v1/${kind}/${id}`)return success(kind==='sessions'?{session:session(id,title),range:summary.range,trend:[],tools:[],skills:[],coverage:partialCoverage}:{project:project(id,title),sessions:records([]),trend:[],models:[]});
+   return success(records([kind==='sessions'?session(id,title):project(id,title)]));
+  });
+  render(<OperationNotifications><QueryClientProvider client={createQueryClient()}><QueryNotifications /><MemoryRouter>{kind==='sessions'?<Sessions />:<Projects />}</MemoryRouter></QueryClientProvider></OperationNotifications>);
+  const user=userEvent.setup();await user.click(await screen.findByRole('button',{name:title}));
+  await screen.findByRole('heading',{name:title});
+  fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):new Response('',{status:503}));
+  await user.click(screen.getByRole('button',{name:'刷新'}));
+  await screen.findByText(`${kind==='sessions'?'会话':'项目'}列表读取失败`);
+  expect(screen.getByRole('button',{name:title,hidden:true})).toBeInTheDocument();
+  expect(screen.getByRole('heading',{name:title})).toBeInTheDocument();
+  expect(screen.queryByText('数据未能读取')).not.toBeInTheDocument();
+  expect(document.querySelector('.ant-alert')).toBeNull();
+ });
  it('paginates and searches on Server, keeps full totals, opens escaped session details',async()=>{
   const unsafe='<img src=x onerror=alert(1)>';
   fetcher.mockImplementation(async path=>{

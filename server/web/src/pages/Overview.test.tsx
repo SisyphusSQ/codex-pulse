@@ -9,6 +9,8 @@ import { summaryFixture, unknownTotals } from '../test/statisticsFixture';
 import { dayjs, dollars, integer } from '../format';
 import type {Summary} from '../api/statistics';
 import Overview from './Overview';
+import {OperationNotifications} from '../components/OperationNotifications';
+import {QueryNotifications} from '../components/QueryNotifications';
 
 vi.mock('../components/Chart',()=>({default:({label}:{label:string})=><div role="img" aria-label={label} />}));
 const fetcher=vi.fn<typeof fetch>();
@@ -45,7 +47,7 @@ describe('overview facts',()=>{
   });
   it('uses Server totals and separate annual coverage, sends date/provider filters, and retains cached data on refresh failure',async()=>{
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):success(String(path).includes('/usage')?usageFrom(summaryFixture()):summaryFixture()));
-    render(<MemoryRouter><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
+    render(<OperationNotifications><MemoryRouter><QueryClientProvider client={createQueryClient()}><QueryNotifications /><Overview /></QueryClientProvider></MemoryRouter></OperationNotifications>);
     expect((await screen.findAllByText('90071992.5亿')).length).toBeGreaterThan(0);
     expect(screen.queryByText(/不是实际账单/)).not.toBeInTheDocument();
     expect(screen.getByText(/采集陈旧 · 更新/)).toBeInTheDocument();expect(screen.queryByText(/覆盖未确认/)).not.toBeInTheDocument();
@@ -56,7 +58,7 @@ describe('overview facts',()=>{
     expect(url.searchParams.get('start_date')).toMatch(/^\d{4}-\d{2}-\d{2}$/);expect(url.searchParams.get('time_zone')).toBe('Asia/Shanghai');expect(url.searchParams.has('start_at_ms')).toBe(false);
     fetcher.mockImplementation(async(path)=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:summaryFixture().range,items:[],scope:'collector_copies_may_overlap'}):new Response('',{status:503}));
     await user.click(screen.getByRole('button',{name:'刷新'}));
-    await screen.findByText('刷新失败，以下保留上次读取的数据');expect(screen.getAllByText('$123.46').length).toBeGreaterThan(0);
+    await screen.findByText('全年活动读取失败');expect(document.querySelector('.ant-alert')).toBeNull();expect(screen.getAllByText('$123.46').length).toBeGreaterThan(0);
   });
   it('shows zero for an empty range and annual metrics without rewriting API values',async()=>{
     const fixture=summaryFixture();fixture.totals={...unknownTotals};fixture.heatmap_totals={...unknownTotals};
