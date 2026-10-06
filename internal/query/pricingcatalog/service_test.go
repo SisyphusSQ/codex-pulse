@@ -243,3 +243,30 @@ func (stub *readerStub) PricingCatalogAt(
 func pointerTo[T any](value T) *T {
 	return &value
 }
+
+func TestDSHReferenceIncludesOpenAIWithoutClaimingOnePriceSource(t *testing.T) {
+	at := time.Date(2026, 10, 6, 2, 0, 0, 0, time.UTC)
+	service, err := NewService(&readerStub{}, func() time.Time { return at })
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := service.Current(t.Context(), agentprovider.Scope{Provider: agentprovider.DSH})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.SourceURL != nil || out.ProviderContext.EffectiveProvider != agentprovider.DSH || out.Basis != "dsh_provider_api_reference" || out.PricingVersion != "deepseek-usd-2026-10-06+openai-api-2026-09-29" {
+		t.Fatal("mixed catalog claimed a single source", out)
+	}
+	found := false
+	for _, item := range out.Items {
+		if item.ModelID == "OpenAI / gpt-6.1-sol" {
+			found = true
+			if item.InputMicros.Value == nil || *item.InputMicros.Value != 2_000_000 || item.CachedInputMicros.Value == nil || *item.CachedInputMicros.Value != 100_000 || item.OutputMicros.Value == nil || *item.OutputMicros.Value != 10_000_000 || item.CacheWriteMicros.Value != nil {
+				t.Fatal("wrong OpenAI rate", item)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("DSH OpenAI model omitted")
+	}
+}

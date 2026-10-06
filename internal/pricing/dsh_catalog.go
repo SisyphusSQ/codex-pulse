@@ -12,11 +12,20 @@ const DSHPriceVersion = "deepseek-usd-2026-10-06"
 // DSHRate 保存每百万 Token 的整数微美元费率及命中的历史时段。
 type DSHRate struct {
 	Version          string
+	SourceURL        string
 	Period           string
 	InputMicros      int64
 	CachedMicros     int64
 	CacheWriteMicros int64
 	OutputMicros     int64
+}
+
+// PricingVersion 保留 DeepSeek 时段证据；OpenAI 不附加峰谷后缀。
+func (rate DSHRate) PricingVersion() string {
+	if rate.Period != "" {
+		return rate.Version + ":" + rate.Period
+	}
+	return rate.Version
 }
 
 var dshFlashEffective = time.Date(2026, 9, 10, 4, 0, 0, 0, time.UTC).UnixMilli()
@@ -56,10 +65,12 @@ func DSHBillingPeriod(atMS int64) (string, bool) {
 	return "peak", true
 }
 
-// DSHRateAt 只给官方 DeepSeek 路由定价，不把第三方同名模型按官方价格计费。
+// DSHRateAt 按已确认的模型路由与请求时间选价，不给未知路由的同名模型猜价。
 // Flash 新价生效时间取自 news260910；Pro 沿用现行独立费率，不执行已撤回的重定向。
 func DSHRateAt(provider, model string, atMS int64) (DSHRate, bool) {
 	switch strings.ToLower(provider) {
+	case "openai-codex":
+		return dshOpenAIRateAt(model, atMS)
 	case "deepseek", "deepseek-official", "deepseek-account":
 	default:
 		return DSHRate{}, false
@@ -68,7 +79,7 @@ func DSHRateAt(provider, model string, atMS int64) (DSHRate, bool) {
 	if !ok {
 		return DSHRate{}, false
 	}
-	rate := DSHRate{Version: DSHPriceVersion, Period: period}
+	rate := DSHRate{Version: DSHPriceVersion, SourceURL: DSHPriceSource, Period: period}
 	switch strings.ToLower(model) {
 	case "deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp":
 		if atMS < dshFlashEffective {
@@ -86,6 +97,29 @@ func DSHRateAt(provider, model string, atMS int64) (DSHRate, bool) {
 		rate.OutputMicros *= 2
 	}
 	return rate, true
+}
+
+// 目录只供本包只读使用，避免每个 usage 事件重新分配全部历史快照。
+var dshOpenAIHistory = BuiltinOpenAICatalog()
+
+func dshOpenAIRateAt(model string, atMS int64) (DSHRate, bool) {
+	var effective *CatalogVersion
+	for i := range dshOpenAIHistory {
+		catalog := &dshOpenAIHistory[i]
+		if catalog.EffectiveFromMS <= atMS && (effective == nil || catalog.EffectiveFromMS > effective.EffectiveFromMS) {
+			effective = catalog
+		}
+	}
+	if effective == nil {
+		return DSHRate{}, false
+	}
+	for _, price := range effective.Models {
+		if price.MatchKind == ModelMatchExact && price.ModelPattern == model && price.InputMicrosPerMillion != nil && price.CachedInputMicrosPerMillion != nil && price.OutputMicrosPerMillion != nil {
+			return DSHRate{Version: effective.PricingVersion, SourceURL: effective.SourceURL,
+				InputMicros: *price.InputMicrosPerMillion, CachedMicros: *price.CachedInputMicrosPerMillion, OutputMicros: *price.OutputMicrosPerMillion}, true
+		}
+	}
+	return DSHRate{}, false
 }
 
 // EstimateDSHCost 对互斥的未缓存、缓存读、缓存写、输出计数统一舍入一次。

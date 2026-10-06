@@ -960,15 +960,44 @@ func maxInt64(a, b int64) int64 {
 	return b
 }
 func estimateEvent(event store.DSHUsageEvent) (int64, bool) {
+	cost, _, ok := priceEvent(event)
+	return cost, ok
+}
+
+func priceEvent(event store.DSHUsageEvent) (int64, pricing.DSHRate, bool) {
 	if event.ModelKey == nil || event.StartedAtMS == nil || !event.CacheReadKnown || !event.CacheWriteKnown {
-		return 0, false
+		return 0, pricing.DSHRate{}, false
 	}
 	at := *event.StartedAtMS
 	rate, ok := pricing.DSHRateAt(event.ModelProvider, *event.ModelKey, at)
 	if !ok {
-		return 0, false
+		return 0, pricing.DSHRate{}, false
 	}
-	return pricing.EstimateDSHCost(rate, event.InputTokens, event.CachedReadTokens, event.CacheCreationTokens, event.OutputTokens)
+	cost, ok := pricing.EstimateDSHCost(rate, event.InputTokens, event.CachedReadTokens, event.CacheCreationTokens, event.OutputTokens)
+	return cost, rate, ok
+}
+
+// pricingMetadata 按范围内已计价事件返回证据；混合供应方没有单一来源 URL。
+func pricingMetadata(events []store.DSHUsageEvent) (*string, []string) {
+	versions := map[string]bool{}
+	sources := map[string]bool{}
+	for _, event := range events {
+		if _, rate, ok := priceEvent(event); ok {
+			versions[rate.PricingVersion()] = true
+			sources[rate.SourceURL] = true
+		}
+	}
+	result := make([]string, 0, len(versions))
+	for version := range versions {
+		result = append(result, version)
+	}
+	sort.Strings(result)
+	if len(sources) == 1 {
+		for source := range sources {
+			return &source, result
+		}
+	}
+	return nil, result
 }
 
 func digestString(value string) string { return digest(value) }

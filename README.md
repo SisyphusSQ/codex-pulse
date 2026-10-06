@@ -175,4 +175,4 @@ Start with these documents for more detail:
 
 ### DSH / DeepSeek Harness
 
-DSH Mac 桌面版默认从 `~/.dsh/sessions` 导入官方 V3/V4 JSONL 和 Zstd 会话，支持现有 Session、项目、模型、缓存、活动、吞吐量、本地工具统计和可选中心上报。Mac 和中心 Web 均保持独立 `dsh` 客户端范围。全部费用以美元展示，按请求起始时间适配 DeepSeek 峰谷 API 公价；桌面账户实际扣费和官方额度不由日志推定。价格、格式、隐私和早期历史 unknown 边界见 [DSH 设计](docs/design/details/providers/dsh.md)，验证见 [DSH 验证记录](docs/test/dsh-provider.md)。
+DSH Mac 桌面版默认从 `~/.dsh/sessions` 导入官方 V3/V4 JSONL 和 Zstd 会话，支持现有 Session、项目、模型、缓存、活动、吞吐量、本地工具统计和可选中心上报。Mac 和中心 Web 均保持独立 `dsh` 客户端范围。全部费用以美元展示，按实际模型路由与请求起始时间选价：DeepSeek 使用峰谷 API 公价，`openai-codex` 使用已有 OpenAI Standard 基础文本历史价格。费用为 API 公价估算，桌面账户或 Codex 订阅的实际扣费与官方额度不由日志推定。价格、格式、隐私和早期历史 unknown 边界见 [DSH 设计](docs/design/details/providers/dsh.md)，验证见 [DSH 验证记录](docs/test/dsh-provider.md)。

@@ -16,9 +16,9 @@ Collector 在 Go Helper 内运行，按文件身份、大小和 mtime 缓存解�
 
 同一 header Session 身份的相同文件副本只计一次；内容分歧不合并贡献，保留一个确定性视图并标记 lineage conflict/partial，不能作为完整快照清除中心历史。
 
-## 美元峰谷计费
+## 美元模型公价估算
 
-所有金额使用整数微美元计算，展示为 USD。费用是**按 DeepSeek API 公价估算**；桌面账户路由 `deepseek-account` 的本地 usage 不能证明实际扣费，也不能证明账户余额或订阅额度。已有独立“API 与订阅”中的 DeepSeek 余额继续独立，不合并或再次记账。
+所有金额使用整数微美元计算，展示为 USD。费用是**按实际模型路由的 API 公价估算**；桌面账户路由 `deepseek-account` 的本地 usage 不能证明实际扣费，也不能证明账户余额或订阅额度。已有独立“API 与订阅”中的 DeepSeek 余额继续独立，不合并或再次记账。
 
 价格来源为 [DeepSeek 官方价格页](https://api-docs.deepseek.com/quick_start/pricing/)，冻结版本 `deepseek-usd-2026-10-06`。Flash 生效时间来自 [2026-09-10 公告](https://api-docs.deepseek.com/news/news260910/)；Pro 使用仍然独立的现行费率，不执行已撤回的 Pro 重定向方案。
 
@@ -34,6 +34,18 @@ Flash 的官方别名 `deepseek-v4-flash`、`deepseek-v4-flash-vision-exp` 使�
 峰时为北京时间工作日 09:00–12:00、14:00–18:00（半开区间）；其余时间、周末和中国公共假期按谷时。2026 假期来自 [国务院假期安排](https://www.beijing.gov.cn/cs/gncs/zcwj/202603/t20260327_4568275.html)，包括调休休息日；周末补班仍遵循 DeepSeek 的周末谷价。未收录年份在可能峰时显示 unknown，避免猜测节假日。
 
 根据已核验完整组合规则，当前历史定价窗口从 2026-09-10 04:00 UTC 开始。更早记录只保留 usage，不套用现价。以 `step/start` 的请求起始时间判定时段；一个 step 内重试缺少独立起始时间时保留 usage，费用 unknown。各互斥 Token 分量计算后统一舍入一次。中心贡献带 `:peak` / `:off_peak` 价格版本后缀；上报保留已计算的事件 USD，不用中心现价回算历史。
+
+### Codex 订阅模型（TOO-534）
+
+`openai-codex` 路由在 DSH 客户端内计量，客户端身份仍是 `dsh`。按 `step/start` 的独立请求时间选择已有 `BuiltinOpenAICatalog` 历史快照，再精确匹配模型 ID；`gpt-6.1-sol` 从目录的 2026-09-29 UTC 生效边界开始可估算。不执行 DeepSeek 的峰谷/假期判断，不根据模型前缀猜其他型号，也不重新核定或覆盖 OpenAI 历史费率。
+
+DSH 的 `inputTokens` 已经是未缓存输入，计算为 `(inputTokens × 输入价 + cacheReadTokens × 缓存价 + outputTokens × 输出价) / 1,000,000`，各分量整数微美元先精确求和再 HALF-UP 一次。不能直接传给使用“缓存为 input 子集、reasoning 独立”的 Codex JSONL 计算入口，否则会重复减缓存或加推理。DSH `reasoningTokens` 是 output 子集，缺少该字段不影响已有完整输出的计价。缓存写入非零仍无对应费率；缺缓存读/写时只有 total 精确证明缺桶为零才可定价。重试缺独立起始时间继续未计价，不把首尝试或完成时间冒充起点；范围内任一请求未计价时，完整费用合计继续 unknown，并保留 priced/unpriced 计数与已知价格版本。
+
+Mac 查询和中心导出共用 `DSHRateAt` / `EstimateDSHCost`；DeepSeek 价格版本带 `:peak` / `:off_peak`，OpenAI 保留原 `openai-api-*` 版本，不附加空时段或 DeepSeek 后缀。单一供应方范围返回对应官方 URL；混合供应方没有单一 URL，返回实际使用的全部版本。每轮详情和项目详情同样保留价格版本，未知请求不产生虚假的版本。
+
+原生价目表合并 DeepSeek 四档和 OpenAI 精确模型参考价，标明 OpenAI 行并提供两家官方来源入口；中心 DSH 目录同时包含 OpenAI 参考快照与历史版本，费用名称统一为“模型 API 公价估算”。这些费用不是 Codex 订阅实际扣费、余额或剩余额度。未知模型、路由、时间或缺必要计数保持 unpriced，不套当前价或报免费。
+
+费用在查询/导出时计算，不新增 SQLite/MySQL migration，也不改写源日志。既有同步每轮有界遍历已索引会话；升级后的旧记录无需增长或重扫日志，重新导出会产生不同快照摘要，沿用单调 revision 更新费用。贡献 ID 不含价格，因此 Token 与身份不变；已经入队的旧批次字节保持不可变，先续传再处理新修订。多设备仍可用旧的 unknown → known 价格证据仲裁，不相加。用户需要立即重读时可使用现有“全量补传”，不需要新后台任务或清空队列。
 
 ## Mac 和中心
 

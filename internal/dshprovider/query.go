@@ -289,7 +289,7 @@ func (service *QueryService) UsageCost(ctx context.Context, request usagecost.Us
 		Trend: []usagecost.TrendPoint{}, Models: []usagecost.UsageModelItem{},
 		UnpricedReasons: []usagecost.ReasonCount{},
 	}
-	totals, estimatedOK := totalsForUsageEvents(events)
+	totals, _ := totalsForUsageEvents(events)
 	markMissingUsage(&totals, filterSessions(snapshot.Sessions, rangeValue))
 	response.Totals = totals
 	response.Trend = usageTrend(events, *rangeValue, request.Granularity)
@@ -304,10 +304,8 @@ func (service *QueryService) UsageCost(ctx context.Context, request usagecost.Us
 		currency := "USD"
 		response.Currency = &currency
 	}
-	if estimatedOK && response.Totals.EstimatedUSDMicros.Value != nil {
-		source := pricing.DSHPriceSource
-		response.PricingSource = &source
-		response.PricingVersions = []string{pricing.DSHPriceVersion}
+	response.PricingSource, response.PricingVersions = pricingMetadata(events)
+	if len(response.PricingVersions) > 0 {
 		currency := "USD"
 		response.Currency = &currency
 	}
@@ -405,7 +403,8 @@ func (service *QueryService) SessionDetail(ctx context.Context, request usagecos
 		var version *string
 		if estimatedOK && turnTotals.EstimatedUSDMicros.Value != nil {
 			status = usagecost.SessionTurnPricingPriced
-			value := pricing.DSHPriceVersion
+			_, rate, _ := priceEvent(event)
+			value := rate.PricingVersion()
 			version = &value
 		}
 		turns = append(turns, usagecost.SessionTurnItem{
@@ -419,12 +418,10 @@ func (service *QueryService) SessionDetail(ctx context.Context, request usagecos
 	item := sessionItem(*session, events)
 	models := usageModels(events, rangeValue, usagecost.TrendDay)
 	trend := usageTrend(events, rangeValue, usagecost.TrendDay)
-	var pricingSource, currency *string
-	versions := []string{}
-	if item.Totals.EstimatedUSDMicros.Value != nil {
-		source, currencyValue := pricing.DSHPriceSource, "USD"
-		pricingSource, currency = &source, &currencyValue
-		versions = []string{pricing.DSHPriceVersion}
+	pricingSource, versions := pricingMetadata(events)
+	var currency *string
+	if len(versions) > 0 {
+		currency = new("USD")
 	}
 	return usagecost.SessionDetailResponse{
 		ProviderContext: contextFor(snapshot), Meta: snapshotMeta(snapshot, nil),
@@ -533,9 +530,10 @@ func (service *QueryService) ProjectDetail(ctx context.Context, request usagecos
 		modelItems = append(modelItems, usagecost.ProjectModelItem{DimensionKey: item.DimensionKey, Model: item.Model, Totals: item.Totals})
 	}
 	globalTotals, _ := totalsForUsageEvents(rangeEvents)
+	_, versions := pricingMetadata(selected.events)
 	return usagecost.ProjectDetailResponse{
 		ProviderContext: contextFor(snapshot), Meta: snapshotMeta(snapshot, nil), Range: *rangeValue,
-		ReportingTimeZone: rangeValue.TimeZone, PricingVersions: []string{}, Item: projectItem(*selected),
+		ReportingTimeZone: rangeValue.TimeZone, PricingVersions: versions, Item: projectItem(*selected),
 		Daily:       projectDaily(selected.events, *rangeValue),
 		SessionPage: *pageInfo(sessionOffset, sessionLimit, len(selected.sessions), snapshot.Generation, digestString("project-sessions:" + request.DimensionKey)[:16]),
 		Sessions:    sessionItems,

@@ -290,6 +290,35 @@ func currentDSHResponse(evaluatedAtMS int64) (CurrentResponse, error) {
 			OutputMicros: output, CacheWriteMicros: cacheWrite,
 		})
 	}
+	var openAI pricing.CatalogVersion
+	for _, catalog := range pricing.BuiltinOpenAICatalog() {
+		if catalog.EffectiveFromMS <= evaluatedAtMS && catalog.EffectiveFromMS >= openAI.EffectiveFromMS {
+			openAI = catalog
+		}
+	}
+	for _, price := range openAI.Models {
+		if price.MatchKind != pricing.ModelMatchExact {
+			continue
+		}
+		input, err := referenceRate(price.InputMicrosPerMillion)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		cached, err := referenceRate(price.CachedInputMicrosPerMillion)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		output, err := referenceRate(price.OutputMicrosPerMillion)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		written, err := referenceRate(nil)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		items = append(items, ModelReferencePrice{ModelID: "OpenAI / " + price.ModelPattern,
+			InputMicros: input, CachedInputMicros: cached, OutputMicros: output, CacheWriteMicros: written})
+	}
 	sort.Slice(items, func(left, right int) bool { return items[left].ModelID < items[right].ModelID })
 	meta, err := basequery.NewResponseMeta(basequery.ResponseComplete, nil, nil)
 	if err != nil {
@@ -311,13 +340,12 @@ func currentDSHResponse(evaluatedAtMS int64) (CurrentResponse, error) {
 	if err != nil {
 		return CurrentResponse{}, unavailableCatalog()
 	}
-	sourceURL := pricing.DSHPriceSource
 	return CurrentResponse{
-		ProviderContext: pricingProviderContext(agentprovider.DSH, "deepseek_pricing_docs", int64(len(items))),
-		Meta:            meta, EvaluatedAtMS: evaluated, PricingVersion: pricing.DSHPriceVersion,
-		Source: "deepseek_pricing_docs", Currency: CurrencyUSD, Basis: "deepseek_usd_peak_off_peak",
+		ProviderContext: pricingProviderContext(agentprovider.DSH, "dsh_provider_api_pricing", int64(len(items))),
+		Meta:            meta, EvaluatedAtMS: evaluated, PricingVersion: pricing.DSHPriceVersion + "+" + openAI.PricingVersion,
+		Source: "dsh_provider_api_pricing", Currency: CurrencyUSD, Basis: "dsh_provider_api_reference",
 		UnitTokens: unitTokens, EffectiveFromMS: effective, VerifiedAtMS: verified,
-		SourceURL: &sourceURL, Items: items,
+		Items: items,
 	}, nil
 }
 

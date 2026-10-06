@@ -30,3 +30,10 @@ it('uses zeros only for absent overview model buckets while retaining unpriced r
  expect(tooltip.formatter([{seriesName:'Codex · gpt-6.1-sol',dataIndex:2,value:null}])).toContain('—');
  expect(d.model_days).toHaveLength(2);expect(d.model_days[1].totals.cost_micro_usd).toBeNull();
 });
+
+it('labels DSH mixed provider pricing as API reference estimates',async()=>{
+ const value=data();value.models=[{provider:'dsh',model:'gpt-6.1-sol',totals:value.totals}];
+ fetcher.mockImplementation(async url=>new Response(JSON.stringify({code:200,data:String(url).includes('/devices/status')?[]:value})));
+ render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={['/usage/models?provider=dsh']}><Usage /></MemoryRouter></QueryClientProvider>);
+ expect(await screen.findByText('模型 API 公价估算')).toBeInTheDocument();expect(screen.queryByText('DeepSeek 峰谷价估算')).not.toBeInTheDocument();
+});

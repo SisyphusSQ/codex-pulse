@@ -940,7 +940,7 @@ private func estimatedCostLabel(_ provider: String) -> String {
 	switch provider {
 	case AgentProvider.cursor.rawValue: "文档价目估算"
 	case AgentProvider.grok.rawValue: "xAI 参考价估算"
-		case AgentProvider.dsh.rawValue: "DeepSeek API 公价估算"
+		case AgentProvider.dsh.rawValue: "模型 API 公价估算"
 	default: "API 折算成本"
 	}
 }

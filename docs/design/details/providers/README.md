@@ -194,4 +194,4 @@ Cursor collector 在写盘前丢弃 prompt、response、thought、tool input/out
 
 ## DSH
 
-第四个客户端的来源格式、分叉和重试归属、美元峰谷规则、Mac/中心范围、未知语义和隐私边界见 [DSH 设计](dsh.md)。DSH 不提供由本地日志无法证明的账户余额或官方额度。
+第四个客户端的来源格式、分叉和重试归属、DeepSeek 峰谷与 Codex 订阅模型美元公价估算规则、Mac/中心范围、未知语义和隐私边界见 [DSH 设计](dsh.md)。DSH 不提供由本地日志无法证明的账户余额或官方额度。
