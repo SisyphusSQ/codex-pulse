@@ -1,6 +1,6 @@
 import {lazy,Suspense,useMemo,useState} from 'react';
-import {Alert,Card,Collapse,Descriptions,Select,Segmented,Statistic,Table,Typography} from 'antd';
-import {useQuery} from '@tanstack/react-query';
+import {Card,Collapse,Descriptions,Select,Segmented,Statistic,Table,Typography} from 'antd';
+import {useFeedbackQuery as useQuery} from '../components/QueryNotifications';
 import {Link,useSearchParams} from 'react-router-dom';
 import {getUsage} from '../api/usage';
 import type {UsageModel} from '../api/usage';
@@ -29,7 +29,7 @@ export default function Usage(){
  return <section className="usage-page">
  <StatsFilters value={filter} onChange={v=>{setFilter({...v,model:v.model??''});setChosen(null);}} refresh={()=>void query.refetch()} busy={query.isFetching} extra={<Select className="model-filter" aria-label="用量模型" value={filter.model} showSearch={{optionFilterProp:'label'}} onChange={model=>{setFilter({...filter,model});setChosen(null);}} options={[{value:'',label:'全部模型'},...[...new Set(available.map(r=>r.model))].map(value=>({value,label:value==='unknown'?'模型未归因':value}))]} />} />
  {query.isPending?<LoadingState />:query.error&&!data?<ErrorState error={query.error} retry={()=>void query.refetch()} />:data&&<>
- {query.error&&<Alert showIcon type="warning" title="更新失败，保留上次用量与原时间" description={query.error.message} className="form-alert" />}
+
  <Card className="summary-band"><div className="metric-grid usage-kpis"><div><Statistic title="Token 总量" value={data.totals.total_tokens??'未知'} formatter={()=>tokens(data.totals.total_tokens)} /><div className="metric-note">输入 {tokens(data.totals.input_tokens)} · 输出 {tokens(data.totals.output_tokens)}</div></div>
  <div><Statistic title={estimatedLabel(filter.provider)} value={data.totals.cost_micro_usd??'未知'} formatter={()=>dollars(data.totals.cost_micro_usd)} /><div className="metric-note">{data.totals.cost_status==='partial'?'已知金额小计':'按历史费率计算'} · 估算</div></div>
  <div><Statistic title={filter.provider==='cursor'?'Cursor 上报费用':filter.provider==='grok'?'Grok 上报费用':'来源上报费用'} value={data.totals.reported_charge_micro_usd??'未知'} formatter={()=>dollars(data.totals.reported_charge_micro_usd)} /><div className="metric-note">{data.totals.reported_charge_status==='partial'?'已知上报金额小计':'数据源提供的金额'} · 与估算分开展示</div></div>

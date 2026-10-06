@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Alert, Button, Card, Progress, Select, Typography } from 'antd';
-import { useQuery } from '@tanstack/react-query';
+import { Button, Card, Progress, Select, Typography } from 'antd';
+import {useFeedbackQuery as useQuery} from '../components/QueryNotifications';
 import { getPace, getQuotas, getQuotaAccounts, type QuotaAccount, type QuotaCredits, type QuotaFilter, type QuotaResponse, type QuotaWindow } from '../api/quotas';
 import { getDevices } from '../api/statistics';
 import { Navigate,useSearchParams } from 'react-router-dom';
@@ -45,14 +45,14 @@ export function QuotaAccounts(){
  function refresh(){void query.refetch();if(selected)void pace.refetch();void catalog.refetch();void devices.refetch();}
  return <section>
  <ObservationFilters value={filter} providerLabel="额度 Provider" sourceLabel="额度采集来源" refreshLabel="刷新额度" onChange={scope=>change({...filter,...scope,account_key:''})} refresh={refresh} busy={busy} extra={<Select className="quota-account-filter" aria-label="额度账号" value={filter.account_key} loading={catalog.isPending} showSearch={{optionFilterProp:'label'}} onChange={account_key=>change({...filter,account_key})} options={[{value:'',label:'全部账号'},...(catalog.data?.accounts??[]).map(a=>({value:a.key,label:`${providerNames[a.provider]??a.provider} · ${a.email??'邮箱未提供'} · ${a.raw_id}`}))]} />} />
- {(catalog.error||devices.error)&&<Alert showIcon type="warning" className="form-alert" title="筛选选项读取失败，可刷新重试" />}
+
  {query.isPending?<LoadingState />:query.error&&!data?<ErrorState error={query.error} retry={refresh} />:data&&<>
- {query.error&&<Alert showIcon type="warning" className="form-alert" title="额度刷新失败，保留上次读取的数据与原时间" description={query.error.message} />}
+
  <div className="quota-snapshot-note"><span>中心读取 {dateTime(data.evaluated_at_ms)}</span><EvidenceIcon label="中心快照说明"><p>每30秒读取中心摘要；历史按选中窗口加载，最多保留四个周期。额度、节奏和 Credits 显示最后一次有效更新及其时间，收到新观测后更新；App关闭期间保留这份数据。当前收到 {data.windows.length} 个窗口。</p></EvidenceIcon></div>
  {!groups.length?<EmptyState description="尚无已收到的额度或 Credits。请启用设备上报；未确认账号不根据邮箱推断归属。" />:<div className="quota-workspace">
  <Card title="账号" className="quota-selection">{groups.map(a=><button type="button" className={`account-item ${a.key===group?.key?'selected':''}`} key={a.key} aria-pressed={a.key===group?.key} onClick={()=>{setSelectedAccount(a.key);setSelectedKey('');}} aria-label={a.accountKey===null?'查看待关联观测':`查看账号 ${providerNames[a.provider]??a.provider} ${a.account?.email??'邮箱未提供'} ${a.account?.raw_id??a.accountKey}`}><span className="account-provider">{a.accountKey===null?'待关联观测':providerNames[a.provider]??a.provider}</span><strong>{a.account?.email??(a.accountKey===null?'尚未确认账号':'账号信息未取得')}</strong><span>{a.account?.plan??'套餐未知'} · {a.windows.length} 个额度窗口</span><small>{a.account?.raw_id??a.accountKey??'尚未确认账号 ID'}</small></button>)}</Card>
  {group&&<Card key={group.key} className="quota-detail">
-  {group.accountKey===null?<Alert showIcon type="warning" className="form-alert" title="账号尚未确认关联" description="以下观测各自展示，不视为同一账号，也不按邮箱或采集设备推断归属。" />:group.account?<AccountIdentity account={group.account} provider={group.provider} showDetails={false} />:<Alert showIcon type="warning" className="form-alert" title="账号资料尚未取得" description="当前额度和 Credits 仍按已收到的账号键关联，邮箱、原始 ID 与套餐保持未知。" />}
+  <AccountIdentity account={group.account} provider={group.provider} showDetails={false} />
   {group.account&&group.accountKey&&<SubscriptionPanel accountKey={group.accountKey} provider={group.provider} />}
   <div className="quota-window-overview">{quotaSlots(group).map(({minutes,window:w})=>w?<Card key={w.key} size="small" className={w.key===selected?.key?'quota-window-summary selected-window':'quota-window-summary'}>
    <Button type="link" className="record-link" aria-pressed={w.key===selected?.key} onClick={()=>{setSelectedKey(w.key);}}>{w.limit_id} · {w.window_minutes==null?'窗口时长未知':w.window_minutes%1440===0?`${w.window_minutes/1440} 天`:w.window_minutes%60===0?`${w.window_minutes/60} 小时`:`${w.window_minutes} 分钟`}</Button>
@@ -68,8 +68,8 @@ export function QuotaAccounts(){
   {selected&&<>
   <Typography.Title level={5}>节奏与历史</Typography.Title>
   {pace.isPending?<LoadingState label="正在读取节奏统计…" />:pace.error&&!pace.data?<ErrorState error={pace.error} retry={()=>void pace.refetch()} />:<>
-    {pace.error&&<Alert type="warning" showIcon className="section-card" title="节奏刷新失败，保留上次评估" description={pace.error.message} />}
-    {selectedPace?<PacePanel key={selected.key} window={selectedPace} evaluatedAt={pace.data!.evaluated_at_ms} />:<Alert type="info" className="section-card" title="节奏快照中暂无这个窗口，可刷新重读" />}
+
+    {selectedPace?<PacePanel key={selected.key} window={selectedPace} evaluatedAt={pace.data!.evaluated_at_ms} />:<div className="quiet-empty" role="status">节奏快照中暂无这个窗口，可刷新重读。</div>}
    </>}
   </>}
  </Card>}

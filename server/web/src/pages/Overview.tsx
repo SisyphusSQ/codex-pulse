@@ -1,6 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
-import { Alert, Button, Card, Collapse, Popover, Select, Segmented, Statistic, Table, Tooltip, theme } from 'antd';
-import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Button, Card, Collapse, Popover, Select, Segmented, Statistic, Table, Tooltip, theme } from 'antd';
+import {useIsFetching, useQueryClient} from '@tanstack/react-query';
+import {refreshQueriesWithFeedback, useFeedbackQuery as useQuery} from '../components/QueryNotifications';
 import { Link,useSearchParams } from 'react-router-dom';
 import type { EChartsCoreOption } from 'echarts/core';
 import { getDevices, getAnnual, getTotals, getBreakdown, type StatsFilter, type Decimal, type Slice } from '../api/statistics';
@@ -86,7 +87,7 @@ function OverviewUsageTrend({filter}:{filter:StatsFilter}){
         </div>}>
           <Select aria-label="概览趋势模型" className="usage-model-selector" mode="multiple" maxCount={12} maxTagCount="responsive" value={selection} onChange={setChosen} options={available.map(r=>({value:`${r.provider}:${r.model}`,label:`${providerNames[r.provider]??r.provider} · ${r.model==='unknown'?'模型未归因':r.model}`}))} placeholder="选择趋势模型" />
           {usage.isPending?<LoadingState label="正在读取模型日桶…" />:usage.error&&!usage.data?<ErrorState error={usage.error} retry={()=>void usage.refetch()} />:<>
-          {usage.error&&<Alert type="warning" title="模型趋势更新失败，保留上次读取的数据" description={usage.error.message} />}
+
           {selection.length && usage.data?<UsageChart data={usage.data} metric={metric} selection={selection} />:<EmptyState description="暂无模型用量" />}
           </>}
         </Card></>;
@@ -94,7 +95,7 @@ function OverviewUsageTrend({filter}:{filter:StatsFilter}){
 function BreakdownQuery({filter,kind,distribution=false}:{filter:StatsFilter;kind:'providers'|'models';distribution?:boolean}){
  const query=useQuery({queryKey:['statistics',kind,filter],queryFn:({signal})=>getBreakdown(filter,kind,signal),refetchInterval:60_000});
  const title=kind==='providers'?'平台分布':'模型分布';
- return query.isPending?<LoadingState label="正在读取用量明细…"/>:!query.data?<ErrorState error={query.error} retry={()=>void query.refetch()}/>:<>{query.error&&<Alert type="warning" title="明细更新失败，保留上次读取的数据"/>}{distribution?<Distribution rows={query.data[kind]??[]} title={title}/>:<SliceTable rows={query.data[kind]??[]}/>}</>;
+ return query.isPending?<LoadingState label="正在读取用量明细…"/>:!query.data?<ErrorState error={query.error} retry={()=>void query.refetch()}/>:<>{distribution?<Distribution rows={query.data[kind]??[]} title={title}/>:<SliceTable rows={query.data[kind]??[]}/>}</>;
 }
 
 export default function Overview() {
@@ -115,9 +116,9 @@ export default function Overview() {
   const sources=useQuery({queryKey:['devices','status'],queryFn:({signal})=>getDevices(signal)});
   const devices=(sources.data??[]).filter(d=>d.revoked_at_ms===null&&(!filter.client_id||d.id===filter.client_id)).map(d=>({...d,providers:d.providers.filter(p=>!filter.provider||p.provider===filter.provider)}));
   return <section className="overview-page">
-    <StatsFilters value={filter} onChange={v=>{setFilter(v);}} refresh={() => {void queryClient.refetchQueries({queryKey:['statistics'],type:'active'});void queryClient.refetchQueries({queryKey:['usage'],type:'active'});}} busy={query.isFetching||usage.isFetching||machineFetching} />
+    <StatsFilters value={filter} onChange={v=>{setFilter(v);}} refresh={() => {void refreshQueriesWithFeedback(queryClient,{queryKey:['statistics'],type:'active'});void refreshQueriesWithFeedback(queryClient,{queryKey:['usage'],type:'active'});}} busy={query.isFetching||usage.isFetching||machineFetching} />
     {query.isPending ? <SectionPlaceholder title="全年活动" height={300} /> : query.error && !data ? <Card title="全年活动"><ErrorState error={query.error} retry={() => void query.refetch()} /></Card> : data && <>
-      {query.error && <Alert type="warning" showIcon title="刷新失败，以下保留上次读取的数据" description={query.error.message} className="form-alert" />}
+
       <Card className="overview-activity" title="全年活动" extra={<div className="annual-actions">{data.heatmap_coverage.stale && <span className="metric-note">采集陈旧</span>}<Popover trigger="click" placement="bottomRight" content={<div className="evidence-popover">
         <div className="activity-metrics">{[
           ['近 365 天 Token', data.heatmap_activity.total_tokens],
@@ -139,7 +140,7 @@ export default function Overview() {
       </Card>
     </>}
       <Card className="summary-band" style={{ minHeight: 132 }}>
-        {usage.error && totals && <Alert type="warning" showIcon title={"范围用量刷新失败，保留上次读取的数据"} description={usage.error.message} />}
+
         {!totals && usage.isPending ? <LoadingState label="正在读取范围用量…" /> : usage.error && !totals ? <ErrorState error={usage.error} retry={() => void usage.refetch()} /> : totals && <div className="metric-grid overview-kpis">
         <div><Statistic title="当前范围 Token 总量" value={usageDecimal(totals,'total_tokens')??'—'} formatter={() => usageTokens(usageDecimal(totals,'total_tokens'))} /><div className="metric-note">输入 {usageTokens(usageDecimal(totals,'input_tokens'))} · 输出 {usageTokens(usageDecimal(totals,'output_tokens'))}</div></div>
         <div><Statistic title="当前范围 API 等价成本" value={usageDecimal(totals,'cost_micro_usd')??'—'} formatter={() => <UsageCost value={usageDecimal(totals,'cost_micro_usd')} status={totals.cost_status}/>} /></div>
@@ -155,7 +156,7 @@ export default function Overview() {
           <DeferredSection title="平台 / 模型明细" height={360}><Card title="平台 / 模型明细" extra={<div className="overview-chart-controls"><Segmented size="small" aria-label="用量明细维度" value={breakdown} options={[{value:'providers',label:'平台'},{value:'models',label:'模型'}]} onChange={value=>setBreakdown(value as 'providers'|'models')} /><Link to="/usage/models">查看用量</Link></div>}><BreakdownQuery filter={filter} kind={breakdown}/></Card></DeferredSection>
           <Card title="采集来源" extra={<Link to="/usage/sources">查看全部{devices.length>3?` (${devices.length})`:''}</Link>}>
             {sources.isPending?<LoadingState label="正在读取采集证据…" />:sources.error&&!sources.data?<ErrorState error={sources.error} retry={()=>void sources.refetch()} />:<>
-              {sources.error&&<Alert type="warning" title="来源更新失败，保留上次证据" />}
+
               <SourceTable devices={devices} compact zone={filter.time_zone} />
             </>}
           </Card>
