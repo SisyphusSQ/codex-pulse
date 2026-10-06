@@ -64,7 +64,7 @@ func exportReportingDSHUsage(db *gorm.DB, id string, s *reportingv1.SessionSnaps
 				if rate, ok := pricing.DSHRateAt(r.ModelProvider, *r.ModelKey, at); ok {
 					if cost, ok := pricing.EstimateDSHCost(rate, r.InputTokens, r.CachedReadTokens, r.CacheCreationTokens, r.OutputTokens); ok {
 						c.CostMicroUSD = &cost
-						version := rate.Version + ":" + rate.Period
+						version := rate.PricingVersion()
 						c.PricingVersion = &version
 						c.CostStatus = "known"
 					}

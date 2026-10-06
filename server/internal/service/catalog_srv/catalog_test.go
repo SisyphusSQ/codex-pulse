@@ -4,6 +4,7 @@ import (
 	"errors"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 
 	reporting_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/reporting_do"
@@ -82,5 +83,37 @@ func TestCatalogReportedHistoricalRateTrace(t *testing.T) {
 	}
 	if historical != 1 || !unknown {
 		t.Fatal("historical rate dedup or unknown reference", historical, unknown)
+	}
+}
+
+func TestDSHCodexCatalogHasHistoricalPricesAndKnownObservedModel(t *testing.T) {
+	engine := centerfixture.Engine(t)
+	db := engine.DB(t.Context())
+	if err := db.Create(&reporting_do.Session{ID: "dsh", Provider: "dsh", SessionID: "dsh-synthetic", CanonicalRevision: 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&reporting_do.Usage{SessionKey: "dsh", Position: 1, Model: new("gpt-6.1-sol"), CostStatus: "unpriced", PricingMode: "event_cost"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	out, err := NewCatalog(catalog_repo.NewCatalog(engine)).Current(t.Context(), access_dto.Principal{ID: "synthetic-admin", Purpose: "admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, m := range out.Models {
+		if m.Provider == "dsh" && m.Model == "gpt-6.1-sol" {
+			if m.Evidence == "observed" {
+				t.Fatal("supported DSH model marked price unknown", m)
+			}
+			if m.Version == "openai-api-2026-09-29" {
+				found = true
+				if m.InputPrice == nil || *m.InputPrice != "2" || m.CachedPrice == nil || *m.CachedPrice != "0.1" || m.OutputPrice == nil || *m.OutputPrice != "10" || m.SourceURL != "https://developers.openai.com/api/docs/pricing" || m.EffectiveFromMS == nil || !strings.Contains(m.Notes, "订阅实际扣费") {
+					t.Fatal("wrong DSH OpenAI evidence", m)
+				}
+			}
+		}
+	}
+	if !found {
+		t.Fatal("DSH OpenAI history missing")
 	}
 }

@@ -67,3 +67,11 @@ it('groups real subscription tiers and keeps annual, regional and unknown price 
  await user.click(screen.getByRole('tab',{name:/^Grok$/}));expect(await screen.findByRole('heading',{name:'SuperGrok Plus'})).toBeInTheDocument();await user.click(screen.getByText('个人'));expect(await screen.findByRole('heading',{name:'SuperGrok Lite'})).toBeInTheDocument();expect(screen.getAllByText('未公开')).toHaveLength(2);expect(screen.queryByRole('heading',{name:'SuperGrok Plus'})).not.toBeInTheDocument();
  await user.click(screen.getByRole('tab',{name:'模型价格'}));expect(screen.getByRole('radio',{name:'相关模型'})).toBeChecked();
 });
+
+it('shows DSH OpenAI reference and historical prices with DSH usage links',async()=>{
+ const base={provider:'dsh',model:'gpt-6.1-sol',mode:'OpenAI Standard · API 公价估算',currency:'USD',unit:'1M tokens',input_price:'2',cached_price:'0.1',cache_write_price:null,output_price:'10',version:'openai-api-2026-09-29',source_url:'https://developers.openai.com/api/docs/pricing',verified_at_ms:Date.UTC(2026,8,30),effective_from_ms:Date.UTC(2026,8,29),notes:'不是 Codex 订阅实际扣费或额度'};
+ vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({code:200,data:{version:'test',models:[{...base,key:'reference',evidence:'current'},{...base,key:'history',evidence:'historical'}],plans:[]}})));
+ render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={['/pricing?provider=dsh']}><Pricing /></MemoryRouter></QueryClientProvider>);
+ await screen.findByText('gpt-6.1-sol');expect(screen.getByText('$2.00')).toBeInTheDocument();expect(screen.getByRole('link',{name:'查看用量'})).toHaveAttribute('href','/usage/models?provider=dsh&model=gpt-6.1-sol');
+ await userEvent.setup().click(screen.getByText('历史计价'));expect(await screen.findByText('gpt-6.1-sol')).toBeInTheDocument();expect(screen.getByText('$0.10')).toBeInTheDocument();
+});

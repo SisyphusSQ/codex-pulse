@@ -84,3 +84,22 @@ SQMC04 生产 Server 已先切至 `v0.16.0-3904b8a`，一致停服数据库备�
 生产中心已自然接收 DSH 的 11 个会话及标题。原日志仍持续增长，本机最新事实与中心上次同步快照可随 600 秒同步间隔暂时不同；没有把这一运行读回描述成完整 Mac→Server→Web E2E 或长期稳定性验收。此前列出的全仓长测、CI、独立 MySQL 8.4、完整业务 E2E、Sparkle 更新 UI E2E、全新 macOS 用户首启、公证等未执行项仍保留。GitHub Actions 按已有仓库决定保持关闭。
 
 发布安全自查：原认证、设备配对、权限和网络入口保留；发行包无私有配置、凭据或原始日志，私有备份/日志仅存放于各机忽略的发行证据目录。本次按约定未重复执行测试，构建和发行/安装结果读回不作为新增测试结论。
+
+
+## TOO-534：DSH Codex 模型计价（2026-10-06）
+
+开发分支 `suqing/too-534-dsh-codex-pricing`。在干净 main 上完成 `pull --ff-only`，当时本地与远端一致，再切分支。新增 `openai-codex` 精确模型历史价格匹配；本地查询与上报复用同一 DSH 互斥分量计算，reasoning 不重复计入 output。单一价格来源、混合版本、轮次/项目详情、原生和中心价目与费用说明已适配。没有 Proto、依赖、Preferences、数据库 schema 或凭据变更。
+
+自动验证全部使用合成日志/隔离 SQLite：
+
+- `go test ./internal/pricing ./internal/dshprovider ./internal/query/pricingcatalog ./internal/reporting -run DSH -count=1`：路由/型号/历史生效边界、旧价保持、OpenAI 不受峰谷/假期限制、缓存写价格缺失、真零、混合来源、unknown 重试、DSH collector → Store → 查询/导出一致、持久队列与关闭 gate。
+- `go test ./internal/pricing ./internal/dshprovider ./internal/query/pricingcatalog ./internal/store -run 'DSH|TestCurrent' -count=1`：相关查询、Store 和原 DeepSeek 回归通过。
+- Server 在 `make web-build` 后运行 `go test ./internal/service/catalog_srv ./internal/service/statistics_srv -run DSH -count=1`：参考/历史目录、已有型号不误标 unknown、旧费用修订、三设备副本和重复批次通过。测试验证 Token 与会话数不变，费用采用更完整证据，仍归 DSH。
+- Web 类型检查与构建通过，`Usage.test.tsx` / `Pricing.test.tsx` 共 13 项通过。两个受影响组件的 AntD lint 均零问题。测试环境有 jsdom 的伪元素 `getComputedStyle` 未实现提示，不影响测试结果。
+- `swift build --package-path app/macos --product codex-pulse-app` 通过；编译仍报告既有 RootView 的 weak/strong capture 警告，本次未改动该闭包。
+
+历史不依赖原日志增长：直接从既有 Store 重读得到相同贡献与价格。模拟旧 unpriced 队列后补价格形成 revision 2，验证旧批次字节不变、贡献 ID 不变且同修订不重复入队；不需要新 schema、清空队列或全库重扫。以上为开发证据，不代表已更新真实个人历史或完成 Mac → 生产中心端到端验收。
+
+未执行：新版 App 的真实 Home/UI 验收、个人数据上传、独立 MySQL、全仓长测/race、CI、签名、公证、commit/push、发版或生产部署。缺少独立起始时间的请求仍未计价；任何未计价请求都会使完整费用合计 unknown。部署升级后旧历史将在后续同步遍历或既有全量补传中更新，本次未操作生产数据。
+
+本次 diff 安全自查：认证、CSRF、来源权限与幂等机制保持原规则；无新增服务端外部请求或执行入口，无凭据/正文/个人路径落库或上报；前端只展示 Go 计算结果，金额使用既有有界整数精度。

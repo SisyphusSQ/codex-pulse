@@ -648,7 +648,7 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             case .dsh:
- Text("读取 DSH 本机 Session 的用量与工具统计；费用以美元按请求时间的官方峰谷价估算。")
+ Text("读取 DSH 本机 Session 的用量与工具统计；按模型路由和请求时间估算美元 API 公价，订阅实际扣费与额度以官方为准。")
  case .grok:
                 Toggle("启用 Grok 额度采集", isOn: draftBinding(\.grokQuotaEnabled))
                     .disabled(

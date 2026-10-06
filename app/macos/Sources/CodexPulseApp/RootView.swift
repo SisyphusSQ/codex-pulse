@@ -748,7 +748,7 @@ private struct CursorOverviewContentView: View {
 			} else {
 				Divider()
 				VStack(alignment: .leading, spacing: 5) {
-					Text(provider == .dsh ? "DeepSeek API 公价估算" : (summary.rangeCostBasis == .reported
+					Text(provider == .dsh ? "模型 API 公价估算" : (summary.rangeCostBasis == .reported
 						? "Grok 上报费用" : "xAI 参考价估算"))
 						.font(.subheadline.weight(.medium))
 						.foregroundStyle(.secondary)

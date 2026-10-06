@@ -47,12 +47,25 @@ func (s *Catalog) current(ctx context.Context) (out catalog_vo.Response, err err
 	if err = json.Unmarshal(publicPlans, &out.Plans, json.RejectUnknownMembers(true)); err != nil {
 		return out, fmt.Errorf("read public plan catalog: %w", err)
 	}
-	for _, version := range pricing.BuiltinOpenAICatalog() {
+	openAICatalog := pricing.BuiltinOpenAICatalog()
+	for _, version := range openAICatalog {
 		for _, m := range version.Models {
 			if m.MatchKind != pricing.ModelMatchExact {
 				continue
 			}
 			out.Models = append(out.Models, catalog_vo.Model{Key: "codex:" + m.ModelPattern + ":" + version.PricingVersion, Provider: "codex", Model: m.ModelPattern, Mode: "Standard · 本机历史基础文本", Currency: "USD", Unit: "1M tokens", InputPrice: amount(m.InputMicrosPerMillion), CachedPrice: amount(m.CachedInputMicrosPerMillion), OutputPrice: amount(m.OutputMicrosPerMillion), Version: version.PricingVersion, SourceURL: version.SourceURL, VerifiedAtMS: version.VerifiedAtMS, EffectiveFromMS: new(version.EffectiveFromMS), Evidence: "historical", Notes: "本机历史计算目录；不推断Fast、长上下文或缓存写入费率。"})
+			out.Models = append(out.Models, catalog_vo.Model{Key: "dsh:" + m.ModelPattern + ":" + version.PricingVersion,
+				Provider: "dsh", Model: m.ModelPattern, Mode: "OpenAI Standard · API 公价估算", Currency: "USD", Unit: "1M tokens",
+				InputPrice: amount(m.InputMicrosPerMillion), CachedPrice: amount(m.CachedInputMicrosPerMillion), OutputPrice: amount(m.OutputMicrosPerMillion),
+				Version: version.PricingVersion, SourceURL: version.SourceURL, VerifiedAtMS: version.VerifiedAtMS,
+				EffectiveFromMS: new(version.EffectiveFromMS), Evidence: "historical",
+				Notes: "适用于 DSH openai-codex 路由，按请求时间选择历史价格；不是 Codex 订阅实际扣费或额度，不推断 Fast、长上下文或缓存写入费率。"})
+			if version.PricingVersion == openAICatalog[len(openAICatalog)-1].PricingVersion {
+				reference := out.Models[len(out.Models)-1]
+				reference.Key += ":reference"
+				reference.Evidence = "current"
+				out.Models = append(out.Models, reference)
+			}
 		}
 	}
 	for _, m := range pricing.BuiltinCursorModelRates() {

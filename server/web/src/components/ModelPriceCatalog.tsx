@@ -73,7 +73,7 @@ export function ModelPriceCatalog({models,used,provider,initialSearch='',initial
   const candidates=rates.filter(r=>scope==='history'?r.evidence==='historical'&&(!version||r.version===version):r.evidence==='observed'||r.evidence==='current'&&isReferenceRate(r,isUsed));
   const primary=[...candidates].sort(baselineOrder)[0];
   if(!primary||provider&&primary.provider!==provider)continue;
-  const relevant=primary.evidence==='observed'||isUsed||rates.some(r=>r.model.toLowerCase()===search.trim().toLowerCase())||primary.provider==='cursor'||primary.provider==='grok'||primary.provider==='codex'&&codexReferenceModels.has(modelKey(primary).slice('codex:'.length));
+  const relevant=primary.evidence==='observed'||isUsed||rates.some(r=>r.model.toLowerCase()===search.trim().toLowerCase())||primary.provider==='cursor'||primary.provider==='grok'||primary.provider==='dsh'||primary.provider==='codex'&&codexReferenceModels.has(modelKey(primary).slice('codex:'.length));
   if(scope==='related'&&!relevant||scope==='used'&&!isUsed)continue;
   if(search&&!rates.some(r=>r.model.toLowerCase().includes(search.toLowerCase())))continue;
   const usageKey=[...used].find(value=>{const split=value.indexOf(':');return modelKey({provider:value.slice(0,split),model:value.slice(split+1)})===key;});
