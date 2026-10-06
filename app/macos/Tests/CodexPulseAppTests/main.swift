@@ -379,10 +379,8 @@ private func testOverviewInvocationProfileUsesResponsiveIndependentRankings() th
     let source = try mainWindowSource("RootView.swift")
     try expect(
         source.contains("OverviewInvocationProfileCard(")
-            && source.contains("overview.invocation-profile")
-            && source.contains("查看完整调用统计")
-            && source.contains("model.navigateToInvocationUsageFromOverview()"),
-        "overview must append a navigable invocation profile card"
+            && source.contains("overview.invocation-profile"),
+        "overview must append an invocation profile summary card"
     )
     try expect(
         source.contains("Text(localization.textValue(\"常用 Tool\"))")
@@ -403,7 +401,7 @@ private func testOverviewInvocationProfileUsesResponsiveIndependentRankings() th
 }
 
 @MainActor
-private func testOverviewInvocationDeepLinkAlignsTheDetailContext() async throws {
+private func testRemovedInvocationPageRestoresOverview() async throws {
     let suiteName = "CodexPulseAppTests.InvocationDeepLink.\(UUID().uuidString)"
     guard let defaults = UserDefaults(suiteName: suiteName) else {
         throw TestFailure.mismatch("invocation deep link defaults suite unavailable")
@@ -411,21 +409,15 @@ private func testOverviewInvocationDeepLinkAlignsTheDetailContext() async throws
     defer { defaults.removePersistentDomain(forName: suiteName) }
     defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.selectedProvider")
     defaults.set(AgentProvider.codex.rawValue, forKey: "CodexPulse.statusProvider")
+    defaults.set("invocationUsage", forKey: "CodexPulse.selectedFeature")
     let model = AppModel(
         runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in
             FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
         }),
         providerDefaults: defaults
     )
-    model.selectInvocationRange(.today)
-    model.selectInvocationSourceClass("detected")
-    model.navigateToInvocationUsageFromOverview()
-    try expect(
-        model.selectedFeature == .invocationUsage
-            && model.invocationRange == .quotaWeek
-            && model.invocationSourceClass == "all",
-        "overview deep link must align invocation filters with its quota-week all-source profile"
-    )
+    try expect(model.selectedFeature == .overview,
+        "removed invocation page preference must restore the overview")
     _ = await model.shutdown()
 }
 
@@ -2268,7 +2260,7 @@ private func testSidebarSettingsUsesSystemRowSpacing() throws {
 private func testUsageSidebarOrdersInvocationBeforeQuota() throws {
     try expect(
         AppFeature.usageFeatures(for: .codex)
-            == [.overview, .sessions, .projects, .invocationUsage, .quotaUsage, .accountQuotas],
+            == [.overview, .sessions, .projects, .quotaUsage, .accountQuotas],
         "usage sidebar must place invocation statistics immediately before quota usage"
     )
 	try expect(
@@ -2305,9 +2297,9 @@ private func testDashboardSummaryIsIndependentOfProviderSelector() async throws 
     )
     try expect(
         newUser.selectedFeature == .dashboardSummary
-            && AgentProvider.allCases.map(\.rawValue) == ["codex", "cursor", "grok"]
+            && AgentProvider.allCases.map(\.rawValue) == ["codex", "cursor", "grok", "dsh"]
             && !AgentProvider.allCases.map(\.rawValue).contains("all"),
-        "new users must land on the summary page without adding a fourth provider"
+        "new users must land on the summary page and DSH must remain a scoped provider"
     )
     newUser.navigate(to: .projects)
     try expect(
@@ -2879,7 +2871,7 @@ private func testSettingsExplainsAutomaticDefaultHome() throws {
             "response.snapshot.home.configured ? \"已配置\" : \"未配置 Codex Home\""),
         "settings must distinguish an unconfigured Codex Home from a failed launch")
     try expect(
-        source.contains("没有 Codex Home 时，Cursor、Grok 和设置仍然可用。"),
+        source.contains("没有 Codex Home 时，Cursor、Grok、DSH 和设置仍然可用。"),
         "settings must keep Cursor, Grok, and Settings available without a Codex Home")
 }
 
@@ -4285,7 +4277,7 @@ private actor FakeCore: AppCoreServing {
         calls.append("provider_refresh:\(request.trigger)")
         var receipt = Codexpulse_Core_V1_ProviderRefreshReceipt()
         receipt.trigger = request.trigger
-        for provider in ["codex", "cursor", "grok"] {
+        for provider in ["codex", "cursor", "grok", "dsh"] {
             var result = Codexpulse_Core_V1_ProviderRefreshResult()
             result.provider = provider
             result.status = "skipped_unavailable"
@@ -5952,7 +5944,7 @@ private func testTransientCursorFailureCanRetry() async throws {
 }
 
 @MainActor
-private func testGlobalRefreshMapsThreeProviderReceipt() async throws {
+private func testGlobalRefreshMapsFourProviderReceipt() async throws {
     let suiteName = "CodexPulseAppTests.GlobalRefreshMap.\(UUID().uuidString)"
     guard let defaults = UserDefaults(suiteName: suiteName) else {
         throw TestFailure.mismatch("global refresh map defaults suite unavailable")
@@ -5971,11 +5963,11 @@ private func testGlobalRefreshMapsThreeProviderReceipt() async throws {
     }
     model.refreshAllFeatures()
     try await waitUntil("global refresh mapped") {
-        await MainActor.run { model.globalRefreshPresentation?.providers.count == 3 }
+        await MainActor.run { model.globalRefreshPresentation?.providers.count == 4 }
     }
     let presentation = model.globalRefreshPresentation
-    try expect(presentation?.providers.map(\.provider) == ["codex", "cursor", "grok"], "receipt must keep stable provider order")
-    try expect(presentation?.skippedCount == 3, "expected skip summary must not clear presentation")
+    try expect(presentation?.providers.map(\.provider) == ["codex", "cursor", "grok", "dsh"], "receipt must keep stable provider order")
+    try expect(presentation?.skippedCount == 4, "expected skip summary must not clear presentation")
     try expect(!(model.state.isUnavailable), "skipped providers must not mark the app unavailable")
     _ = await model.shutdown()
 }
@@ -6794,8 +6786,8 @@ private func testAccountSnapshotSendsEvaluationContext() async throws {
     let model = AppModel(
         runtime: AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core }))
     model.start()
-    try await waitUntil("account snapshot overview") {
-        await MainActor.run { model.presentation != nil }
+    try await waitUntil("account snapshot request") {
+        !(await core.recordedAccountSnapshotRequests()).isEmpty
     }
     let requests = await core.recordedAccountSnapshotRequests()
     try expect(!requests.isEmpty, "overview must request AccountSnapshot")
@@ -7424,10 +7416,10 @@ private func testSettingsRevisionRequest() throws {
         request.ui.locale == "en-US",
         "editable locale must carry the user's explicit language selection")
     try expect(
-        request.providers.map(\.provider) == ["codex", "cursor", "grok"],
+        request.providers.map(\.provider) == ["codex", "cursor", "grok", "dsh"],
         "settings writes must send every provider exactly once")
     try expect(
-        request.providers.map(\.intent) == [.auto, .auto, .auto],
+        request.providers.map(\.intent) == [.auto, .auto, .auto, .auto],
         "non-editable provider intents must preserve the authoritative auto default")
     try expect(
         request.online.cursorOnlineEnabled,
@@ -7862,7 +7854,7 @@ private func testAgentProviderScopesAndIndependentPersistence() async throws {
     )
 	let grokUsage = FeatureRequestFactory.usage(range: .today, provider: .grok)
 	try expect(
-		AgentProvider.allCases.map(\.rawValue) == ["codex", "cursor", "grok"]
+		AgentProvider.allCases.map(\.rawValue) == ["codex", "cursor", "grok", "dsh"]
 			&& AgentProvider.grok.title == "Grok"
 			&& grokUsage.provider.provider == AgentProvider.grok.rawValue,
 		"Grok must be an explicit third client, not a Cursor model alias"
@@ -7902,6 +7894,11 @@ private func testAgentProviderScopesAndIndependentPersistence() async throws {
 		model.selectedProvider == .cursor && model.selectedFeature == .quotaUsage,
 		"provider switching must preserve the supported quota page context"
 	)
+
+    defaults.set(AgentProvider.dsh.rawValue, forKey: "CodexPulse.selectedProvider")
+    let dshModel = AppModel(runtime: runtime, providerDefaults: defaults)
+    try expect(dshModel.selectedProvider == .dsh && dshModel.overviewRange == .sevenDays,
+        "DSH launch must restore a supported calendar range")
 
     defaults.set(AgentProvider.cursor.rawValue, forKey: "CodexPulse.selectedProvider")
     defaults.set(AgentProvider.cursor.rawValue, forKey: "CodexPulse.statusProvider")
@@ -8210,13 +8207,12 @@ private func testGrokProviderDoesNotExposeOrRequestInvocationStatistics() async 
 	try await waitUntil("initial Codex overview before Grok invocation removal") {
 		await MainActor.run { model.presentation?.provider == .codex }
 	}
-	model.navigate(to: .invocationUsage)
+	model.navigate(to: .overview)
 	model.selectProvider(.grok)
 	try await waitUntil("Grok overview without invocation statistics") {
 		await MainActor.run { model.presentation?.provider == .grok }
 	}
-	model.navigate(to: .invocationUsage)
-	model.loadInvocationUsage()
+	model.navigate(to: .overview)
 	try await sleepForTest(.milliseconds(40))
 
 	let grokInvocationRequests = await core.recordedInvocationRequests().filter {
@@ -8248,13 +8244,12 @@ private func testCursorProviderDoesNotExposeOrRequestInvocationStatistics() asyn
 	try await waitUntil("initial Codex overview before Cursor invocation removal") {
 		await MainActor.run { model.presentation?.provider == .codex }
 	}
-	model.navigate(to: .invocationUsage)
+	model.navigate(to: .overview)
 	model.selectProvider(.cursor)
 	try await waitUntil("Cursor overview without invocation statistics") {
 		await MainActor.run { model.presentation?.provider == .cursor }
 	}
-	model.navigate(to: .invocationUsage)
-	model.loadInvocationUsage()
+	model.navigate(to: .overview)
 	try await sleepForTest(.milliseconds(40))
 
 	let cursorInvocationRequests = await core.recordedInvocationRequests().filter {
@@ -11868,6 +11863,27 @@ private func testStatusBarQuotaPresentationUsesOnlyMatchingPeriodUsage() throws 
     )
 }
 
+private func testDSHStatusBarUsesRangeAndTokensWithoutQuota() throws {
+    let base = makeResponses()
+    var quota = base.quota
+    quota.current.windows = []
+    var usage = base.usage
+    usage.totals.totalTokens.value = 1_000_000
+    let overview = OverviewPresentation(OverviewResponses(
+        provider: .dsh, usage: usage, quota: quota,
+        sessions: base.sessions, projects: base.projects, health: base.health
+    ))
+    guard let summary = StatusBarQuotaPresentation(overview) else {
+        throw TestFailure.mismatch("DSH usage-only summary unavailable")
+    }
+    try expect(summary.remainingPercent == nil && !summary.remainingText.contains("剩"),
+        "DSH must not invent an official quota")
+    try expect(summary.usageText.contains("100万"), "DSH must show observed token usage")
+    try expect(AgentProvider.dsh.defaultOverviewRange == .sevenDays
+        && AgentProvider.dsh.supportsInvocationStatistics,
+        "DSH must keep a calendar range and local tool statistics")
+}
+
 private func testCursorStatusBarQuotaPresentationUsesMonthlyQuotaAndTokens() throws {
 	let base = makeResponses()
 	var usage = base.usage
@@ -13612,7 +13628,7 @@ struct CodexPulseAppTestMain {
         try testInvocationTrendBuildsOverlaidBarsForEachTimeBucket()
         try testOverviewInvocationProfilePreservesBoundedHelperRankings()
         try testOverviewInvocationProfileUsesResponsiveIndependentRankings()
-        try await testOverviewInvocationDeepLinkAlignsTheDetailContext()
+        try await testRemovedInvocationPageRestoresOverview()
         try testReferencePriceFormattingPreservesPrecisionAndUnknown()
         try testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBoundary()
         try testQuotaUsageShowsResponsiveCurrentCodexAccountCard()
@@ -13785,7 +13801,8 @@ struct CodexPulseAppTestMain {
         try testTokenBreakdownPresentationPreservesInputOutputSemantics()
         try testUsageModelTrendResolverUsesOnlyReconciledDailyFacts()
         try testStatusBarQuotaPresentationUsesOnlyMatchingPeriodUsage()
-		try testCursorStatusBarQuotaPresentationUsesMonthlyQuotaAndTokens()
+		try testDSHStatusBarUsesRangeAndTokensWithoutQuota()
+        try testCursorStatusBarQuotaPresentationUsesMonthlyQuotaAndTokens()
         try testStatusBarStyleSelectionAndLegacyFallback()
         try testQuotaLevelPreservesRemainingThresholds()
         try testQuotaLevelMapsUsedPercentToComplementaryThresholds()
@@ -13849,7 +13866,7 @@ struct CodexPulseAppTestMain {
         try await testIndexInvalidationRequeriesChangedCodexAccount()
         try await testRepeatedCursorStopsPagination()
         try await testTransientCursorFailureCanRetry()
-        try await testGlobalRefreshMapsThreeProviderReceipt()
+        try await testGlobalRefreshMapsFourProviderReceipt()
         try await testGlobalRefreshEntriesShareInFlightState()
         try await testProviderSwitchDoesNotRequestGlobalRefresh()
         try await testHealthInvalidationDoesNotReloadUsage()

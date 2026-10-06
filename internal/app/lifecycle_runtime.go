@@ -1064,6 +1064,8 @@ func (runtime *applicationLifecycleRuntime) AccountSnapshot(
 			identity.PlanType = &plan
 		}
 		return core.AccountSnapshot{Account: identity}, nil
+	case agentprovider.DSH:
+		return core.AccountSnapshot{}, nil
 	case agentprovider.Grok:
 		var cached grokprovider.AccountSnapshot
 		if runtime.grokAccountReader != nil {

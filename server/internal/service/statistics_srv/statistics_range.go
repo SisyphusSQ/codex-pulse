@@ -63,7 +63,7 @@ func ParseStatisticsQuery(values url.Values, now time.Time) (q statistics_dto.St
 		return q, utils.ErrBadParamInput
 	}
 	q.Provider = values.Get("provider")
-	if q.Provider != "" && !slices.Contains([]string{"codex", "cursor", "grok"}, q.Provider) {
+	if q.Provider != "" && !slices.Contains([]string{"codex", "cursor", "grok", "dsh"}, q.Provider) {
 		return q, utils.ErrBadParamInput
 	}
 	q.Model = values.Get("model")

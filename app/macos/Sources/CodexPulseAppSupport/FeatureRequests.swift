@@ -5,14 +5,16 @@ public enum AgentProvider: String, CaseIterable, Identifiable, Sendable {
     case codex
     case cursor
     case grok
+    case dsh
 
     public var id: String { rawValue }
 
     public var title: String {
         switch self {
-        case .codex: "Codex"
+               case .codex: "Codex"
         case .cursor: "Cursor"
         case .grok: "Grok"
+        case .dsh: "DSH"
         }
     }
 
@@ -25,13 +27,14 @@ public enum AgentProvider: String, CaseIterable, Identifiable, Sendable {
     }
 
 	public var supportsInvocationStatistics: Bool {
-		self == .codex
+		self == .codex || self == .dsh
 	}
 
     public var defaultOverviewRange: DateRangePreset {
         switch self {
         case .cursor: .quotaMonth
         case .grok, .codex: .quotaWeek
+        case .dsh: .sevenDays
         }
     }
 
@@ -44,6 +47,7 @@ public enum AgentProvider: String, CaseIterable, Identifiable, Sendable {
                 return .quotaMonth
             }
             return .quotaWeek
+               case .dsh: return .sevenDays
         case .codex:
             return .quotaWeek
         }

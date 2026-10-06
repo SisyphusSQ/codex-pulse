@@ -452,3 +452,11 @@ eligible app_runtime_samples
 每次完整 cleanup 后，Store 通过同一个单写 worker 的低优先级 maintenance lane 执行固定 `PRAGMA wal_checkpoint(PASSIVE)`。checkpoint 不在 GORM transaction 内运行，因为 SQLite 禁止在事务内执行该连接控制命令；这是封闭的 raw SQL 例外，调用方不能传入 SQL 或切换到 `FULL`、`RESTART`、`TRUNCATE`。结果只返回 `busy` 标志、WAL log frame 与已 checkpoint frame；active reader 可以导致部分 checkpoint，但不会被强制中断，也不会触发 vacuum。
 
 任何清理都不能删除 Codex 原始 JSONL，Tracker 本来也不拥有这些文件。完整 fixture、取消、rollback、close/reopen 与 Pure Go验证入口见 [`docs/test/store-integration.md`](../../../test/store-integration.md)。
+
+### DSH 本地事实（v36 / v37）
+
+DSH 使用独立的 `dsh_sessions`、`dsh_session_lineage`、`dsh_usage_events`、`dsh_tool_events` STRICT 表，Provider registry 扩展到四个客户端，历史 migration checksum 不变。Session 身份由 header ID 派生 hash；项目只保留 hash 和 basename。Usage 保留未缓存输入、缓存读/写、输出及各可选计数的 presence，reasoning 为输出子集；请求起止时间可空。吞吐量只保存现有安全胶囊，日志正文、工具参数/结果和凭据均不落库。
+
+v37 保留 v36 checksum，在事务中保留会话 ID、lineage、usage 与工具事实并扩展标题约束：最多 512 个 Unicode 字符，来源新增 `dsh_title_event`，取最新官方 `session/title`（包括继承 seed 中的标题）。无标题仍使用 fallback。
+
+同一 canonical 文件摘要、标题和来源均不变时只更新来源健康；成功解析的会话事务替换，未读到或失败的文件不删除已索引历史。标题比对确保升级解析器后补齐已有日志的名称，而不会重复计量。来源失败与会话缺失 usage 保持 partial/unknown。详细格式、峰谷 USD 计算及范围见 [DSH](../providers/dsh.md)。

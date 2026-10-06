@@ -35,7 +35,7 @@ struct DashboardSummaryView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(AppFeature.dashboardSummary.title(localization: model.localization))
                     .font(.title.bold())
-                Text(model.localization.textValue("跨 Codex、Cursor 和 Grok 查看 Token、成本与额度"))
+                Text(model.localization.textValue("跨 Codex、Cursor、Grok 和 DSH 查看 Token、成本与额度"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -87,6 +87,7 @@ private enum DashboardActivityScope: String, CaseIterable, Identifiable {
     case codex
     case cursor
     case grok
+    case dsh
 
     var id: String { rawValue }
 
@@ -96,6 +97,7 @@ private enum DashboardActivityScope: String, CaseIterable, Identifiable {
         case .codex: .codex
         case .cursor: .cursor
         case .grok: .grok
+ case .dsh: .dsh
         }
     }
 
@@ -1085,6 +1087,7 @@ private struct DashboardSummaryContentView: View {
         case .codex: "terminal.fill"
         case .cursor: "cursorarrow.rays"
         case .grok: "sparkles"
+ case .dsh: "bolt"
         }
     }
 
@@ -1232,6 +1235,7 @@ private struct DashboardSummaryContentView: View {
         case .codex: "1"
         case .cursor: "2"
         case .grok: "3"
+ case .dsh: "4"
         }
     }
 
@@ -1269,6 +1273,7 @@ private func providerColor(_ provider: AgentProvider) -> Color {
         case .codex: .blue
         case .cursor: .orange
         case .grok: .purple
+ case .dsh: .teal
         }
     }
 
@@ -1359,6 +1364,7 @@ private struct DashboardTrendChart: View {
             AgentProvider.codex.title: providerColor(.codex),
             AgentProvider.cursor.title: providerColor(.cursor),
             AgentProvider.grok.title: providerColor(.grok),
+ AgentProvider.dsh.title: providerColor(.dsh),
         ])
         .chartLegend(.hidden)
         .chartXScale(

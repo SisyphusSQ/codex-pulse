@@ -53,7 +53,7 @@ var (
 	ErrSealed            = errors.New("provider controller is sealed")
 )
 
-var providerOrder = []string{agentprovider.Codex, agentprovider.Cursor, agentprovider.Grok}
+var providerOrder = []string{agentprovider.Codex, agentprovider.Cursor, agentprovider.Grok, agentprovider.DSH}
 
 type Snapshot struct {
 	Provider   string
@@ -101,11 +101,12 @@ type ProbeSet struct {
 	Codex  func(context.Context, *preferences.CodexHomePreferences) ProbeResult
 	Cursor func(context.Context) ProbeResult
 	Grok   func(context.Context) ProbeResult
+	DSH    func(context.Context) ProbeResult
 }
 
 func NormalizeProvider(value string) (string, error) {
 	switch value {
-	case agentprovider.Codex, agentprovider.Cursor, agentprovider.Grok:
+	case agentprovider.Codex, agentprovider.Cursor, agentprovider.Grok, agentprovider.DSH:
 		return value, nil
 	default:
 		return "", ErrInvalidProvider

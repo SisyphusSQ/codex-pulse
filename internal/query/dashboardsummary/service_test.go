@@ -679,6 +679,7 @@ func newSummaryService(t *testing.T, usage UsageQuery, quota QuotaQuery) *Servic
 	if err != nil {
 		t.Fatal(err)
 	}
+	service.BindStates(&summaryStates{enabled: []string{agentprovider.Codex, agentprovider.Cursor, agentprovider.Grok}, gen: 1})
 	return service
 }
 
@@ -940,4 +941,16 @@ func waitUntil(t *testing.T, ready func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for condition")
+}
+
+func TestDSHParticipatesInSummaryWithoutInventingQuota(t *testing.T) {
+	usage := &usageStub{responses: map[string]usagecost.UsageCostResponse{agentprovider.DSH: completeUsage("dsh", "deepseek-flash", 50, 5, "2026-07-01")}}
+	q := completeQuota("dsh", "")
+	q.Current.Windows = nil
+	service := newSummaryService(t, usage, &quotaStub{responses: map[string]runtimeinfo.QuotaCurrentResponse{agentprovider.DSH: q}})
+	service.BindStates(&summaryStates{enabled: []string{agentprovider.DSH}, gen: 2})
+	response, err := service.DashboardSummary(t.Context(), summaryRequest())
+	if err != nil || len(response.Providers) != 1 || response.Providers[0].Provider != "dsh" || numericValue(response.Totals.TotalTokens) != 50 {
+		t.Fatalf("DSH summary: %v", err)
+	}
 }

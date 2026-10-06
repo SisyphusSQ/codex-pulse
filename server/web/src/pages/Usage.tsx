@@ -16,11 +16,11 @@ export {usageChartOption} from '../components/ModelTrend';
 const Chart=lazy(()=>import('../components/Chart'));
 type Metric='tokens'|'cost';
 const key=(r:{provider:string;model:string})=>`${r.provider}:${r.model}`;
-function estimatedLabel(provider:string){return provider==='codex'?'API 折算成本':provider==='cursor'?'文档价目估算':provider==='grok'?'xAI 参考价估算':'参考价估算合计';}
+function estimatedLabel(provider:string){return provider==='codex'?'API 折算成本':provider==='cursor'?'文档价目估算':provider==='grok'?'xAI 参考价估算':provider==='dsh'?'DeepSeek 峰谷价估算':'参考价估算合计';}
 function totalDetails(t:Totals){return [{key:'input',label:'输入 Token',children:tokens(t.input_tokens)},{key:'cached',label:'缓存读取 Token',children:tokens(t.cached_tokens)},{key:'write',label:'缓存写入 Token',children:tokens(t.cache_write_tokens)},{key:'output',label:'输出 Token',children:tokens(t.output_tokens)},{key:'reasoning',label:'独立 reasoning Token',children:tokens(t.reasoning_tokens)},{key:'version',label:'历史价格版本',children:t.pricing_versions.length?t.pricing_versions.join('、'):'未提供价格证据'}];}
 export default function Usage(){
  const [params]=useSearchParams();
- const [filter,setFilter]=useState(()=>({...initialFilter(),provider:['codex','cursor','grok'].includes(params.get('provider')??'')?params.get('provider')!:'',model:params.get('model')??''}));
+ const [filter,setFilter]=useState(()=>({...initialFilter(),provider:['codex','cursor','grok','dsh'].includes(params.get('provider')??'')?params.get('provider')!:'',model:params.get('model')??''}));
  const [metric,setMetric]=useState<Metric>('tokens');const [chosen,setChosen]=useState<string[]|null>(null);
  const query=useQuery({queryKey:['usage',filter],queryFn:({signal})=>getUsage(filter,signal),refetchInterval:60_000});const data=query.data;
  const available=data?.models??[];
@@ -50,7 +50,7 @@ export default function Usage(){
  {title:'估算成本',align:'right',...decimalSorter<UsageModel>(r=>r.totals.cost_micro_usd),render:(_,r)=><>{dollars(r.totals.cost_micro_usd)}{r.totals.cost_status==='partial'&&<div className="metric-note">已知小计</div>}</>},
  {title:'上报费用',align:'right',...decimalSorter<UsageModel>(r=>r.totals.reported_charge_micro_usd),render:(_,r)=>dollars(r.totals.reported_charge_micro_usd)},
  ]} /><Typography.Text type="secondary">模型与范围、每日趋势的金额可能存在微美元舍入差额：模型 {dollars(data.model_cost_rounding_delta_micro_usd)}；趋势 {dollars(data.trend_cost_rounding_delta_micro_usd)}。计算保留完整精度。</Typography.Text></Card>
- <Collapse ghost size="small" items={[{key:'formula',label:'成本计算口径与历史价格',children:<><Descriptions size="small" column={1} items={[{key:'versions',label:'本范围价格版本',children:data.totals.pricing_versions.join('、')||'未取得'},{key:'basis',label:'统计范围',children:'中心已接受事实；全局去重，来源筛选读取该来源自己的快照'}]} /><Typography.Paragraph>Codex：非缓存输入×输入价 + 缓存输入×缓存价 +（输出+独立reasoning）×输出价，按每百万Token费率折算。当前Mac基础文本估算不推断长上下文、Fast或缓存写入价格。Cursor缓存读取/写入分别计价；Grok参考价与完整上报费用分别保留。更新参考目录不会覆盖历史成本。</Typography.Paragraph></>}]} />
+ <Collapse ghost size="small" items={[{key:'formula',label:'成本计算口径与历史价格',children:<><Descriptions size="small" column={1} items={[{key:'versions',label:'本范围价格版本',children:data.totals.pricing_versions.join('、')||'未取得'},{key:'basis',label:'统计范围',children:'中心已接受事实；全局去重，来源筛选读取该来源自己的快照'}]} /><Typography.Paragraph>Codex：非缓存输入×输入价 + 缓存输入×缓存价 +（输出+独立reasoning）×输出价，按每百万Token费率折算。当前Mac基础文本估算不推断长上下文、Fast或缓存写入价格。Cursor缓存读取/写入分别计价；Grok参考价与完整上报费用分别保留。DSH以美元按请求开始时间的DeepSeek官方峰谷价估算，北京时间工作日09–12、14–18为峰时，周末、中国法定节假日和其他时段为谷时；缺少价格或计数保留未知。更新参考目录不会覆盖历史成本。</Typography.Paragraph></>}]} />
  </>}
  <div className="overview-links"><Link to="/pricing">查看模型价目表</Link><Link to="/projects">项目明细</Link><Link to="/sessions">会话明细</Link></div><div className="metric-note">全局用量独立于额度账号；无可靠账号归因的历史保留在全局 / 采集来源。</div>
  </section>;

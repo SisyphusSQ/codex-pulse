@@ -25,7 +25,7 @@ const metricLabel = (value: Decimal, metric: Metric) => metric === 'tokens' ? us
 const metricCoordinate = (value: Decimal, metric: Metric) => value === null ? null : Number(value) / (metric === 'cost' ? 1_000_000 : 1);
 const tooltip = { renderMode: 'richText' as const, confine: true };
 const palette = ['#2678f5', '#3e9e82', '#8a70cf', '#d3a34b', '#6b8aad', '#c0779b'];
-const providerColors: Record<string, string> = { codex: '#2678f5', cursor: '#3e9e82', grok: '#d3a34b' };
+const providerColors: Record<string, string> = { codex: '#2678f5', cursor: '#3e9e82', grok: '#d3a34b', dsh: '#299caa' };
 
 function SliceTable({ rows }: { rows: Slice[] }) {
   return <Table<Slice> size="small" rowKey="key" dataSource={rows} pagination={rows.length > 8 ? { pageSize: 8, showSizeChanger: false } : false} scroll={{ x: 420 }} columns={[

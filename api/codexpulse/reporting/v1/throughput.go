@@ -63,7 +63,7 @@ func validThroughput(snapshot SessionSnapshot) bool {
 	if c == nil {
 		return true
 	}
-	if snapshot.Provider != "codex" || snapshot.SourceKind != "light_index" || snapshot.Deleted || c.Version != 1 || c.Basis != "closed_turn_lifetime_output" || !validThroughputMeasures(c.Measures) || len(c.RecentTurns) > MaxThroughputTurns || c.TurnsTotal < int64(len(c.RecentTurns)) || c.TurnsTotal > 50000 {
+	if !((snapshot.Provider == "codex" && snapshot.SourceKind == "light_index") || (snapshot.Provider == "dsh" && snapshot.SourceKind == "dsh_local")) || snapshot.Deleted || c.Version != 1 || c.Basis != "closed_turn_lifetime_output" || !validThroughputMeasures(c.Measures) || len(c.RecentTurns) > MaxThroughputTurns || c.TurnsTotal < int64(len(c.RecentTurns)) || c.TurnsTotal > 50000 {
 		return false
 	}
 	if c.Measures.CoverageKnown && c.TurnsTotal != c.Measures.IncludedTurns+c.Measures.ExcludedTurns+c.Measures.OpenTurns {

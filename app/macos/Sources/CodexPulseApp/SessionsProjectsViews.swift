@@ -198,9 +198,9 @@ struct SessionsView: View {
                         ForEach(DateRangePreset.allCases.filter {
                             switch $0 {
                             case .quotaWeek:
-                                (model.selectedProvider == .codex || model.selectedProvider == .grok) && model.sessionOptions.exactRange != nil
+                                (model.selectedProvider == .codex || model.selectedProvider == .grok || model.selectedProvider == .dsh) && model.sessionOptions.exactRange != nil
                             case .quotaMonth:
-                                (model.selectedProvider == .cursor || model.selectedProvider == .grok) && model.sessionOptions.exactRange != nil
+                                (model.selectedProvider == .cursor || model.selectedProvider == .grok || model.selectedProvider == .dsh) && model.sessionOptions.exactRange != nil
                             default:
                                 true
                             }
@@ -428,7 +428,7 @@ private struct SessionDetailView: View {
                     .accessibilityValue(cacheHitRate.rateText)
                     .accessibilityIdentifier("session.detail.cache-hit-rate")
                     if response.providerContext.effectiveProvider == AgentProvider.codex.rawValue {
-                        Text(localizedCopy("缓存输入 Token ÷ 全部输入 Token；按当前已索引的会话累计用量计算。"))
+                        Text(localizedCopy("缓存输入 Token ÷ 全部输入 Token；按当前会话累计用量计算。"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -628,9 +628,9 @@ struct ProjectsView: View {
                     guard $0 != .all else { return false }
                     switch $0 {
                     case .quotaWeek:
-                        return (model.selectedProvider == .codex || model.selectedProvider == .grok) && model.projectOptions.exactRange != nil
+                        return (model.selectedProvider == .codex || model.selectedProvider == .grok || model.selectedProvider == .dsh) && model.projectOptions.exactRange != nil
                     case .quotaMonth:
-                        return (model.selectedProvider == .cursor || model.selectedProvider == .grok) && model.projectOptions.exactRange != nil
+                        return (model.selectedProvider == .cursor || model.selectedProvider == .grok || model.selectedProvider == .dsh) && model.projectOptions.exactRange != nil
                     default:
                         return true
                     }
@@ -940,6 +940,7 @@ private func estimatedCostLabel(_ provider: String) -> String {
 	switch provider {
 	case AgentProvider.cursor.rawValue: "文档价目估算"
 	case AgentProvider.grok.rawValue: "xAI 参考价估算"
+		case AgentProvider.dsh.rawValue: "DeepSeek API 公价估算"
 	default: "API 折算成本"
 	}
 }

@@ -7,7 +7,7 @@
 | 区域 | 内容 |
 | --- | --- |
 | [details/product](details/product/README.md) | 产品目标、页面信息架构、跨客户端汇总与单客户端概览、用量与成本口径、v0.1 范围和实施阶段 |
-| [details/providers](details/providers/README.md) | Codex / Cursor / Grok 三个独立客户端、专用 DashboardSummary read model、来源边界、capability 与隐私 |
+| [details/providers](details/providers/README.md) | Codex / Cursor / Grok / DSH 四个独立客户端、专用 DashboardSummary read model、来源边界、capability 与隐私 |
 | [details/api-subscriptions](details/api-subscriptions/README.md) | 非 Agent 的 API 余额与订阅额度、凭据边界和独立失败语义 |
 | [details/codex-subscriptions](details/codex-subscriptions/README.md) | Codex 账号订阅列表、邮箱候选、manual-only 会员日期、v33 存储与 v4 Core |
 | [details/architecture](details/architecture/README.md) | 当前 Go Helper 与目标 Swift native client 分层、RPC 边界、DashboardSummary 聚合与本机安全 |

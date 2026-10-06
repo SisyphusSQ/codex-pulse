@@ -242,13 +242,13 @@ func validSettingsUpdateRequest(request SettingsUpdateRequest) bool {
 }
 
 func validProviderUpdates(values []SettingsProviderUpdate) bool {
-	if len(values) != 3 {
+	if len(values) != 3 && len(values) != 4 {
 		return false
 	}
 	seen := map[string]bool{}
 	for _, item := range values {
 		name := item.Provider
-		if (name != agentprovider.Codex && name != agentprovider.Cursor && name != agentprovider.Grok) || seen[name] {
+		if (name != agentprovider.Codex && name != agentprovider.Cursor && name != agentprovider.Grok && name != agentprovider.DSH) || seen[name] {
 			return false
 		}
 		if _, ok := providercontrol.IntentFromProto(item.Intent); !ok {
@@ -256,7 +256,7 @@ func validProviderUpdates(values []SettingsProviderUpdate) bool {
 		}
 		seen[name] = true
 	}
-	return seen[agentprovider.Codex] && seen[agentprovider.Cursor] && seen[agentprovider.Grok]
+	return seen[agentprovider.Codex] && seen[agentprovider.Cursor] && seen[agentprovider.Grok] && (len(values) == 3 || seen[agentprovider.DSH])
 }
 
 func validHomeSwitchStrategy(value HomeSwitchStrategy) bool {

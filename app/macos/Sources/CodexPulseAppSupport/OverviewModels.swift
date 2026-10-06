@@ -911,6 +911,21 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
 
     public init?(_ overview: OverviewPresentation) {
         let localization = AppLocalizationRegistry.shared.current
+        if overview.provider == .dsh {
+            self.periodLabel = overview.requestedRange.title
+            self.remainingPercent = nil
+            self.remainingText = overview.requestedRange.title
+            self.freshness = overview.usageAvailable
+                ? (overview.providerCoverage.contains { $0.state != "available" } ? "stale" : "fresh")
+                : "unavailable"
+            self.dataState = StatusBarQuotaDataState(freshness: freshness)
+            self.usageText = overview.usageAvailable
+                ? localization.format("status.used", Self.compact(overview.totalTokens))
+                : localization.textValue("已用 --")
+            let coverage = dataState == .stale ? localization.textValue("，用量覆盖不足") : ""
+            self.accessibilityLabel = remainingText + "，" + usageText + coverage
+            return
+        }
 		if overview.provider == .grok {
 			guard let window = overview.quotaWindows.first else { return nil }
 			let periodLabel = Self.grokPeriodLabel(window, localization: localization)

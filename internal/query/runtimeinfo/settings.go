@@ -142,7 +142,7 @@ func mapProviderSettings(snapshot preferences.Snapshot, providers providercontro
 				Generation:     strconv.FormatUint(state.Generation, 10),
 			})
 		}
-		if len(mapped) == 3 {
+		if len(mapped) == 4 {
 			return mapped
 		}
 	}
@@ -150,6 +150,7 @@ func mapProviderSettings(snapshot preferences.Snapshot, providers providercontro
 		syntheticProviderSettings(agentprovider.Codex, snapshot.Providers.Codex.Intent),
 		syntheticProviderSettings(agentprovider.Cursor, snapshot.Providers.Cursor.Intent),
 		syntheticProviderSettings(agentprovider.Grok, snapshot.Providers.Grok.Intent),
+		syntheticProviderSettings(agentprovider.DSH, snapshot.Providers.DSH.Intent),
 	}
 }
 
@@ -208,6 +209,7 @@ func settingsEditableFields() []EditableField {
 		enumField("providers.codex.intent", true, []string{"enabled", "disabled"}),
 		enumField("providers.cursor.intent", true, []string{"enabled", "disabled"}),
 		enumField("providers.grok.intent", true, []string{"enabled", "disabled"}),
+		enumField("providers.dsh.intent", true, []string{"enabled", "disabled"}),
 		integerField("refresh.quotaIntervalSeconds", true, 60, 1800),
 		integerField("refresh.resetCreditsIntervalSeconds", true, 60, 86400),
 		integerField("refresh.reconcileIntervalSeconds", true, 60, 86400),

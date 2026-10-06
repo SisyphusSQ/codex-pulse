@@ -19,7 +19,7 @@ func validCacheUsage(snapshot SessionSnapshot) bool {
 	if c == nil {
 		return true
 	}
-	if snapshot.Provider != "codex" || snapshot.SourceKind != "light_index" || snapshot.Deleted || c.Basis != "lifetime_cached_input" || c.Version != 1 {
+	if !((snapshot.Provider == "codex" && snapshot.SourceKind == "light_index") || (snapshot.Provider == "dsh" && snapshot.SourceKind == "dsh_local")) || snapshot.Deleted || c.Basis != "lifetime_cached_input" || c.Version != 1 {
 		return false
 	}
 	if c.Reason != "" {

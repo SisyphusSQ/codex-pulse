@@ -49,11 +49,11 @@ func TestApplicationMigrationV19AddsQuotaLimitNameWithoutChangingExistingFacts(t
 	if err != nil {
 		t.Fatalf("run(v18->v21) error = %v", err)
 	}
-	if report.FromVersion != 18 || report.TargetVersion != applicationSchemaV35Version ||
-		!equalInts(report.AppliedVersions, []int{19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35}) || backupVersions != [2]int{18, applicationSchemaV35Version} {
+	if report.FromVersion != 18 || report.TargetVersion != applicationSchemaVersion ||
+		!equalInts(report.AppliedVersions, []int{19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37}) || backupVersions != [2]int{18, applicationSchemaVersion} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
-	assertMigrationVersionAndHistory(t, database, applicationSchemaV35Version, applicationSchemaV35Version)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, applicationSchemaVersion)
 
 	preserved, err := repository.QuotaObservation(t.Context(), existing.ObservationID)
 	if err != nil || preserved.LimitName != nil || preserved.UsedPercent != existing.UsedPercent {

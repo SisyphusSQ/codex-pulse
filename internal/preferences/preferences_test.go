@@ -134,6 +134,7 @@ func TestV3PreferencesMigrateQuotaHistoryRetentionToEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("json.Marshal(v3) error = %v", err)
 	}
+	content = removeNestedJSONField(t, content, "providers", "dsh")
 	decoded, migrated, err := decodePreferences(content)
 	if err != nil {
 		t.Fatalf("decodePreferences() error = %v", err)
@@ -278,6 +279,7 @@ func TestExplicitProviderIntentRoundTripSurvivesReload(t *testing.T) {
 		Codex:  ProviderPreference{Intent: ProviderIntentDisabled},
 		Cursor: ProviderPreference{Intent: ProviderIntentEnabled},
 		Grok:   ProviderPreference{Intent: ProviderIntentAuto},
+		DSH:    ProviderPreference{Intent: ProviderIntentAuto},
 	}
 	if err := store.CompareAndSwap(context.Background(), current.Revision, updated); err != nil {
 		t.Fatalf("CompareAndSwap() error = %v", err)
@@ -480,8 +482,8 @@ func TestDecodePreferencesRejectsDuplicateMissingAndNullRequiredFields(t *testin
 		"legacy case alias":   replaceJSONField(t, legacy, "Online_Quota_Enabled", false),
 		"legacy missing bool": removeJSONField(t, legacy, "online_quota_enabled"),
 		"legacy null bool":    replaceJSONField(t, legacy, "online_quota_enabled", nil),
-		"current duplicate": bytes.Replace(current, []byte(`"schema_version": 4,`),
-			[]byte(`"schema_version": 4, "schema_version": 4,`), 1),
+		"current duplicate": bytes.Replace(current, []byte(`"schema_version": 5,`),
+			[]byte(`"schema_version": 5, "schema_version": 5,`), 1),
 		"current root case alias": replaceJSONField(t, current, "Online", map[string]any{
 			"quota_enabled": true, "reset_credits_enabled": false,
 		}),

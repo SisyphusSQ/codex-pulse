@@ -154,3 +154,25 @@ func (adapter *CodexAdapter) refreshCodexSource(
 	}
 	return result
 }
+
+type DSHService interface {
+	RefreshIfDue(context.Context) (bool, error)
+}
+type DSHAdapter struct {
+	service DSHService
+	now     func() time.Time
+}
+
+func NewDSHAdapter(service DSHService, now func() time.Time) *DSHAdapter {
+	if now == nil {
+		now = time.Now
+	}
+	return &DSHAdapter{service: service, now: now}
+}
+func (a *DSHAdapter) RefreshProvider(ctx context.Context, _ string) ProviderResult {
+	if a == nil || a.service == nil {
+		return UnavailableProvider(agentprovider.DSH, ComponentDSHLocal)
+	}
+	performed, err := a.service.RefreshIfDue(ctx)
+	return SummarizeProvider(agentprovider.DSH, []ComponentResult{WithComponent(ComponentDSHLocal, ClassifyLocalError(err, performed), a.now().UnixMilli())})
+}

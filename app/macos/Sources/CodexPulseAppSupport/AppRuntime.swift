@@ -503,7 +503,7 @@ public actor AppRuntime {
 				try await client.usageCost(content.usage, retryPolicy: .transportDefault)
 			}
 			async let todayUsageResult = captureOverviewSection {
-				guard provider == .cursor else {
+				guard provider == .cursor || provider == .dsh else {
 					return unavailableUsage(for: todayContent.usage, provider: provider)
 				}
 				return try await client.usageCost(
@@ -1520,14 +1520,14 @@ public actor AppRuntime {
                     content.invocationUsage, retryPolicy: .transportDefault)
             }
 			async let todayUsageResult = captureOverviewSection {
-				guard provider == .cursor else {
+				guard provider == .cursor || provider == .dsh else {
 					return unavailableUsage(for: todayContent.usage, provider: provider)
 				}
 				return try await client.usageCost(
 					todayContent.usage, retryPolicy: .transportDefault)
 			}
 			async let todayInvocationResult = captureOverviewSection {
-				guard provider == .cursor, provider.supportsInvocationStatistics else {
+				guard (provider == .cursor || provider == .dsh), provider.supportsInvocationStatistics else {
 					return unavailableInvocationUsage(
 						for: todayContent.invocationUsage, provider: provider)
 				}

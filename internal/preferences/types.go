@@ -3,7 +3,8 @@ package preferences
 const (
 	preferencesSchemaV2             = 2
 	preferencesSchemaV3             = 3
-	CurrentPreferencesSchemaVersion = 4
+	preferencesSchemaV4             = 4
+	CurrentPreferencesSchemaVersion = 5
 	DefaultDataStoreKey             = "default"
 )
 
@@ -23,6 +24,7 @@ type ProviderPreferences struct {
 	Codex  ProviderPreference `json:"codex"`
 	Cursor ProviderPreference `json:"cursor"`
 	Grok   ProviderPreference `json:"grok"`
+	DSH    ProviderPreference `json:"dsh"`
 }
 
 type UpdateChannel string
@@ -189,6 +191,7 @@ func DefaultProviderPreferences() ProviderPreferences {
 		Codex:  ProviderPreference{Intent: ProviderIntentAuto},
 		Cursor: ProviderPreference{Intent: ProviderIntentAuto},
 		Grok:   ProviderPreference{Intent: ProviderIntentAuto},
+		DSH:    ProviderPreference{Intent: ProviderIntentAuto},
 	}
 }
 

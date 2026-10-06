@@ -6,7 +6,6 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
     case overview
     case sessions
     case projects
-    case invocationUsage
     case quotaUsage
     case accountQuotas
     case apiSubscriptions
@@ -24,7 +23,6 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .projects: "feature.projects"
         case .quotaUsage: "feature.quotaUsage"
         case .accountQuotas: "feature.accountQuotas"
-        case .invocationUsage: "feature.invocationUsage"
         case .apiSubscriptions: "feature.apiSubscriptions"
         case .localStatus: "feature.localStatus"
         case .sourcesJobs: "feature.sourcesJobs"
@@ -41,7 +39,6 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
         case .projects: "folder"
         case .quotaUsage: "chart.xyaxis.line"
         case .accountQuotas: "person.2.crop.square.stack"
-        case .invocationUsage: "wrench.and.screwdriver"
         case .apiSubscriptions: "creditcard.and.123"
         case .localStatus: "heart.text.square"
         case .sourcesJobs: "externaldrive.connected.to.line.below"
@@ -52,15 +49,14 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 
 	public static func usageFeatures(for provider: AgentProvider?) -> [AppFeature] {
         guard let provider else { return [] }
-		var features: [AppFeature] = [.overview, .sessions, .projects, .invocationUsage, .quotaUsage]
+		var features: [AppFeature] = [.overview, .sessions, .projects, .quotaUsage]
 		if provider == .codex { features.append(.accountQuotas) }
-		guard !provider.supportsInvocationStatistics else { return features }
-		return features.filter { $0 != .invocationUsage }
+		return features
 	}
 
     public var requiresEnabledProvider: Bool {
         switch self {
-        case .overview, .sessions, .projects, .quotaUsage, .accountQuotas, .invocationUsage:
+        case .overview, .sessions, .projects, .quotaUsage, .accountQuotas:
             true
         case .apiSubscriptions, .localStatus, .sourcesJobs, .settings, .dashboardSummary:
             false
@@ -69,7 +65,7 @@ public enum AppFeature: String, CaseIterable, Hashable, Identifiable, Sendable {
 }
 
 private enum FeatureTaskKey: Hashable {
-    case usage, statusOverview, statusAccount, codexCardAccount, invocationUsage, pricingCatalog, quota, quotaAccount, quotaPace, accountQuotas, dashboardSummary
+    case usage, statusOverview, statusAccount, codexCardAccount, pricingCatalog, quota, quotaAccount, quotaPace, accountQuotas, dashboardSummary
     case quotaRefresh(AgentProvider), resetCreditsRefresh(AgentProvider)
     case apiSubscriptions, apiCredentialStatus, apiCredentialSave
     case runtimeAction
@@ -113,9 +109,6 @@ public final class AppModel: ObservableObject {
     @Published public var jobOptions = RuntimeQueryOptions()
     @Published public var healthOptions = RuntimeQueryOptions(firstField: "active", firstValues: ["true"])
     @Published public var usageRange: DateRangePreset = .sevenDays
-    @Published public private(set) var invocationRange: DateRangePreset = .sevenDays
-    @Published public private(set) var invocationSourceClass = "all"
-    @Published public private(set) var invocationRangeFellBackFromQuotaWeek = false
     @Published public private(set) var overviewRange: DateRangePreset = .quotaWeek
     @Published public private(set) var dashboardRange: DateRangePreset = .today
     @Published public private(set) var dashboardTrendMode: DashboardTrendMode = .total
@@ -126,8 +119,6 @@ public final class AppModel: ObservableObject {
 	@Published public private(set) var statusUsageState: FeatureLoadState<Codexpulse_Core_V1_UsageCostResponse> = .idle
 	@Published public private(set) var statusInvocationState: FeatureLoadState<Codexpulse_Core_V1_InvocationUsageResponse> = .idle
 	@Published public private(set) var statusOverviewState: FeatureLoadState<OverviewPresentation> = .idle
-    @Published public private(set) var invocationUsageState:
-        FeatureLoadState<Codexpulse_Core_V1_InvocationUsageResponse> = .idle
     @Published public private(set) var pricingCatalogState:
         FeatureLoadState<Codexpulse_Core_V1_PricingCatalogCurrentResponse> = .idle
     @Published public private(set) var quotaState: FeatureLoadState<Codexpulse_Core_V1_QuotaCurrentResponse> = .idle
@@ -232,7 +223,7 @@ public final class AppModel: ObservableObject {
 		statusProvider = configuration.smokeMode
 			? .codex
 			: AgentProvider(rawValue: providerDefaults.string(forKey: Self.statusProviderKey) ?? "") ?? .codex
-		overviewRange = selectedProvider == .cursor ? .quotaMonth : .quotaWeek
+		overviewRange = selectedProvider?.defaultOverviewRange ?? .quotaWeek
 		selectedFeature = Self.restoredFeature(
 			defaults: providerDefaults,
 			persists: persistsProviderSelection
@@ -267,7 +258,7 @@ public final class AppModel: ObservableObject {
 		statusProvider = persistsProviderSelection
 			? AgentProvider(rawValue: providerDefaults.string(forKey: Self.statusProviderKey) ?? "") ?? .codex
 			: .codex
-		overviewRange = selectedProvider == .cursor ? .quotaMonth : .quotaWeek
+		overviewRange = selectedProvider?.defaultOverviewRange ?? .quotaWeek
 		selectedFeature = Self.restoredFeature(
 			defaults: providerDefaults,
 			persists: persistsProviderSelection
@@ -320,10 +311,6 @@ public final class AppModel: ObservableObject {
             }
             if provider == .cursor, projectOptions.sortField == "estimatedCost" {
                 projectOptions.sortField = "lastActivityAt"
-            }
-            if !provider.supportsInvocationStatistics, selectedFeature == .invocationUsage {
-                selectedFeature = .overview
-                persistSelectedFeature()
             }
 			if provider != .codex, selectedFeature == .accountQuotas {
 				selectedFeature = .overview
@@ -412,6 +399,7 @@ public final class AppModel: ObservableObject {
     }
 
     public var statusAccountCardFallbackText: String {
+        if statusProvider == .dsh { return localization.textValue("本机 DSH 用量") }
         guard statusProvider == .codex else {
             return statusPresentation?.account.accessibilityLabel
                 ?? localization.textValue("正在读取 Codex 账户与套餐信息")
@@ -496,8 +484,6 @@ public final class AppModel: ObservableObject {
             codexAccountQuotasState.isLoading
         case .apiSubscriptions:
             apiSubscriptionsState.isLoading
-        case .invocationUsage:
-            invocationUsageState.isLoading
         case .localStatus:
             healthProjectionState.isLoading || dataHealthState.isLoading ||
                 healthState.isLoading || healthDetailState.isLoading
@@ -644,7 +630,6 @@ public final class AppModel: ObservableObject {
         case .quotaUsage: loadQuotaAndUsage()
         case .accountQuotas: loadCodexAccountQuotas()
         case .apiSubscriptions: loadAPISubscriptions()
-        case .invocationUsage: loadInvocationUsage()
         case .localStatus: loadLocalStatus()
         case .sourcesJobs: loadSourcesAndJobs(reset: true)
         case .settings: loadSettings()
@@ -680,8 +665,6 @@ public final class AppModel: ObservableObject {
 			if codexAccountQuotasState.shouldReloadOnNavigation { loadCodexAccountQuotas() }
         case .apiSubscriptions:
             if apiSubscriptionsState.shouldReloadOnNavigation { loadAPISubscriptions() }
-        case .invocationUsage:
-            if invocationUsageState.shouldReloadOnNavigation { loadInvocationUsage() }
         case .localStatus:
             if dataHealthState.shouldReloadOnNavigation || healthState.shouldReloadOnNavigation { loadLocalStatus() }
         case .sourcesJobs:
@@ -701,10 +684,7 @@ public final class AppModel: ObservableObject {
     }
 
     public func navigate(to feature: AppFeature) {
-        let destination = if feature == .invocationUsage &&
-            selectedProvider?.supportsInvocationStatistics != true {
-            AppFeature.overview
-        } else if feature == .accountQuotas && selectedProvider != .codex {
+        let destination = if feature == .accountQuotas && selectedProvider != .codex {
             AppFeature.overview
         } else {
             feature
@@ -753,19 +733,6 @@ public final class AppModel: ObservableObject {
         }
     }
 
-    public func navigateToInvocationUsageFromOverview() {
-		guard selectedProvider?.supportsInvocationStatistics == true else { return }
-        let contextChanged = invocationRange != overviewRange || invocationSourceClass != "all"
-        invocationRange = overviewRange
-        invocationSourceClass = "all"
-        selectedFeature = .invocationUsage
-		persistSelectedFeature()
-        guard canRefreshOrRestart else { return }
-        if contextChanged || invocationUsageState.shouldReloadOnNavigation {
-            loadInvocationUsage()
-        }
-    }
-
     public func markFeatureRendered(_ feature: AppFeature) {
         renderedFeatures.insert(feature)
     }
@@ -789,9 +756,6 @@ public final class AppModel: ObservableObject {
                 self.loadCodexAccountQuotas()
             }
             self.loadAPISubscriptions()
-            if self.selectedProvider?.supportsInvocationStatistics == true {
-                self.loadInvocationUsage()
-            }
             self.loadLocalStatus()
             self.loadSourcesAndJobs(reset: true)
             self.loadSettings()
@@ -835,7 +799,7 @@ public final class AppModel: ObservableObject {
             {
                 loadJobDetail(jobID: selectedJobID)
             }
-        case .overview, .quotaUsage, .accountQuotas, .invocationUsage, .apiSubscriptions,
+        case .overview, .quotaUsage, .accountQuotas, .apiSubscriptions,
             .settings, .dashboardSummary:
             break
         }
@@ -1203,65 +1167,6 @@ public final class AppModel: ObservableObject {
         } failure: { [weak self] error in
             self?.apiCredentialActionState = .unavailable(AppNotice.from(error))
         }
-    }
-
-    public func selectInvocationRange(_ range: DateRangePreset) {
-        guard [.quotaWeek, .quotaMonth, .today, .sevenDays, .thirtyDays].contains(range),
-              range != invocationRange
-        else { return }
-        invocationRange = range
-        loadInvocationUsage()
-    }
-
-    public func selectInvocationSourceClass(_ sourceClass: String) {
-        let normalized = ["structured", "detected"].contains(sourceClass) ? sourceClass : "all"
-        guard normalized != invocationSourceClass else { return }
-        invocationSourceClass = normalized
-        loadInvocationUsage()
-    }
-
-    public func loadInvocationUsage() {
-		guard let provider = selectedProvider, provider.supportsInvocationStatistics else {
-			invocationUsageState = .idle
-			return
-		}
-        let previous = invocationUsageState.value
-        invocationUsageState = .loading(previous: previous)
-        let quotaCycleRange = [.quotaWeek, .quotaMonth].contains(invocationRange)
-            ? availableInvocationQuotaCycleRange : nil
-        invocationRangeFellBackFromQuotaWeek = invocationRange == .quotaWeek && quotaCycleRange == nil
-        let request = FeatureRequestFactory.invocationUsage(
-            range: invocationRange,
-            sourceClass: invocationSourceClass,
-			provider: provider,
-            quotaCycleRange: quotaCycleRange
-        )
-		launch(
-            .invocationUsage,
-            operation: { [runtime] in try await runtime.invocationUsage(request) }
-        ) { [weak self] response in
-			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
-            self?.invocationUsageState = loadState(
-                value: response,
-                meta: response.meta,
-                isEmpty: response.tools.isEmpty && response.skills.isEmpty
-            )
-        } failure: { [weak self] error in
-            self?.invocationUsageState = failedLoadState(previous: previous, error: error)
-        }
-    }
-
-    private var availableInvocationQuotaCycleRange: Codexpulse_Core_V1_UTCTimeRange? {
-        guard let presentation else { return nil }
-        if presentation.requestedRange == invocationRange,
-           presentation.effectiveRange == invocationRange,
-           !presentation.fellBackFromQuotaWeek
-        {
-            return presentation.contentRange
-        }
-        guard invocationRange == .quotaWeek else { return nil }
-        guard presentation.weeklyUsageAvailable else { return nil }
-        return presentation.weeklyUsageRange
     }
 
     public func loadPricingCatalog() {
@@ -2406,17 +2311,16 @@ public final class AppModel: ObservableObject {
         switch domain {
         case "index":
             invalidateTasks([
-                .usage, .invocationUsage, .sessions, .sessionDetail, .projects, .projectDetail,
+                .usage, .sessions, .sessionDetail, .projects, .projectDetail,
                 .dashboardSummary,
             ])
             usageState = stale(usageState, notice)
-            invocationUsageState = stale(invocationUsageState, notice)
             sessionsState = stale(sessionsState, notice)
             sessionDetailState = stale(sessionDetailState, notice)
             projectsState = stale(projectsState, notice)
             projectDetailState = stale(projectDetailState, notice)
             dashboardSummaryState = stale(dashboardSummaryState, notice)
-            affected = [.sessions, .projects, .quotaUsage, .invocationUsage, .dashboardSummary]
+            affected = [.sessions, .projects, .quotaUsage, .dashboardSummary]
 			refreshesStatus = true
         case "quota", "quota_codex", "quota_cursor", "quota_grok":
             let sourceProvider: AgentProvider? = switch domain {
@@ -2544,7 +2448,6 @@ public final class AppModel: ObservableObject {
 		statusInvocationState = .idle
         dashboardSummaryState = .idle
         usageState = .idle
-        invocationUsageState = .idle
         pricingCatalogState = .idle
         quotaState = .idle
         quotaAccountState = .idle
@@ -2585,7 +2488,6 @@ public final class AppModel: ObservableObject {
 	private func resetProviderFeatureState() {
 		cancelCodexSubscriptionDayBoundaryReload()
 		usageState = .idle
-		invocationUsageState = .idle
 		pricingCatalogState = .idle
 		quotaState = .idle
 		quotaAccountState = .idle
@@ -2953,7 +2855,6 @@ public final class AppModel: ObservableObject {
 		statusOverviewState = stale(statusOverviewState, notice)
         dashboardSummaryState = stale(dashboardSummaryState, notice)
         usageState = stale(usageState, notice)
-        invocationUsageState = stale(invocationUsageState, notice)
         pricingCatalogState = stale(pricingCatalogState, notice)
         quotaState = stale(quotaState, notice)
         quotaAccountState = stale(quotaAccountState, notice)

@@ -947,6 +947,8 @@ private struct MenuBarPopoverView: View {
 			cursorContent
 		case .grok:
 			grokContent
+		case .dsh:
+			dshContent
 		case .codex:
 			if let overview = model.statusPresentation {
                     VStack(alignment: .leading, spacing: 18) {
@@ -970,7 +972,7 @@ private struct MenuBarPopoverView: View {
                 ContentUnavailableView {
                     Label("尚未启用客户端", systemImage: "switch.2")
                 } description: {
-                    Text("打开设置后可以启用 Codex、Cursor 或 Grok。")
+                    Text("打开设置后可以启用 Codex、Cursor、Grok 或 DSH。")
                 } actions: {
                     Button("打开设置") { onOpenSettings() }
                         .accessibilityIdentifier("popover.empty-providers.open-settings")
@@ -989,24 +991,42 @@ private struct MenuBarPopoverView: View {
 		.frame(maxWidth: .infinity, minHeight: 440)
 	}
 
-	@ViewBuilder
-	private var grokContent: some View {
-		if let overview = model.statusPresentation {
-			VStack(alignment: .leading, spacing: 18) {
-				quotaSection(overview)
-				dailyTrendSection(overview, copy: grokDailyTrendCopy(overview))
-				if preferences.showCostSummary { costSection(overview) }
-				if preferences.showProjectRanking {
-					projectRankingSection(overview, copy: grokProjectRankingCopy(overview))
-				}
-			}
-			.padding(.horizontal, 18)
-			.padding(.vertical, 16)
-			.background(PopoverCaptureDocumentProbe(source: captureSource).allowsHitTesting(false))
-		} else {
-			statusLoadingContent
-		}
-	}
+    @ViewBuilder
+    private var dshContent: some View {
+        if let overview = model.statusPresentation {
+            VStack(alignment: .leading, spacing: 18) {
+                dailyTrendSection(overview, copy: .currentPeriod)
+                if preferences.showCostSummary { costSection(overview) }
+                if preferences.showProjectRanking {
+                    projectRankingSection(overview, copy: .currentPeriod)
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .background(PopoverCaptureDocumentProbe(source: captureSource).allowsHitTesting(false))
+        } else {
+            statusLoadingContent
+        }
+    }
+
+    @ViewBuilder
+    private var grokContent: some View {
+        if let overview = model.statusPresentation {
+            VStack(alignment: .leading, spacing: 18) {
+                quotaSection(overview)
+                dailyTrendSection(overview, copy: grokDailyTrendCopy(overview))
+                if preferences.showCostSummary { costSection(overview) }
+                if preferences.showProjectRanking {
+                    projectRankingSection(overview, copy: grokProjectRankingCopy(overview))
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .background(PopoverCaptureDocumentProbe(source: captureSource).allowsHitTesting(false))
+        } else {
+            statusLoadingContent
+        }
+    }
 
 	private func grokDailyTrendCopy(_ overview: OverviewPresentation) -> DailyTrendCopy {
 		if overview.requestedRange == .quotaMonth, overview.effectiveRange == .quotaMonth {

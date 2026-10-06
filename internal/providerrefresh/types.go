@@ -33,6 +33,7 @@ const (
 	ComponentCursorGrokBot     = "grok_bot"
 	ComponentGrokLocal         = "local_updates"
 	ComponentGrokBilling       = "billing"
+	ComponentDSHLocal          = "local_logs"
 
 	ReasonNotDue        = "not_due"
 	ReasonNoCredentials = "no_credentials"
@@ -46,7 +47,7 @@ const (
 	ReasonFailed        = "failed"
 )
 
-var providerOrder = []string{agentprovider.Codex, agentprovider.Cursor, agentprovider.Grok}
+var providerOrder = []string{agentprovider.Codex, agentprovider.Cursor, agentprovider.Grok, agentprovider.DSH}
 
 // ComponentResult is one settled local or online refresh outcome. It never
 // carries error text, URLs, paths, or credential material.
@@ -190,6 +191,8 @@ func ComponentsFor(provider string) []string {
 		return []string{ComponentCodexLocal, ComponentCodexQuota, ComponentCodexResetCredits}
 	case agentprovider.Cursor:
 		return []string{ComponentCursorLocal, ComponentCursorDashboard, ComponentCursorGrokBot}
+	case agentprovider.DSH:
+		return []string{ComponentDSHLocal}
 	case agentprovider.Grok:
 		return []string{ComponentGrokLocal, ComponentGrokBilling}
 	default:

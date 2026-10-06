@@ -10,6 +10,7 @@ struct QuotaUsageView: View {
 		switch model.selectedProvider {
 		case .cursor: "Cursor 额度与用量"
 		case .grok: "Grok 额度与用量"
+		case .dsh: "DSH 用量"
 		case .codex, .none: "Codex 额度与用量"
 		}
 	}
@@ -18,6 +19,7 @@ struct QuotaUsageView: View {
 		switch model.selectedProvider {
 		case .cursor: "跟踪月度模型额度、Grok Bot 周额度、Token 趋势、费用明细和参考价格"
 		case .grok: "跟踪 credits 周期、Token 趋势、上报费用和 xAI 参考价"
+		case .dsh: "跟踪本机 Session、Token 趋势与 DeepSeek 美元峰谷价"
 		case .codex, .none: "跟踪当前账号额度、Token 趋势、API 折算成本和参考价格"
 		}
 	}
@@ -49,7 +51,7 @@ struct QuotaUsageView: View {
                         ProgressView().controlSize(.small)
                     }
                 }
-				quotaSection
+				if model.selectedProvider != .dsh { quotaSection }
 				pricingSection
                 usageSection
             }
@@ -354,6 +356,7 @@ private struct QuotaContentView: View {
 		switch provider {
 		case .cursor: "额度窗口"
 		case .grok: "额度窗口"
+		case .dsh: "额度不可用"
 		case .codex: "当前账号额度"
 		}
 	}
@@ -451,6 +454,7 @@ private struct UsageContentView: View {
 		switch provider {
 		case .cursor: "文档价目估算 \(costText(value))"
 		case .grok: "xAI 参考价估算 \(costText(value))"
+		case .dsh: "DeepSeek API 公价估算 \(costText(value))"
 		case .codex: "API 折算成本 \(costText(value))"
 		}
 	}
@@ -779,6 +783,7 @@ private struct PricingCatalogView: View {
 
 	private var referencePriceTitle: String {
 		switch catalogProvider {
+		case .dsh: return "DeepSeek 美元峰谷参考价 · \(response.currency) / 100 万 Token"
 		case .cursor:
 			return "Cursor 模型参考价 · \(response.currency) / 100 万 Token"
 		case .grok:
@@ -790,6 +795,7 @@ private struct PricingCatalogView: View {
 
 	private var referencePriceNotice: String {
 		switch catalogProvider {
+		case .dsh: return "按请求时间选择峰谷费率：北京时间工作日09–12、14–18为峰时，周末、中国法定节假日及其他时间为谷时。缺少历史价格或用量时费用显示未知。"
 		case .cursor:
 			return "来自 Cursor 官方 Models & Pricing。实际费用优先使用 Dashboard 上报值；Grok 4.6 在 2026-08-12 至 2026-08-19 的限时折扣仅用于对应时间内的费用估算。"
 		case .grok:
@@ -803,6 +809,7 @@ private struct PricingCatalogView: View {
 		switch catalogProvider {
 		case .cursor: "Cursor 官方价格"
 		case .grok: "xAI 官方价格"
+		case .dsh: "DeepSeek 官方价格"
 		case .codex: "OpenAI 官方价格"
 		}
 	}

@@ -11,6 +11,7 @@ const (
 	Codex  = "codex"
 	Cursor = "cursor"
 	Grok   = "grok"
+	DSH    = "dsh"
 )
 
 var ErrInvalidProvider = errors.New("agent provider is invalid")
@@ -27,6 +28,8 @@ func Normalize(value string) (string, error) {
 		return Cursor, nil
 	case Grok:
 		return Grok, nil
+	case DSH:
+		return DSH, nil
 	default:
 		return "", ErrInvalidProvider
 	}

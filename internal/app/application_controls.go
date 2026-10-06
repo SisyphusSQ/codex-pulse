@@ -251,6 +251,8 @@ func requestProviders(
 			result.Codex.Intent = intent
 		case "cursor":
 			result.Cursor.Intent = intent
+		case "dsh":
+			result.DSH.Intent = intent
 		case "grok":
 			result.Grok.Intent = intent
 		}

@@ -340,7 +340,7 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 			}
 		}
 	}
-	providers := []string{"codex", "cursor", "grok"}
+	providers := []string{"codex", "cursor", "grok", "dsh"}
 	if usage, ok := r.source.(interface {
 		AccountUsage(context.Context) ([]FactsGroup, error)
 	}); ok {

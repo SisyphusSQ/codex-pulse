@@ -62,6 +62,9 @@ func (s *Catalog) current(ctx context.Context) (out catalog_vo.Response, err err
 		out.Models = append(out.Models, catalog_vo.Model{Key: "grok:" + m.ModelID + ":" + pricing.GrokPricingVersion, Provider: "grok", Model: m.ModelID, Mode: "本机参考目录", Currency: "USD", Unit: "1M tokens", InputPrice: amount(new(m.InputMicros)), CachedPrice: amount(new(m.CachedMicros)), OutputPrice: amount(new(m.OutputMicros)), Version: pricing.GrokPricingVersion, SourceURL: pricing.GrokPricingSourceURL, VerifiedAtMS: pricing.GrokPricingVerifiedAtMS, Evidence: "historical"})
 	}
 
+	for _, m := range pricing.DSHReferenceRates() {
+		out.Models = append(out.Models, catalog_vo.Model{Key: "dsh:" + m.ModelID + ":" + pricing.DSHPriceVersion, Provider: "dsh", Model: m.ModelID, Mode: "按请求时间适用峰谷价", Currency: "USD", Unit: "1M tokens", InputPrice: amount(new(m.InputMicros)), CachedPrice: amount(new(m.CachedMicros)), OutputPrice: amount(new(m.OutputMicros)), Version: pricing.DSHPriceVersion, SourceURL: pricing.DSHPriceSource, VerifiedAtMS: pricing.DSHPricingVerifiedAtMS, Evidence: "historical", Notes: "北京时间工作日09–12、14–18为峰时；周末、中国法定节假日和其余时间为谷时。缺少历史价格或缓存计数时不估价。"})
+	}
 	evidence, err := s.repository.Prices(ctx)
 	if err != nil {
 		return out, err

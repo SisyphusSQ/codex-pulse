@@ -39,12 +39,17 @@ chmod 0700 "$CURSOR_HOME"
 ISOLATED_GROK_HOME="$RUNTIME_DIR/grok-home"
 mkdir -p "$ISOLATED_GROK_HOME"
 chmod 0700 "$ISOLATED_GROK_HOME"
+ISOLATED_DSH_HOME="$RUNTIME_DIR/dsh-home"
+mkdir -p "$ISOLATED_DSH_HOME"
+chmod 0700 "$ISOLATED_DSH_HOME"
 go run "$SCRIPT_DIR/smoke-seed" \
   --preferences "$RUNTIME_DIR/preferences.json" \
   --home "$RUNTIME_DIR/codex-home"
 
 CODEX_PULSE_CURSOR_HOME="$CURSOR_HOME" \
   CODEX_PULSE_GROK_HOME="$ISOLATED_GROK_HOME" \
+  CODEX_PULSE_DSH_HOME="$ISOLATED_DSH_HOME" \
+  CODEX_PULSE_DSH_SESSIONS_ROOT="$ISOLATED_DSH_HOME/sessions" \
   "$APP_DIR/Contents/MacOS/Codex Pulse" \
   --ui-smoke \
   --runtime-directory "$RUNTIME_DIR" \
