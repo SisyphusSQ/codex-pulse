@@ -28,7 +28,7 @@ Query --> Store["SQLite"]
 | `internal/query` / `internal/store` | 查询、聚合、SQLite 真相 | 跨进程 transport |
 | Swift client（后续） | AppKit/SwiftUI、窗口、菜单栏、更新、Helper 托管 | 重定义 Go 业务事实 |
 
-客户端维度通过窄 `AgentProvider` seam 路由；当前客户端是 `codex`、`cursor` 和 `grok`。Cursor 或 Grok 的多种本地或可选在线来源只在 Helper 内部合并，不暴露成多个业务 Provider，也不并进 Codex 索引器。跨客户端汇总是独立 query RPC `DashboardSummary`，由 Helper 对齐当前范围后聚合 Provider slice，并在独立的 365 天本地日范围内聚合年度活动；两个范围分别返回 coverage，年度局部失败不能抹掉当前范围结果。Swift 不得自行请求三份结果后重算。详细契约见 [Agent Provider、Cursor 与 Grok](../providers/README.md)。
+客户端维度通过窄 `AgentProvider` seam 路由；当前客户端是 `codex`、`cursor`、`grok`、`dsh`。各客户端的多种本地或可选在线来源只在 Helper 内部合并，不暴露成多个业务 Provider，也不并进 Codex 索引器。跨客户端汇总是独立 query RPC `DashboardSummary`，由 Helper 对齐当前范围后聚合已启用 Provider slice，并在独立的 365 天本地日范围内聚合年度活动；两个范围分别返回 coverage，年度局部失败不能抹掉当前范围结果。Swift 不得把各 Provider 的结果自行加总。详细契约见 [Agent Provider、Cursor 与 Grok](../providers/README.md)。
 
 ## 安全与停止
 
@@ -45,12 +45,12 @@ Query --> Store["SQLite"]
 
 `api/codexpulse/core/v1/core.proto` 是 Swift/Go 唯一跨进程 contract。`make verify-proto` 在临时目录用固定 generator 版本重生成并比较，禁止手改生成文件。Updater、Window、Tray 和 Popover 明确不属于 `CoreService`。
 
-## 多机中心服务扩展（实施中）
+## 多机中心服务扩展
 
-[多机汇总、中心服务与 Web 看板](../multi-machine-reporting/README.md) 定义可选的结构化上报与集中查询。中心骨架、统一配对鉴权与本机持久同步已实现，事实查询和 Web 已接入真实中心；上线状态与运行证据独立记录。现有本机 UDS、pipe token 与 Go 业务真相边界仍按本页执行；中心采用独立数据库及网络 contract，不将本机控制 RPC 开放到网络。
+[多机汇总、中心服务与 Web 看板](../multi-machine-reporting/README.md) 定义可选的结构化上报与集中查询。中心代码、本机上报和 SeekDB/MySQL 协议的 DEV 与生产读回已有记录，见 [多机 runbook](../../../test/multi-machine-reporting.md)、[中心查询保留](../../../test/center-query-retention-20261003.md)、[账号周期 Token](../../../test/account-cycle-tokens.md) 与 [DSH 验证](../../../test/dsh-provider.md)。独立 MySQL 8.4 与 Master 完整故障矩阵仍未关闭。现有本机 UDS、pipe token 与 Go 业务真相边界仍按本页执行；中心采用独立数据库及网络 contract，不将本机控制 RPC 开放到网络。
 
 中心采用 Go Web Starter v2、MySQL 和独立 Go module，前端 AntD 源码放在 `server/web/`，通过 Go `embed` 编入 Server，以一个二进制提供同源页面与 API，不单独部署前端，也不增加 `backend/` 层。HTTPS 与私网 HTTP 共用设备码配对和凭证权限体系，不另接 Tailscale SSO。现有本机业务与网络中心各自装配运行时，不共享数据库。
 
-已确认保留 App 托管 Helper：退出 App 后停止采集和上报，下次打开增量补采并恢复待发送队列；未观测的配额历史保留缺口。实施按 3 个 Master、14 张 Execution 组织，中心开发阶段暂用 SQLite，同时实现 MySQL 支持，真实 MySQL 整体联调待环境提供后进行。
+已确认保留 App 托管 Helper：退出 App 后停止采集和上报，下次打开增量补采并恢复待发送队列；未观测的配额历史保留缺口。实施按 3 个 Master、14 张 Execution 组织。中心开发阶段使用过 SQLite；SeekDB/MySQL 协议的 DEV 与生产读回已有记录，独立 MySQL 8.4 整体联调仍未执行。
 
 本机新增 `internal/reporting`，通过已有 SQLite 的一致只读事务构造白名单 DTO，独立私有 `reporting.db` 持久化队列和 Pulse 自有凭证。上报默认关闭，精确握手升级为 `core-rpc-v9`；CoreService 仅开放同步状态、配对、配置和立即同步命令；不把凭证返回 Swift。App 退出先取消并 join 同步 worker，确认只推进中心已经匹配提交的 batch。独立网络 contract 见 `api/codexpulse/reporting/v1`；它不开放本机控制 RPC。

@@ -1,8 +1,8 @@
 # 多机汇总、中心服务与 Web 看板
 
-状态：已批准实施；保留 App 托管 Helper，退出后停止采集并在下次启动增量补采。更新时间：2026-10-01。
+状态：方案已有 DEV 与生产读回；本文决策表仍是边界，不是完成清单。设计更新时间：2026-10-01。2026-10-08 仅补充现状指针，不是重新验收日。保留 App 托管 Helper，退出后停止采集并在下次启动增量补采。
 
-本文整合已讨论并暂定的技术方向、数据边界、统一设备码鉴权、网络入口和 Master/Execution 拆分。用户已授权创建并细化 3 个 Master、17 张 Execution，切出实施分支并完成前后端开发。本阶段使用 SQLite 开发验证，同时实现 MySQL 支持；用户提供 MySQL 后再进行真实 MySQL 整体联调。生产部署与正式发布另行处理。中心采用 Go Web Starter v2 和独立 Go module，前端源码放在 `server/web/`，构建后通过 Go `embed` 编入 Server，Web 与 API 单体部署；HTTP 与 HTTPS 共用设备码配对和凭证体系。
+本文整合已讨论并暂定的技术方向、数据边界、统一设备码鉴权、网络入口和 Master/Execution 拆分。用户已授权创建并细化 3 个 Master、17 张 Execution，切出实施分支并完成前后端开发。开发验证使用过独立 SQLite，同时实现 MySQL 支持。SeekDB/MySQL 协议的 DEV 与生产读回已有日期化记录；独立 MySQL 8.4 整体联调仍未执行。中心采用 Go Web Starter v2 和独立 Go module，前端源码放在 `server/web/`，构建后通过 Go `embed` 编入 Server，Web 与 API 单体部署；HTTP 与 HTTPS 共用设备码配对和凭证体系。
 
 ## 决策摘要
 
@@ -37,7 +37,7 @@ Codex Pulse 已在每台机器上提供本地使用量与额度观测，但没�
 
 相关现行设计：[架构](../architecture/README.md)、[产品](../product/README.md)、[Provider](../providers/README.md)、[数据模型](../data-model/README.md)、[配额](../quota/README.md)、[账号与订阅](../codex-subscriptions/README.md)。
 
-本文确定未来可选中心同步的总体方案，不将其描述成现有运行时已支持，也不自动改变现行本机 RPC 的隐私与安全规则。
+本文记录可选中心同步的总体方案与仍开放的决策。DEV 与生产读回已有记录，决策表不是完成清单。本文不自动改变现行本机 RPC 的隐私与安全规则。
 
 ## 目标
 
@@ -132,7 +132,7 @@ Session、Token、项目与成本继续尊重既有 Home 口径。只有来源�
 - 会话增长、价格修订、索引重建：通过可识别修订或完整分区快照更新，不能把累计总量反复追加。
 - 不同副本内容不一致：按事实覆盖、修订和来源证据仲裁；证据不足则暴露冲突，不任取最大值或简单相加。
 
-贡献键、快照分区、修订排序与移除旧事实的协议尚待设计，实施前必须验证现有轻量索引的映射。本机 offset/generation 不能未经验证直接承担全局稳定身份；本文不宣称已有算法解决该问题。
+2026-10-01 草案曾写贡献键、快照分区、修订排序与移除旧事实的协议尚待设计。现行贡献身份、Home 分区和来源仲裁见 [上报协议](../../../../api/codexpulse/reporting/v1/README.md)。本机 offset/generation 仍然不能充当全局稳定身份；设备只作 provenance。身份算法已冻结并不关闭下文时区、执行归属和 Master 验收。
 
 设备图表必须说明统计的是执行归属还是采集来源。采集来源可以多对多，不能将采集副本数当成设备消耗；执行归属未知时保留未知，确保全局总量与用于构成图的互斥分组对账。
 
@@ -270,7 +270,7 @@ Server 使用独立 `server/go.mod`，现有 Helper 保持根 module；必要时
 
 ## 数据库开发与验证边界
 
-MySQL 为中心目标数据库。真实 MySQL 账密由用户填写本地忽略配置，实际联调尚未执行；此前用户授权使用 SQLite 作为中心开发测试数据库；中心 SQLite 与本机 SQLite 为独立文件和 schema。repository 通过明确的 dialect 适配参数化 SQL、事务与唯一约束，同一业务契约用于两种数据库。SQLite 验证不能证明 MySQL 的 DDL、排序规则、锁和并发语义已通过。
+MySQL 为中心目标数据库。真实 MySQL 账密由用户填写本地忽略配置。独立 MySQL 8.4 整体联调仍未执行；SeekDB 1.2 的 MySQL 协议 DEV 与生产读回见测试记录，不能替代 MySQL 8.4。此前用户授权使用 SQLite 作为中心开发测试数据库；中心 SQLite 与本机 SQLite 为独立文件和 schema。repository 通过明确的 dialect 适配参数化 SQL、事务与唯一约束，同一业务契约用于两种数据库。SQLite 验证不能证明 MySQL 的 DDL、排序规则、锁和并发语义已通过。
 
 配置、初始化与升级、备份恢复、CI 验证入口需要分别支持两种数据库。开发完成后保留真实 MySQL 整体联调 runbook，由用户提供环境后在 Master 中补记正式结果。执行卡可以按实现与已有开发证据完成，Master 不因 SQLite 通过而宣称 MySQL 验收通过。
 
@@ -331,7 +331,7 @@ MySQL 为中心目标数据库。真实 MySQL 账密由用户填写本地忽略�
 
 M1 的协议与身份边界确定后，M2 和 M3 可按依赖推进；M3 的最终产品验收等待 M1、M2 的实际能力完成。开发验证在对应执行卡完成并记录；真实产品、三机和运行验收由 Master 负责，不为等待验收建立执行子卡。
 
-协议实施前仍需细化贡献键、修订/快照和冲突算法；部署前需确定实际机器、监听地址、保留期限、备份、历史范围与预算。这些是既定方案的实施细节，不回退已经确定的技术栈和鉴权方向。
+2026-10-01 草案在协议实施前要求细化贡献键、修订/快照和冲突算法；现行贡献身份见 [上报协议](../../../../api/codexpulse/reporting/v1/README.md)。同日决策表把部署机器、绑定地址、备份、保留期限、首次补传范围、同步频率与资源预算列为实施前细化。这些项已有日期化记录，贡献键落地不代替 Master 验收：SQMC04 私网 HTTP、DEV 18089 / 正式 18090 与中心 LaunchAgent 见 [多机 runbook](../../../test/multi-machine-reporting.md)；四周期保留、小时维护的首次启动和 SeekDB 备份恢复见 [查询保留](../../../test/center-query-retention-20261003.md) 与 [交接](../../../test/center-query-handoff-20261003.md)；备份、回滚，以及删除中心历史仍无自动入口，见 [运行说明](../../../../server/docs/test/operations.md)；请求与快照预算以 [上报协议](../../../../api/codexpulse/reporting/v1/README.md) 已写上限为准。首次补传范围在开始导出后固定，同步间隔的默认值与可设范围见同一多机 runbook。仍然保持原记录、未改成通过的边界：本文 Master 清单未勾选的三机真实对账，以及「请求预算、备份与保留行为可验证」；独立 MySQL 8.4、生产恢复切换、多小时与多真实周期的长期观察、正式 HTTPS、公证，以及 `max_allowed_packet` 持久化未复验。既定技术栈和鉴权方向保持不变。
 
 实施时同步本文、现行产品/架构/数据模型/配额/Provider 文档、网络 contract、本机设置、中心配置、构建发布入口与测试 runbook。AGENTS.md 和 README 中关于仅本机、唯一 contract 与无中心同步的现行描述，需要按最终范围明确演进，不能只新增服务而留下冲突规则。
 
@@ -343,7 +343,7 @@ M1 的协议与身份边界确定后，M2 和 M3 可按依赖推进；M3 的最�
 
 ## Master 验收条件与验证入口
 
-以下均为未来 Master 验收条件，分别归入上述 M1、M2、M3 。本次文档编写未运行功能测试，没有三机或部署验收证据；验收记录使用 Pass / Fail / Blocked / Not Run，Execution Done 不等于 Master Pass：
+以下均为未来 Master 验收条件，分别归入上述 M1、M2、M3。部分部署读回见 [多机 runbook](../../../test/multi-machine-reporting.md)、[中心查询保留](../../../test/center-query-retention-20261003.md)、[账号周期 Token](../../../test/account-cycle-tokens.md) 与 [DSH 验证](../../../test/dsh-provider.md)。未勾选项仍然开放。2026-10-01 编写本文时没有三机或部署验收证据写入勾选框；验收记录使用 Pass / Fail / Blocked / Not Run，Execution Done 不等于 Master Pass：
 
 - [ ] 三台机器独立接入、采集与读回；中心可以按设备和 Provider 筛选，对账到各本机同范围的结构化事实。
 - [ ] 账号 ID、邮箱、项目名、会话标题和原始 Session ID 按允许边界展示；reset 时间、真实窗口及采集时间完整保留。

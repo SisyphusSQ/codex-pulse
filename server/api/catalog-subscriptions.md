@@ -28,6 +28,6 @@
 
 ## 数据库升级
 
-结构v2在v1基础上只增加pulse_account_settings。HTTP启动只检查。先备份并停写，执行 `db upgrade`：只接受已核对v1摘要，创建新表、检查所有字段，最后CAS提交v2摘要。SQLite事务升级；MySQL DDL隐式提交，失败须检查实际结构后重入，不声称DDL事务回滚。当前MySQL实机执行Not Run。
+2026-10-02 TOO-513 的历史记录：结构 v2 在 v1 基础上只增加 `pulse_account_settings`。该次 HTTP 启动只检查，不代替升级。先备份并停写，再执行 `db upgrade`：只接受已核对的 v1 摘要，创建新表、检查所有字段，最后 CAS 提交 v2 摘要。SQLite 在事务内升级；MySQL DDL 隐式提交，失败须检查实际结构后重入，不声称 DDL 事务回滚。当次 MySQL 实机执行 Not Run。现行结构版本与启动迁移见 [结构说明](../docs/sqls/schema/README.md)。
 
 目录包含已接受用量的历史费率投影，以 provider/model/version/四项费率去重；没有来源与核对时间的上报证据不生成官方来源或生效时间。已观测模型没有当前参考价时仍另列未知参考项。历史与观测投影在同一只读数据库快照获取，分别最多 2,000 组，超过返回 413。Web 默认展示美元价格，可切换 Codex Credits。

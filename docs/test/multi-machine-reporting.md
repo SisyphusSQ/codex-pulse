@@ -1,6 +1,6 @@
 # 多机中心开发验证与后续验收
 
-总体方案：[多机汇总与 Web](../design/details/multi-machine-reporting/README.md)。确定性开发证据使用隔离 SQLite 与 synthetic/empty Home；2026-10-03 补充了本机真实 Home Live E2E，以及 DEV SeekDB/MySQL 协议与 Tailscale 三机 HTTP 联调，见文末。各证据不能互相替代，不代表三台原生 App 全矩阵或正式部署已验收。
+总体方案：[多机汇总与 Web](../design/details/multi-machine-reporting/README.md)。确定性开发证据使用隔离 SQLite 与 synthetic/empty Home；2026-10-03 补充了本机真实 Home Live E2E，以及 DEV SeekDB/MySQL 协议与 Tailscale 三机 HTTP 联调，见文末。各证据不能互相替代，不代表三台原生 App 全矩阵或正式部署已验收。2026-10-03 之后的中心结构 v4 见 [center-query-retention-20261003.md](center-query-retention-20261003.md) 与 [center-query-handoff-20261003.md](center-query-handoff-20261003.md)；v0.15.3 / schema v5 见 [account-cycle-tokens.md](account-cycle-tokens.md)；v0.16.0 / v0.16.1 见 [dsh-provider.md](dsh-provider.md)。这些指针不是把本文改写成最新现行版本，也不是新的验收日。
 
 ## 聚焦开发入口
 

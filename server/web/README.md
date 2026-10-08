@@ -31,7 +31,7 @@ npm run build
 
 按开发风险选择验证，提交推送收尾不重复测试。dist/node_modules/.vite 不提交；Server 内嵌并同源托管 Web，更新与回滚仅切换匹配配置和 schema 的二进制，详见[运行说明](../docs/test/operations.md)。
 
-2026-10-01：8 个授权/client UI 测试、类型、构建、AntD lint 通过；所有锁定依赖来自 registry.npmjs.org，审计未报告漏洞。环回 HTTP/隔离 SQLite/合成一次性码的真实浏览器配对、刷新恢复、退出撤销和 390px 窄屏通过；没有读取 Codex Home 或个人/Agent 凭据。三机真实 Home、MySQL、完整看板未验收，业务页面由其余 Execution 卡继续接入。
+2026-10-01：8 个授权/client UI 测试、类型、构建、AntD lint 通过；所有锁定依赖来自 registry.npmjs.org，审计未报告漏洞。环回 HTTP/隔离 SQLite/合成一次性码的真实浏览器配对、刷新恢复、退出撤销和 390px 窄屏通过；没有读取 Codex Home 或个人/Agent 凭据。三机真实 Home、MySQL、完整看板未验收，业务页面由其余 Execution 卡继续接入。此后的读回见 [多机 runbook](../../docs/test/multi-machine-reporting.md)、[中心查询保留](../../docs/test/center-query-retention-20261003.md)、[交接](../../docs/test/center-query-handoff-20261003.md)、[账号周期 Token](../../docs/test/account-cycle-tokens.md) 与 [DSH 验证](../../docs/test/dsh-provider.md)。2026-10-01 这句的未验收边界保持不变。
 ## 用量总览
 
 首页范围 KPI、年度活动、活动分布、高消耗会话及平台/模型构成使用独立卡片接口；模型趋势读取 usage API。各区块独立加载和失败，年度活动置顶，屏外图表与机器用量按需挂载。日期、时区、Provider 和采集来源由 Server 筛选。Token/微美元保留完整十进制字符串；Token 使用万/亿、最多一位小数，成本显示 USD 两位小数。格式化使用 BigInt，浮点转换只用于图表坐标。
@@ -84,7 +84,7 @@ Credits 以最后观测库存为主；观测时可用数量与最近到期由中
 
 模型价格默认显示相关型号，每个平台内同一个型号合并为一行，优先显示 Standard 基础文本美元参考价；输入、缓存输入、输出三项常驻，缓存写入、Fast/长上下文、Credits和历史证据展开核对。Codex 默认型号依据[官方模型说明](https://learn.chatgpt.com/docs/models)于2026-10-03核对，Cursor/Grok沿用文本模型目录；已使用旧型号、未定价观测与精确型号搜索保留，Batch/Flex及未使用的图片/音频/Embedding不铺入主表。“历史计价”仍支持用量页面的型号/价格版本深链。API参考折算与订阅支出、实际账单和剩余额度分开，查阅目录不改写历史成本。
 
-账号订阅设置由中心保存，支持备注、手动套餐、每月续费日/完整到期日和IANA时区；不会修改平台reset或扣款，不与Mac双向同步。修订冲突保留表单并要求重新读取。升级到中心结构v2前按Server运行说明备份并显式db upgrade；HTTP启动不自动改表。
+账号订阅设置由中心保存，支持备注、手动套餐、每月续费日/完整到期日和IANA时区；不会修改平台reset或扣款，不与Mac双向同步。修订冲突保留表单并要求重新读取。2026-10-02 升到中心结构 v2 时，先备份并显式 `db upgrade`，HTTP 启动只检查、不代替该次升级，见 [多机 runbook](../../docs/test/multi-machine-reporting.md) 的 TOO-513 节。现行在数据库启用后、HTTP 监听前执行已登记的版本化 SQL：空库初始化，摘要匹配的 v1–v4 升级到当前 v5，当前版本与摘要匹配时只做结构检查；未知版本、摘要不符或字段漂移拒绝启动，不降级、不删除历史。备份与回滚见 [中心说明](../README.md) 和 [运行说明](../docs/test/operations.md)，登记范围见 [结构说明](../docs/sqls/schema/README.md)。v3 及以后的日期化读回见 [center-query](../../docs/test/center-query-retention-20261003.md) 与 [account-cycle](../../docs/test/account-cycle-tokens.md)。
 
 ## 已批准的全站布局
 

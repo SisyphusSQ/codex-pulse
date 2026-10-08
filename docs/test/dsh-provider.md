@@ -39,6 +39,8 @@ npm test -- --run src/pages/Usage.test.tsx src/pages/Overview.test.tsx src/pages
 
 ## 尚未执行的验证
 
+本节是发版前的开发边界。v0.16.0 / v0.16.1 的发版与三机读回在后文。
+
 本次未执行全仓长测、全仓 race、CI、独立 MySQL 8.4、真实生产中心端到端上传、签名、公证、发版或部署。Server 合成端到端回归不能替代这些结论。发布顺序为 Server 先升级，Mac 再升级；旧中心拒绝新客户端时应保留队列，不能清空或伪造 receipt。
 
 架构检查入口 `scripts/project-checks/check.sh` 在仓库基线缺少 `.github/workflows/ci.yml` 时被 `[CI-001]` 阻止，未取得通过结论；本次没有扩大范围补建 CI。
