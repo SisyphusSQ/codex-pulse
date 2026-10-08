@@ -1,6 +1,6 @@
 # Codex 账号与订阅
 
-本页冻结 TOO-447 的账号订阅合同，并纳入 TOO-463 的 legacy 配额历史显式关联。实现以 `api/codexpulse/core/v1/core.proto` 与 SQLite application schema v34 为准。
+本页冻结 TOO-447 的账号订阅合同，并纳入 TOO-463 的 legacy 配额历史显式关联。实现以 `api/codexpulse/core/v1/core.proto` 为准。订阅表引入于 application schema v33/v34；现行 application schema 是 v37，v35–v37 不改这些表。
 
 ## 产品边界
 

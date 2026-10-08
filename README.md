@@ -15,7 +15,7 @@ Codex Pulse is a local-first, native macOS app. It turns Codex and Cursor sessio
 - **Menu bar:** Pin Codex quota, Cursor's exact usage, Grok credits, or DSH token usage without changing the provider selected in the main window. If every client is disabled, the menu bar shows `Codex Pulse --`.
 - **Usage analytics:** Explore tokens, models, API-equivalent cost, and activity distribution across overview, session, and project pages.
 - **Session cache hit rate:** See cached input as a percentage of all input tokens in Codex session lists and details. Missing or invalid counters stay unavailable.
-- **Provider controls:** Enable or disable Codex, Cursor, and Grok independently in Settings. Discovery is metadata-only. A disabled client stays off across restart, wake, and rediscovery. The main window and popover only list enabled clients; Settings stays reachable when none are enabled.
+- **Provider controls:** Enable or disable Codex, Cursor, Grok, and DSH independently in Settings. Discovery is metadata-only. A disabled client stays off across restart, wake, and rediscovery. The main window and popover only list enabled clients; Settings stays reachable when none are enabled.
 - **Provider context:** Switch the main window among enabled Codex, Cursor, Grok, and DSH clients; every query remains scoped to one provider and unsupported metrics stay explicitly unavailable.
 - **Data status:** Inspect provider-grouped sources, local indexing, and background jobs to understand whether reported results are complete.
 - **Codex Pro tier:** The current ChatGPT account maps App Server `prolite` to `Pro 5×` and `pro` to `Pro 20×`. Missing, unsupported, or conflicting plan evidence stays `Pro · 档位未知`.
@@ -111,7 +111,7 @@ make verify-live
 
 `make verify-live` builds the development app, reuses a confirmed private runtime, and launches the app against the real Home. CI, unit tests, and deterministic smoke tests use a synthetic or empty Home so they do not read personal data.
 
-The Development bundle and an unbundled `swift run` executable refuse the installed product runtime at `~/Library/Application Support/Codex Pulse/runtime`. Development launches must pass an isolated `/private/tmp/cp-*` runtime explicitly; only the installed production bundle may use the persistent product database by default.
+The Development bundle and an unbundled `swift run` executable refuse the installed product runtime at `~/Library/Application Support/Codex Pulse/runtime`. Development launches must pass an isolated `/private/tmp/cp-*` or `/tmp/cp-*` runtime explicitly; only the installed production bundle may use the persistent product database by default.
 
 ## Development and verification
 
@@ -169,7 +169,7 @@ Start with these documents for more detail:
 
 ## 多机汇总中心
 
-可选中心位于 [server/](server/README.md)，React/AntD Web 通过 Go `embed` 编入 Server，以单个二进制提供同源页面和 API；构建运行和 SQLite/MySQL 备份入口见 [运行说明](server/docs/test/operations.md)。原生 App 仍为本地采集与 UI，设置中配对、选择历史范围并显式启用上报；退出停止，下次增量补采。中心仅接收白名单元数据、统计、配额和 TPS，不接收原始记录或 Agent 凭据。中心启动自动初始化或升级已登记的表结构；[开发与正式配置](server/config/README.md)的本地账密副本已 Git 忽略，采用二进制部署。DEV 与生产已完成 SeekDB/MySQL 协议部署，三台 Mac 已更新至 v0.15.1/build 64；独立 MySQL 8.4 与三机完整故障矩阵仍待验收，现场边界见[联调与发布读回](docs/test/multi-machine-reporting.md)。
+可选中心位于 [server/](server/README.md)，React/AntD Web 通过 Go `embed` 编入 Server，以单个二进制提供同源页面和 API；构建运行和 SQLite/MySQL 备份入口见 [运行说明](server/docs/test/operations.md)。原生 App 仍为本地采集与 UI，设置中配对、选择历史范围并显式启用上报；退出停止，下次增量补采。中心仅接收白名单元数据、统计、配额和 TPS，不接收原始记录或 Agent 凭据。中心启动自动初始化或升级已登记的表结构；[开发与正式配置](server/config/README.md)的本地账密副本已 Git 忽略，采用二进制部署。中心结构按已有读回分层，后一次记录不覆盖前一次的失败、部分完成或未执行项。2026-10-03 的 v0.15.1/build 64、生产 schema 2→3 与 SeekDB 部署见[联调与发布读回](docs/test/multi-machine-reporting.md)；同日中心 schema v4 的构建是 `v0.15.1+center.9dbb1c5`，SQMC04 生产与 DEV 读回见[查询保留](docs/test/center-query-retention-20261003.md)与[交接](docs/test/center-query-handoff-20261003.md)。2026-10-05 的 v0.15.3/build 66 将生产 schema 从 v4 升到 v5，见[账号周期 Token](docs/test/account-cycle-tokens.md)。2026-10-06 的 v0.16.0/build 67 与 v0.16.1/build 68 见[DSH 验证](docs/test/dsh-provider.md)：生产中心读回为 `v0.16.1-53bcfc9`，schema 仍为 v5；三台 Mac 该次读回为 0.16.1/build 68，本机 SQLite v37、Preferences v5。独立 MySQL 8.4、三机完整故障矩阵、Sparkle 更新界面完整 E2E、公证和长期稳定性仍未关闭。DSH 生产读回收到会话不能写成完整 Mac→Server→Web E2E。
 
 首次打开中心地址会显示浏览器授权页；部署者在 Server 终端使用服务的同一配置运行 `db bootstrap`，取得 10 分钟有效的一次性管理员码，再在浏览器输入。浏览器会话当前有效期为 14 天；全部浏览器授权失效时可通过同一命令恢复，无须重建数据库。完整流程见[首次浏览器授权与访问恢复](server/README.md#首次浏览器授权与访问恢复)。
 

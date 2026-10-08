@@ -2,9 +2,9 @@
 
 [English](README.md) | 简体中文
 
-**看清 Codex 在本机如何消耗、额度还剩多少，以及当前数据是否可用。**
+**看清 Codex 与 Cursor 在本机如何消耗、额度还剩多少，以及当前数据是否可用。**
 
-Codex Pulse 是一款 local-first 的原生 macOS 应用：把 Codex 分散在本机会话、用量记录和额度窗口中的信息，整理成菜单栏状态与可下钻的分析界面，同时说明数据的新鲜度、完整性与健康状态。
+Codex Pulse 是一款 local-first 的原生 macOS 应用：把 Codex 与 Cursor 分散在本机会话、用量记录和数据来源健康中的信息，整理成菜单栏状态与可下钻的分析界面，同时说明数据的新鲜度、完整性与健康状态。
 
 ![Codex Pulse 概览中的额度、年度活动热力图与项目消耗，动态数据已脱敏](docs/assets/codex-pulse-overview-redacted.png)
 
@@ -12,10 +12,11 @@ Codex Pulse 是一款 local-first 的原生 macOS 应用：把 Codex 分散在�
 
 ## 主要功能
 
-- **菜单栏**：固定 Codex 额度、Cursor 精确用量或 Grok credits，且不改变主窗口当前客户端。全部关闭时显示 `Codex Pulse --`。
+- **菜单栏**：固定 Codex 额度、Cursor 精确用量、Grok credits 或 DSH Token 用量，且不改变主窗口当前客户端。全部关闭时显示 `Codex Pulse --`。DSH 不显示剩余百分比。
 - **用量分析**：在概览、会话和项目页面查看 Token、模型、API 等价成本与活动分布。
 - **会话缓存命中率**：在 Codex 会话列表和详情查看缓存输入占全部输入 Token 的比例；缺失或异常计数保持不可用。
-- **客户端开关**：在设置中独立启用或关闭 Codex、Cursor、Grok。发现只做 metadata-only 探测；显式关闭后重启、唤醒和数据源重新出现都不会自动重开。主窗口与 Popover 只列出已启用客户端；全部关闭时仍可进入设置。
+- **客户端开关**：在设置中独立启用或关闭 Codex、Cursor、Grok、DSH。发现只做 metadata-only 探测；显式关闭后重启、唤醒和数据源重新出现都不会自动重开。主窗口与 Popover 只列出已启用客户端；全部关闭时仍可进入设置。
+- **客户端上下文**：主窗口在已启用的 Codex、Cursor、Grok、DSH 之间切换；每次查询只属于一个客户端，不支持的指标保持不可用。汇总不是第五个客户端。
 - **Codex 账号**：设置页管理本机识别账号与手动记录；独立的「账号额度」页为当前账号和保留的历史账号使用完全相同的紧凑账号卡，并只展示每个账号真实返回的额度窗口。每个窗口按实际时长命名，展示最后验证的百分比、重置时间、数据状态与采集时间；历史卡片只读。设置中可控制以后确认切换账号时是否保留旧额度，并可显式清除既有历史；这不会改变按 Home 聚合的 Session、Token、项目和费用口径。
 - **数据状态**：查看按客户端分组的数据来源、本机索引和后台任务的状态，了解统计结果是否完整。
 
@@ -52,7 +53,11 @@ Codex Pulse 是一款 local-first 的原生 macOS 应用：把 Codex 分散在�
 额度和用量工具最容易产生误导的地方，不是没有数据，而是把获取失败后的默认值当成真实结果。Codex Pulse 使用以下显示规则：
 
 - `0%` 只表示已经确认耗尽；从未取得、尚未计算或当前不适用时显示 `--`；
-- 在线刷新失败但已有上次成功获取的数据时，继续展示 last-known-good，而不是突然变成 100%；
+- 在线刷新失败但已有上次成功获取的数据时，继续展示 last-known-good，而不是突然变成 100%。last-known-good 只留在当前已确认的 ChatGPT 账号内；切换账号不会复用上一个账号的百分比。
+- Codex 在线额度与 Reset Credits 来自 Codex App Server 公开方法 `account/rateLimits/read`。Pulse 不读取 Codex access token、JWT、`auth.json` 或 Keychain，也不调用私有 WHAM。缺少 `accountId` 能力的 CLI 直接失败，不回退 WHAM。
+- Codex Pro 5×/20× 只来自账号夹读得到的 App Server `planType`。Pulse 不用剩余百分比、Token、窗口、重置时间或 Reset Credits 推断档位。
+- 本机 Session、Token、项目、趋势和 API 等价成本按当前 Codex Home 汇总，不按 ChatGPT 账号拆分。
+- 可选中心的账号卡单独展示当前周额度周期内新记录的 Codex Token。只计算已确认的账号观测；含糊的切换差量和更早用量会跳过。见[账号周期 Token](docs/design/details/account-cycle-tokens.md)。
 - 时间范围尚未索引完整时标记为“部分数据”，不把局部结果冒充完整统计；
 - 额度名称与周期来自当前数据，例如按真实 `window_minutes` 生成周期标签，不硬编码“5 小时额度”；
 - 金额始终标为“API 等价成本”，用于理解 Token 对应的公开 API 价格量级，不代表真实账单或实际扣费。
@@ -68,7 +73,7 @@ Codex Pulse 是一款 local-first 的原生 macOS 应用：把 Codex 分散在�
 
 Codex 原始文件仍由 Codex 自己管理。Codex Pulse 只保存产品功能所需的索引、统计和运行状态，不修改原始 Session 内容。
 
-首次启动时，Go Helper 会初始化 Preferences v4，即使没有 Codex Home。会对 `${CODEX_HOME:-$HOME/.codex}` 做不读取会话正文的 metadata-only 安全探测；安全 Home 会保存稳定身份。目录不存在或探测失败时，应用仍可启动：设置、Cursor 和 Grok 继续可用，Codex 索引、额度和账号在配置 Home 前保持不可用。之后更换 Codex Home 仍需在设置中显式确认。关闭某个客户端会停止本地采集、在线请求、凭据续期、查询触发刷新和当前汇总；历史、进度和子开关偏好保留。设置中会预览旧版本未归属的本机配额历史，只有用户确认后才会将它用于当前账号的历史曲线，且可撤销。当前握手为 `core-rpc-v8`，Provider 控制面为 `provider-control-v1`。
+首次启动时，Go Helper 会初始化 Preferences v5，即使没有 Codex Home。会对 `${CODEX_HOME:-$HOME/.codex}` 做不读取会话正文的 metadata-only 安全探测；安全 Home 会保存稳定身份。目录不存在或探测失败时，应用仍可启动：设置、Cursor、Grok 和 DSH 继续可用，Codex 索引、额度和账号在配置 Home 前保持不可用。之后更换 Codex Home 仍需在设置中显式确认。关闭某个客户端会停止本地采集、在线请求、凭据续期、查询触发刷新和当前汇总；历史、进度和子开关偏好保留。设置中会预览旧版本未归属的本机配额历史，只有用户确认后才会将它用于当前账号的历史曲线，且可撤销。当前握手为 `core-rpc-v9`，Provider 控制面为 `provider-control-v1`。
 
 ## 工作原理
 
@@ -102,6 +107,8 @@ make verify-live
 ```
 
 `make verify-live` 会构建 development App、复用已确认的私有 runtime，并使用真实 Home 启动应用。CI、单元测试和确定性 smoke 使用 synthetic / empty Home，避免读取个人数据。
+
+Development bundle 和未打包的 `swift run` 可执行文件会拒绝已安装产品的 runtime：`~/Library/Application Support/Codex Pulse/runtime`。开发启动必须显式传入隔离的 `/private/tmp/cp-*` 或 `/tmp/cp-*`。只有安装包 bundle id `com.sisyphussq.codexpulse` 默认使用持久 runtime。
 
 ## 开发与验证
 
@@ -168,4 +175,8 @@ readback 全部通过时才允许。preview 仍使用 prerelease SemVer，并按
 
 ## 多机汇总中心
 
-可选的 Go Server 与 React/AntD Web 位于 [server/](server/README.md)，同源构建运行和 SQLite/MySQL 备份入口见 [运行说明](server/docs/test/operations.md)。原生 App 仍为本地采集与 UI，设置中配对、选择历史范围并显式启用上报；退出停止，下次增量补采。中心仅接收白名单元数据、统计、配额和 TPS，不接收原始记录或 Agent 凭据。MySQL 实际整体联调与三机正式验收仍待后续环境。
+可选的 Go Server 与 React/AntD Web 位于 [server/](server/README.md)，同源构建运行和 SQLite/MySQL 备份入口见 [运行说明](server/docs/test/operations.md)。原生 App 仍为本地采集与 UI，设置中配对、选择历史范围并显式启用上报；退出停止，下次增量补采。中心仅接收白名单元数据、统计、配额和 TPS，不接收原始记录或 Agent 凭据。中心结构按已有读回分层，后一次记录不覆盖前一次的失败、部分完成或未执行项。2026-10-03 的 v0.15.1/build 64、生产 schema 2→3 与 SeekDB 部署见[联调与发布读回](docs/test/multi-machine-reporting.md)；同日中心 schema v4 的构建是 `v0.15.1+center.9dbb1c5`，SQMC04 生产与 DEV 读回见[查询保留](docs/test/center-query-retention-20261003.md)与[交接](docs/test/center-query-handoff-20261003.md)。2026-10-05 的 v0.15.3/build 66 将生产 schema 从 v4 升到 v5，见[账号周期 Token](docs/test/account-cycle-tokens.md)。2026-10-06 的 v0.16.0/build 67 与 v0.16.1/build 68 见[DSH 验证](docs/test/dsh-provider.md)：生产中心读回为 `v0.16.1-53bcfc9`，schema 仍为 v5；三台 Mac 该次读回为 0.16.1/build 68，本机 SQLite v37、Preferences v5。独立 MySQL 8.4、三机完整故障矩阵、Sparkle 更新界面完整 E2E、公证和长期稳定性仍未关闭。DSH 生产读回收到会话不能写成完整 Mac→Server→Web E2E。
+
+### DSH / DeepSeek Harness
+
+DSH Mac 桌面版默认从 `~/.dsh/sessions` 导入官方 V3/V4 JSONL 和 Zstd 会话，支持现有 Session、项目、模型、缓存、活动、吞吐量、本地工具统计和可选中心上报。Mac 和中心 Web 均保持独立 `dsh` 客户端范围。全部费用以美元展示，按实际模型路由与请求起始时间选价：DeepSeek 使用峰谷 API 公价，`openai-codex` 使用已有 OpenAI Standard 基础文本历史价格。费用为 API 公价估算，桌面账户或 Codex 订阅的实际扣费与官方额度不由日志推定。价格、格式、隐私和早期历史 unknown 边界见 [DSH 设计](docs/design/details/providers/dsh.md)，验证见 [DSH 验证记录](docs/test/dsh-provider.md)。

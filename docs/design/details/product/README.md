@@ -61,11 +61,11 @@ Popover 顶部还固定提供三项快捷功能：
 
 ### 汇总
 
-侧边栏客户端选择器上方提供独立“汇总”入口。它不是第四个客户端：选择器只含当前 effective enabled 的 Codex、Cursor、Grok。全部关闭时隐藏客户端专属导航，展示“尚未启用客户端”和“打开设置”；汇总仍显示 known-empty，Settings 始终可达。新用户默认进入汇总；已有仍 enabled 的 `selectedProvider` / `selectedFeature` 按现有机制恢复，失效选择按 Codex、Cursor、Grok 顺序 fallback。
+侧边栏客户端选择器上方提供独立“汇总”入口。汇总不是客户端：选择器只含当前 effective enabled 的 Codex、Cursor、Grok、DSH。全部关闭时隐藏客户端专属导航，展示“尚未启用客户端”和“打开设置”；汇总仍显示 known-empty，Settings 始终可达。新用户默认进入汇总；已有仍 enabled 的 `selectedProvider` / `selectedFeature` 按现有机制恢复，失效选择按 `AgentProvider.allCases` 的 `codex → cursor → grok → dsh` 已启用顺序 fallback。
 
 汇总使用与各客户端相同的 Today / 7D / 30D 本地日半开区间和 IANA timezone，由 Go Helper `DashboardSummary` 一次返回：
 
-- 统计时间与客户端覆盖度（例如“已知 Token（2/3 客户端）”）；未知不得静默计零。
+- 统计时间与客户端覆盖度（例如“已知 Token（已返回数/已启用客户端数）”）；未知不得静默计零。
 - 可比 KPI：总 Token、API 等价估算成本、活跃客户端数。
 - KPI 下方展示独立的过去 365 个本地自然日 Token 活动热力图，可在全部客户端与单客户端间切换；它不跟随 Today / 7D / 30D 改变，年度局部失败不得抹掉当前范围汇总。
 - 各客户端独立额度卡，不生成全局额度百分比。
@@ -101,7 +101,7 @@ Popover 顶部还固定提供三项快捷功能：
 
 条件 Banner 同一时间最多显示一个，按 `blocked` 红色、影响当前数据的持续 `degraded` 橙色、历史补齐或部分数据蓝色排序。普通在线 quota 失败和不影响当前视图的 warning 不占用全局 Banner。手动刷新按 quota、live queue 和当前页面数据执行，不触发历史重扫。
 
-主导航在客户端选择器上方提供独立“汇总”入口，新用户默认进入汇总；已有持久化导航继续按现有恢复机制处理。客户端选择器仍只包含 Codex、Cursor、Grok，其内页面固定为“概览 / 会话 / 项目 / 配额 / 本机状态 / 设置”。汇总不是第四个客户端，不包含跨客户端 Session 或项目排名。不包含 Attention；Data Health 继续作为本机状态下钻页，不单列主导航。
+主导航在客户端选择器上方提供独立“汇总”入口，新用户默认进入汇总；已有持久化导航继续按现有恢复机制处理。客户端选择器仍只包含当前 effective enabled 的 Codex、Cursor、Grok、DSH，其内页面固定为“概览 / 会话 / 项目 / 配额 / 本机状态 / 设置”。汇总不是客户端，不包含跨客户端 Session 或项目排名。不包含 Attention；Data Health 继续作为本机状态下钻页，不单列主导航。
 
 ### Data Health
 
@@ -220,15 +220,16 @@ GitHub Actions 当前按用户要求停用；最终验收使用本地 gate 并�
 
 ## 后续阶段
 
+Grok 与 DSH 已由 [Agent Provider](../providers/README.md) 与 [DSH](../providers/dsh.md) 承接。Grok 是独立客户端，提供本地 Session / Project / Token / Tool、账号胶囊与非稳定 credits 额度，显示名为“Grok”，不与 Cursor 内 Grok 模型对账。DSH 没有官方额度。下列各项仍是后续目标：
+
 1. Codex-only 本地账本和工作台。
 2. live 运行态：进程、端口、Git 状态和 PID 到 JSONL 的映射；不扩展成 Waiting/Blocked/Done Session 状态机。
 3. 配额提醒：阈值、burn rate 和可信度状态栏文案。
 4. 个人工作流：项目别名、Obsidian 摘要、高成本 Session 诊断、Tailscale 只读视图。
-5. Grok 作为第三个独立客户端：本地 Session / Project / Token / Tool、账号胶囊与非稳定 credits 额度；显示名为“Grok”，不与 Cursor 内 Grok 模型对账。详见 [Agent Provider、Cursor 与 Grok](../providers/README.md)。
 
 ## 明确不做
 
-- 不调用 `codex app-server` 查配额或作为兜底。
+- v0.1 历史边界：不调用 `codex app-server` 查配额或作为兜底。现行 Codex 在线额度入口是 App Server `account/rateLimits/read`，WHAM 不再作为产品路径，见 [额度](../quota/README.md)。
 - 不把 `wham/*` 当稳定 API；v0.1 默认启用在线 quota 与 reset credits，但必须显示来源，允许用户随时关闭。
 - 不复制原始 JSONL，不保存完整对话或工具输出。
 - 不把内部 HTTP 接口当稳定 API。

@@ -4,9 +4,9 @@
 
 ## 状态与合同
 
-- Preferences schema：v4。v1/v2/v3 迁移后三家 intent 为 `auto`，Cursor online 与 Codex 账号额度历史保留均为 `true`。
+- 本记录的合同范围是 TOO-445 当时的三客户端：Preferences schema v4，Codex、Cursor、Grok。v1/v2/v3 迁移后三家 intent 为 `auto`，Cursor online 与 Codex 账号额度历史保留均为 `true`。application SQLite schema 当时为 v34。
+- 现行合同：Preferences v5，四个客户端 Codex / Cursor / Grok / DSH，application SQLite schema v37。握手仍是 `core-rpc-v9`，控制面仍是 `provider-control-v1`。额度失效域仍是 `quota_codex`、`quota_cursor`、`quota_grok`，没有 `quota_dsh`。
 - 三层状态：`intent`（auto/enabled/disabled）、`discovery`（unchecked/available/missing/inaccessible/invalid）、`effective`（enabled/disabled/unavailable/disabling）。
-- 握手：`core-rpc-v9`；控制面：`provider-control-v1`。application SQLite schema 为 v34。
 - Helper 是启用状态和业务 gate 的唯一真相。Swift 只消费 Settings catalog。
 
 ## 聚焦自动化（synthetic / empty Home）
@@ -37,7 +37,7 @@ swift build --package-path app/macos --product codex-pulse-app
 | Settings CAS conflict | runtime intent 不变，Swift 保留 draft 并 readback |
 | auto 源消失后又出现 | effective unavailable → 增量恢复，intent 仍 auto，历史不清空 |
 | explicit disabled 源重新出现 | 仍 disabled，只更新 discovery |
-| 三家全关闭 | 无 Provider Overview 请求；Summary known-empty；Settings 可达 |
+| 三家全关闭（TOO-445 场景：Codex、Cursor、Grok） | 无 Provider Overview 请求；Summary known-empty；Settings 可达 |
 | 关闭当前主窗口/Popover Provider | 两套选择独立 fallback，旧任务响应丢弃 |
 
 这些命令使用 synthetic / empty Home，只能作为测试证据，不能冒充真实 Home 产品验收。

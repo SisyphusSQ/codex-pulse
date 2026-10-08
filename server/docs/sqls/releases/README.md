@@ -1,6 +1,6 @@
 # 已发布 SQL
 
-当前交付：[v0.15.1](v0.15.1/README.md) 归档分片暂存与设备同步的 v3 SQL，保持与运行时 schema 的精确字节一致；执行证据单独记录。v0.15.0 初始结构的历史说明保留在 schema/unreleased，未补造过去的发行档案。
+最新已归档 SQL 为 [v0.15.3](v0.15.3/README.md) / schema v5。[v0.15.1](v0.15.1/README.md) 仍是归档分片暂存与设备同步的 v3 SQL，保持与当时运行时 schema 的精确字节一致；执行证据单独记录。v0.15.0 初始结构的历史说明保留在 schema/unreleased，未补造过去的发行档案。v0.16.0 与 v0.16.1 没有新的 SQL 发布目录：DSH 不新增中心 DDL，schema 保持 v5。
 
 每个版本目录保存本次实际交付的 SQL 和 README，README 至少包含：
 

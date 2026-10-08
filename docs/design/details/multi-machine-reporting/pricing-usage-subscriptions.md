@@ -15,7 +15,7 @@
 
 新增 catalog 只读域、subscription 设置域，遵守 Starter controller/service/repository/DO/DTO/VO。所有接口要求 admin；写接口复用 Cookie、精确 Origin 与 CSRF，严格字段白名单与乐观修订控制。不存在账号返回 404，非法字段返回 400，修订冲突返回 409，未读取成功不得提交默认覆盖。
 
-订阅设置新增单独表，MySQL 为目标、SQLite 为开发数据库；DDL 双 dialect 同步，显式升级、校验旧版本摘要并保留原数据，HTTP 启动不自动改结构。目录作为可审核的版本化公开数据随代码交付，不在页面访问时抓取网页或使用 Agent 凭据。
+订阅设置新增单独表，MySQL 为目标、SQLite 为开发数据库；DDL 双 dialect 同步。2026-10-02 TOO-513 当时显式升级、校验旧版本摘要并保留原数据，HTTP 启动只检查、不代替该次升级。现行结构版本与启动迁移见 [结构说明](../../../../server/docs/sqls/schema/README.md)。目录作为可审核的版本化公开数据随代码交付，不在页面访问时抓取网页或使用 Agent 凭据。
 
 统计继续按中心已接受事实复用整数定价：Codex 缓存是 input 子集、reasoning 是独立 output 类计数；Cursor cache read/write 独立，reported charge 中的费用不重复相加；Grok reported/estimated 分开。本机历史价格/费率仍为统计依据，不从当前价目重估旧记录。独立模型用量页不继承账号选择；无可靠关联的 Home 历史只属于全局/来源用量。
 

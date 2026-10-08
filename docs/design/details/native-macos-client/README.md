@@ -205,7 +205,7 @@ contract 不兼容时必须 fail closed，由客户端展示稳定的“核心�
 `trend`/`trend_granularity` 使用 field 12/13。
 
 当前 Helper 与 Swift App 的精确握手版本为 `core-rpc-v9`。`Contracts.provider_control_version`
-为 `provider-control-v1`。Settings snapshot 携带三家 Provider 的 intent/discovery/effective
+为 `provider-control-v1`。Settings snapshot 携带 Codex、Cursor、Grok、DSH 四个 Provider 的 intent/discovery/effective
 以及 Cursor `cursor_online_enabled`。DTO 不得包含真实路径、凭据或底层错误正文。
 `Contracts.codex_pro_tier_version`
 为 `codex-pro-tier-v1`，`Contracts.codex_subscription_accounts_version` 为
@@ -225,8 +225,8 @@ Tool“逐事件计数”、Skill“检测活动”、结构化/内容检测来�
 
 跨客户端汇总使用 `dashboard-summary-v2`。当前 Today / 7D / 30D 查询范围与独立
 365 天活动范围在同一请求中分别传递；Helper 返回当前汇总 coverage、年度活动 coverage
-和逐客户端年度 coverage。Swift 只负责格式化、筛选和交互展示，不从三份 Provider
-响应或年度日桶重算另一套业务真相。
+和逐客户端年度 coverage。Swift 只负责格式化、筛选和交互展示，不得把各 Provider 的
+响应或年度日桶在 Swift 侧加总成另一套业务真相。
 
 ### 5.2 RPC 分类
 
@@ -301,7 +301,7 @@ Swift 根据 `message_key` 使用本地资源映射文案；未知 code 必须�
 ### 5.6 分页和消息大小
 
 - 列表继续使用 opaque cursor 和服务端限制，不允许客户端解析 cursor。
-- 页面应请求聚合 DTO 和有界 page，不做逐行 RPC。跨客户端汇总只消费 `DashboardSummary`，不得并行请求三份 `UsageCost` 后在 Swift 侧重算总量。
+- 页面应请求聚合 DTO 和有界 page，不做逐行 RPC。跨客户端汇总只消费 `DashboardSummary`，不得把各 Provider 的 `UsageCost` 在 Swift 侧加总。
 - Helper 与 Swift client 对齐限制单条 gRPC message 最大 16 MiB；Swift 不沿用 grpc-swift 默认的 4 MiB response 上限，否则合法的完整 Quota explanation response 会在客户端被拒收。未来调整必须同时提供内存、延迟和大响应测试证据。
 - 任何“为了省 RPC 次数”而返回无界 Session、Turn 或趋势数组的改动都应被拒绝。
 
