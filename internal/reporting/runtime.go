@@ -245,21 +245,25 @@ func (r *Runtime) run() {
 		if r.ctx.Err() != nil {
 			return
 		}
-		delay = time.Duration(cfg.IntervalSeconds) * time.Second
-		if delay <= 0 {
-			delay = time.Duration(DefaultIntervalSeconds) * time.Second
-		}
-		if err != nil && !errors.Is(err, context.Canceled) {
-			delay = retry
-			retry = min(retry*2, 5*time.Minute)
-		} else {
-			retry = time.Second
-			if again {
-				delay = time.Second
-			}
-		}
+		delay, retry = nextCycleDelay(cfg.IntervalSeconds, retry, again, err)
 		timer.Reset(delay)
 	}
+}
+
+func nextCycleDelay(interval int64, retry time.Duration, again bool, err error) (time.Duration, time.Duration) {
+	// 不可用来源仍保留错误和未完成状态，但不能拖慢其他来源已就绪的分页。
+	// cycle 遇到传输、存储或协议等实际失败时会清除 again，继续沿用退避。
+	if again && (err == nil || errors.Is(err, store.ErrReportingSource)) {
+		return time.Second, time.Second
+	}
+	if err != nil && !errors.Is(err, context.Canceled) {
+		return retry, min(retry*2, 5*time.Minute)
+	}
+	delay := time.Duration(interval) * time.Second
+	if delay <= 0 {
+		delay = time.Duration(DefaultIntervalSeconds) * time.Second
+	}
+	return delay, time.Second
 }
 func finiteState(err error) string {
 	switch {
@@ -329,11 +333,13 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 	sourceErrors := map[string]error{}
 	unavailableProviders := map[string]bool{}
 	missing := false
+	retryRequired := false
 	record := func(provider string, err error) {
 		if errors.Is(err, store.ErrReportingSource) {
 			missing = true
 		}
 		if err != nil {
+			retryRequired = retryRequired || !errors.Is(err, store.ErrReportingSource)
 			sourceErrors[provider] = err
 			if returnErr == nil {
 				returnErr = err
@@ -448,7 +454,7 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 			again = true
 		}
 	}
-	return again, returnErr
+	return again && !retryRequired, returnErr
 }
 
 func (r *Runtime) exportFacts(ctx context.Context, cfg credentialSettings, provider string, now int64) (bool, bool, error) {

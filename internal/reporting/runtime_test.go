@@ -374,8 +374,8 @@ func TestSessionFailureDoesNotBlockCurrentQuotaAndStatus(t *testing.T) {
 	defer server.Close()
 	runtime := &Runtime{state: state, source: source, ctx: t.Context(), version: "test"}
 	cfg := credentialSettings{ID: 1, Endpoint: server.URL, ClientID: "client", Credential: strings.Repeat("c", 43), AllowHTTP: true, Enabled: true, IntervalSeconds: 60}
-	if _, err := runtime.cycle(t.Context(), cfg); !errors.Is(err, store.ErrReportingBudget) {
-		t.Fatal(err)
+	if again, err := runtime.cycle(t.Context(), cfg); !errors.Is(err, store.ErrReportingBudget) || again {
+		t.Fatal("source budget failure must retain backoff", again, err)
 	}
 	mu.Lock()
 	defer mu.Unlock()
@@ -397,6 +397,67 @@ func TestSessionFailureDoesNotBlockCurrentQuotaAndStatus(t *testing.T) {
 	}
 	if !quota || !status || !otherProvider || len(received[0].Quotas) == 0 {
 		t.Fatal("latest quota/status starved behind session", quota, status)
+	}
+}
+
+type partialTaskSource struct{ fakeSource }
+
+func (s *partialTaskSource) Status(_ context.Context, provider string, _ int64) (reportingv1.DeviceStatus, error) {
+	state := "ready"
+	if provider != "codex" {
+		state = "source_unavailable"
+	}
+	return reportingv1.DeviceStatus{Provider: provider, Status: state}, nil
+}
+
+func TestUnavailableProviderDoesNotDelayAvailableSessionCatchup(t *testing.T) {
+	state, _ := testState(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		var b reportingv1.Batch
+		if err := json.NewDecoder(req.Body).Decode(&b); err != nil {
+			t.Error(err)
+			w.WriteHeader(400)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": reportingv1.Receipt{Version: 1, BatchID: b.ID, ReceivedAtMS: 3000}})
+	}))
+	defer server.Close()
+	cfg := credentialSettings{ID: 1, Endpoint: server.URL, ClientID: "client", Credential: strings.Repeat("c", 43), AllowHTTP: true, Enabled: true, IntervalSeconds: 600}
+	if err := state.saveSettings(t.Context(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.startFullSync(t.Context(), cfg.partition()); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &Runtime{state: state, source: &partialTaskSource{}, ctx: t.Context(), version: "test"}
+	again, err := runtime.cycle(t.Context(), cfg)
+	if !again || !errors.Is(err, store.ErrReportingSource) {
+		t.Fatal("available page must continue despite unavailable providers", again, err)
+	}
+	delay, retry := nextCycleDelay(cfg.IntervalSeconds, 5*time.Minute, again, err)
+	if delay != time.Second || retry != time.Second {
+		t.Fatal("available page inherited five-minute source backoff", delay, retry)
+	}
+	status, err := state.Status(t.Context())
+	if err != nil || status.FullSyncState != "running" || status.PendingBatches != 0 || status.FullSyncExportedSessions != 1 {
+		t.Fatal("partial task must retain warning after acknowledging available session", status, err)
+	}
+	again, err = runtime.cycle(t.Context(), cfg)
+	if again || !errors.Is(err, store.ErrReportingSource) {
+		t.Fatal("exhausted pages must not keep fast retrying", again, err)
+	}
+	delay, _ = nextCycleDelay(cfg.IntervalSeconds, 5*time.Minute, again, err)
+	if delay != 5*time.Minute {
+		t.Fatal("unavailable-only task lost backoff", delay)
+	}
+}
+
+func TestCatchupKeepsTransportAndProtocolBackoff(t *testing.T) {
+	for _, err := range []error{ErrTransport, ErrProtocol, ErrUnavailable, ErrQueueFull, store.ErrReportingBudget, context.DeadlineExceeded} {
+		delay, retry := nextCycleDelay(600, 5*time.Minute, true, err)
+		if delay != 5*time.Minute || retry != 5*time.Minute {
+			t.Fatal("actual failure lost backoff", err, delay, retry)
+		}
 	}
 }
 
