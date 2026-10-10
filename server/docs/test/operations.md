@@ -143,3 +143,37 @@ macOS 常驻命令与权限、版本目录及回滚说明见[部署 README](../.
 启用指标后，采集器以专用 Bearer Token 读取 `/metrics`。同时设置 `server.metrics:true`，并配置 `server.metricsTokenFile` 指向部署机器私有普通文件（0600，32–256 位非空白字符），不复用浏览器/设备凭证；只读 Token 不能调用业务 API。DEV 与生产分别生成凭证，不写入配置样例、发布包或日志。生产抓取 target 使用现场确认的 Tailscale 入口，凭证经采集器私有文件读取，不放 URL。指标反映运维、连接池和设备最近同步状态，不暴露账号、标题、用量金额或原始内容。
 
 启动前保留一致备份和原配置/发行目录，升级后读回 schema、实际版本、ready、既有事实及授权。v3 不能直接用 v0.15.0 二进制回滚；需要旧快照时恢复到新库并重新配对，保留原库供备份后事实对账。
+
+## Cursor Dashboard 历史投影对账
+
+Cursor Dashboard 在完整分页成功后原子提交整个账期；会话 metadata 缺失不代表该
+账期用量事实不完整。Helper 导出时据此标记 `Complete`。中心同时兼容旧 Helper
+已收到的 `cursor_dashboard` 来源：同一来源的新 revision 可以正式替换旧事实，
+包括 Token 修正后 contribution ID 改变或数量减少。其他部分来源仍不能抹去
+已接受事实；多机副本依旧按事实身份仲裁，不相加、不按 Token 总量取最大值。
+不同账期保留已观察历史，Dashboard 与本地 Cursor 摘要不重复累计。
+
+部署修复后的中心二进制，先备份中心数据库或需要重建的 Cursor 投影，再预览：
+
+```sh
+bin/codex-pulse-server --config /private/server.yml db reconcile-cursor --timeout 5m
+bin/codex-pulse-server --config /private/server.yml db reconcile-cursor --apply --timeout 5m
+```
+
+默认不写入。每行 JSON 是一个完成分页的结果，包含 `processed`、`changed`、
+`applied` 和 `next`。预览的 `changed` 是预计变更数，执行时则为实际变更数。
+每个会话持有与实时上报相同的锁，以独立事务重建 canonical payload、会话元数据、
+usage 和 canonical capsule；失败会话整体回滚，之前已完成的会话保留。
+原始来源 payload/digest/revision、批次回执、项目关联和其他 Provider 均不修改。
+没有来源事实的会话遵循现有删除语义，不从别处推测用量。
+
+遇到错误或期限到达，用最后输出的 `next` 续跑；失败会话未推进游标：
+
+```sh
+bin/codex-pulse-server --config /private/server.yml db reconcile-cursor --apply --after <next> --timeout 5m
+```
+
+`--page-size` 为 1..128，默认 32；总期限不超过 10 分钟。重复运行应显示
+`changed: 0`（期间新上报可能触发新的变化）。对账结束后重启中心以清除读取缓存，
+再按相同日期、时区、Provider 比较来源事实、中心 usage 与网页。
+冲突标记仅在副本事实一致后消除；真实冲突不能因对账被隐藏。

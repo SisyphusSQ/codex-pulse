@@ -50,6 +50,7 @@ func databaseCommand() *cobra.Command {
 		})
 	}})
 	command.AddCommand(backupCommands()...)
+	command.AddCommand(reconcileCursorCommand())
 	return command
 }
 
