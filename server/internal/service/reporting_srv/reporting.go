@@ -7,6 +7,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"math"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -235,23 +236,31 @@ func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, s
 			return err
 		}
 	}
+	_, err = s.rebuildSession(ctx, current, true)
+	return err
+}
+
+// rebuildSession 仅重建派生投影，来源、确认记录与 revision 均保持不变。
+// 调用方必须持有 session 锁并在同一事务内提交。
+func (s *Reporting) rebuildSession(ctx context.Context, current reporting_do.Session, apply bool) (bool, error) {
+	sessionKey := current.ID
 	stored, err := s.repository.Sources(ctx, sessionKey)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if len(stored) > 128 {
-		return ErrReportingBudget
+		return false, ErrReportingBudget
 	}
 	var sources []reporting_dto.SourceSnapshot
 	size := 0
 	for _, row := range stored {
 		size += len(row.Payload)
 		if size > 64<<20 {
-			return ErrReportingBudget
+			return false, ErrReportingBudget
 		}
 		var snap reportingv1.SessionSnapshot
 		if err := json.Unmarshal([]byte(row.Payload), &snap, json.RejectUnknownMembers(true)); err != nil {
-			return err
+			return false, err
 		}
 		// 旧不可变队列保留原始摘要用于重试；调用事实不再进入业务仲裁。
 		snap.Invocations = nil
@@ -262,7 +271,7 @@ func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, s
 	if err == nil {
 		var snap reportingv1.SessionSnapshot
 		if err := json.Unmarshal([]byte(old.Payload), &snap, json.RejectUnknownMembers(true)); err != nil {
-			return err
+			return false, err
 		}
 		snap.Invocations = nil
 		for _, row := range stored {
@@ -272,24 +281,32 @@ func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, s
 			}
 		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
+		return false, err
 	}
 	decision := DecideSnapshot(sources, accepted)
 	if decision.Deleted {
+		changed := !current.Deleted || current.Conflict
 		current.Deleted = true
 		current.Conflict = false
-		return s.repository.SaveSessionFlags(ctx, current)
+		if !apply || !changed {
+			return changed, nil
+		}
+		return true, s.repository.SaveSessionFlags(ctx, current)
 	}
 	chosen := decision.Source.Snapshot
 	encoded, err := json.Marshal(chosen)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if len(encoded) > 64<<20 || len(chosen.Contributions)+len(chosen.Invocations) > 200000 {
-		return ErrReportingBudget
+		return false, ErrReportingBudget
 	}
 	selectedProject := reportingv1.Key(decision.Source.ClientID, chosen.Provider, chosen.ProjectID)
 	meta := reporting_do.Session{ID: sessionKey, Provider: chosen.Provider, SessionID: chosen.SessionID, Title: chosen.Title, ProjectID: selectedProject, SourceKind: chosen.SourceKind, SessionKind: chosen.SessionKind, HistoryStartAtMS: chosen.HistoryStartAtMS, CanonicalSourceID: decision.Source.ID, CanonicalRevision: chosen.Revision, CreatedAtMS: chosen.CreatedAtMS, LastActiveAtMS: chosen.LastActiveAtMS, CollectedAtMS: chosen.CollectedAtMS, Complete: chosen.Complete, Conflict: decision.Conflict, CorrectionFence: decision.CorrectionFence}
+	changed := old.Payload != string(encoded) || !reflect.DeepEqual(current, meta)
+	if !apply || !changed {
+		return changed, nil
+	}
 	usage := make([]reporting_do.Usage, 0, len(chosen.Contributions))
 	for position, c := range chosen.Contributions {
 		row := reporting_do.Usage{SessionKey: sessionKey, ContributionID: c.ID, Position: int64(position), ObservedAtMS: c.ObservedAtMS, Model: c.Model, InputTokens: c.InputTokens, CachedTokens: c.CachedTokens, CacheWriteTokens: c.CacheWriteTokens, OutputTokens: c.OutputTokens, ReasoningTokens: c.ReasoningTokens, TotalTokens: c.TotalTokens, CostMicroUSD: c.CostMicroUSD, ReportedChargeMicroUSD: c.ReportedChargeMicroUSD, PricingVersion: c.PricingVersion, PricingMode: c.PricingMode, CostStatus: c.CostStatus}
@@ -301,14 +318,14 @@ func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, s
 		}
 		usage = append(usage, row)
 	}
-	capsule, err = sessionCapsule("canonical", sessionKey, sessionKey, "", chosen)
+	capsule, err := sessionCapsule("canonical", sessionKey, sessionKey, "", chosen)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err = s.repository.SaveCapsule(ctx, capsule); err != nil {
-		return err
+		return false, err
 	}
-	return s.repository.SaveCanonical(ctx, meta, reporting_do.CanonicalSnapshot{SessionKey: sessionKey, Payload: string(encoded)}, usage)
+	return true, s.repository.SaveCanonical(ctx, meta, reporting_do.CanonicalSnapshot{SessionKey: sessionKey, Payload: string(encoded)}, usage)
 }
 func normalizedPercent(value *float64) *float64 {
 	if value == nil {

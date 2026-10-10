@@ -105,6 +105,9 @@ func TestReportingCursorSeparatesBillingCyclesAndUnknownSessionFacts(t *testing.
 	if len(page.Sessions) != 1 || page.Sessions[0].SessionKind != "unassigned_usage" || page.Sessions[0].CreatedAtMS != nil {
 		t.Fatal("unknown session masqueraded as real session")
 	}
+	if !page.Sessions[0].Complete {
+		t.Fatal("committed Dashboard facts marked incomplete because metadata is absent")
+	}
 	c := page.Sessions[0].Contributions[0]
 	if *c.TotalTokens != 20 || *c.CacheWriteTokens != 4 || *c.ReportedChargeMicroUSD != 10 || c.CostMicroUSD != nil {
 		t.Fatal("occurrences or reported/estimated costs conflated")

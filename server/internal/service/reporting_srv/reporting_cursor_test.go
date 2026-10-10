@@ -51,3 +51,47 @@ func TestReportingCursorCyclesRemainHistoryWithoutAddingLocalCopies(t *testing.T
 		t.Fatal("billing events were not deduplicated")
 	}
 }
+
+func cursorDashboardSnapshot(tokens int64) reportingv1.SessionSnapshot {
+	snapshot := centerfixture.Snapshot()
+	snapshot.Provider = "cursor"
+	snapshot.SourceKind = "cursor_dashboard"
+	snapshot.HomeID = "billing-cycle-1"
+	snapshot.Complete = false // 旧 Helper 没有本地会话 metadata。
+	c := centerfixture.Contribution(tokens, 1000)
+	c.ID = reportingv1.ContributionID("cursor", snapshot.SessionID, c, 0)
+	snapshot.Contributions = []reportingv1.Contribution{c}
+	return snapshot
+}
+
+func TestReportingCursorLegacyDashboardCorrectionsReplaceFacts(t *testing.T) {
+	s, db, clients := reportingFixture(t)
+	old := cursorDashboardSnapshot(10)
+	for _, client := range clients {
+		centerfixture.SendSnapshot(t, s, client, old)
+	}
+	updated := cursorDashboardSnapshot(100)
+	updated.Revision = 2
+	updated.CollectedAtMS++
+	centerfixture.SendSnapshot(t, s, clients[0], updated)
+	meta, total := readSession(t, db)
+	if total != 100 || meta.CanonicalRevision != 2 || !meta.CorrectionFence || !meta.Conflict {
+		t.Fatalf("latest complete Dashboard facts not accepted: %+v total=%d", meta, total)
+	}
+	for _, client := range clients[1:] {
+		centerfixture.SendSnapshot(t, s, client, updated)
+	}
+	meta, total = readSession(t, db)
+	if total != 100 || meta.Conflict {
+		t.Fatalf("identical copies duplicated or conflicted: total=%d conflict=%v", total, meta.Conflict)
+	}
+	// 正式修订允许减少，不能以取数值最大值替代仲裁。
+	updated = cursorDashboardSnapshot(5)
+	updated.Revision = 3
+	updated.CollectedAtMS += 2
+	centerfixture.SendSnapshot(t, s, clients[0], updated)
+	meta, total = readSession(t, db)
+	if total != 5 || !meta.Conflict {
+		t.Fatalf("stale copies resurrected corrected facts: total=%d conflict=%v", total, meta.Conflict)
+	}
+}

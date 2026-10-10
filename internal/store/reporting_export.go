@@ -295,6 +295,8 @@ func exportReportingAgent(db *gorm.DB, provider string, source ReportingSource, 
 		}
 		if dashboard > 0 {
 			s.SourceKind = "cursor_dashboard"
+			// Dashboard 账期已完整分页并原子提交；本地 metadata 缺失不代表用量缺失。
+			s.Complete = true
 			if err := exportReportingCursorDashboard(db, id, &s); err != nil {
 				return err
 			}
@@ -378,7 +380,6 @@ func exportReportingCursorDashboard(db *gorm.DB, id string, s *reportingv1.Sessi
 		query = db.Where("external_session_id IS NULL AND event_fingerprint = ?", id[11:])
 		s.SessionKind = "unassigned_usage"
 		s.Title = "未关联会话的用量"
-		s.Complete = false
 	}
 	if err := query.Order("occurred_at_ms,event_fingerprint").Limit(reportingv1.MaxSnapshotFacts + 1).Find(&rows).Error; err != nil {
 		return err

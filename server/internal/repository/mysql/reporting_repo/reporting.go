@@ -149,3 +149,14 @@ func (r *Reporting) LockProjects(ctx context.Context, ids []string) (rows []repo
 func (r *Reporting) AssociateProject(ctx context.Context, id, groupID string) error {
 	return r.engine.DB(ctx).Model(&reporting_do.Project{}).Where("id = ?", id).Update("group_id", groupID).Error
 }
+
+// CursorSessionKeys 按稳定主键分页，不依赖会变化的用量或更新时间。
+func (r *Reporting) CursorSessionKeys(ctx context.Context, after string, limit int) (keys []string, err error) {
+	err = r.engine.DB(ctx).Model(&reporting_do.Session{}).Where("provider = ? AND id > ?", "cursor", after).Order("id").Limit(limit).Pluck("id", &keys).Error
+	return
+}
+
+func (r *Reporting) SessionForUpdate(ctx context.Context, key string) (row reporting_do.Session, err error) {
+	err = r.engine.DB(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", key).Take(&row).Error
+	return
+}

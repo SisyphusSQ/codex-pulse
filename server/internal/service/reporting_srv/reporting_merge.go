@@ -150,6 +150,13 @@ func mergeCandidates(sources []reporting_dto.SourceSnapshot) (out []candidate) {
 	return
 }
 
+// authoritativeRevision 区分用量事实的完整性与本地会话元数据的覆盖率。
+// Dashboard 仅在完整分页成功后原子提交；旧 Helper 的 Complete 误用了本地
+// metadata 覆盖率。兼容已有来源，不改写其 payload 或 revision。
+func authoritativeRevision(snapshot reportingv1.SessionSnapshot) bool {
+	return snapshot.Complete || (snapshot.Provider == "cursor" && snapshot.SourceKind == "cursor_dashboard")
+}
+
 // DecideSnapshot 在接收及本设备来源对账中复用同一事实仲裁，不依赖 HTTP 或存储。
 func DecideSnapshot(sources []reporting_dto.SourceSnapshot, previous *reporting_dto.SourceSnapshot) reporting_dto.MergeDecision {
 	candidates := mergeCandidates(sources)
@@ -163,11 +170,11 @@ func DecideSnapshot(sources []reporting_dto.SourceSnapshot, previous *reporting_
 		for _, c := range candidates {
 			if c.source.ID == previous.ID {
 				hasPrevious = true
-				correctionFence = previous.CorrectionFence || (c.source.Snapshot.Complete && c.source.Snapshot.Revision > previous.Snapshot.Revision && !containsFacts(c.source.Snapshot, previous.Snapshot))
+				correctionFence = previous.CorrectionFence || (authoritativeRevision(c.source.Snapshot) && c.source.Snapshot.Revision > previous.Snapshot.Revision && !containsFacts(c.source.Snapshot, previous.Snapshot))
 				selected = c
 				// 一份部分修订不能抹去此前已经接受的完整证据；完整来源可正式修订
 				// 自身历史，即使数量减少，其他设备仍会参与冲突比较。
-				if !c.source.Snapshot.Complete && !containsFacts(c.source.Snapshot, previous.Snapshot) {
+				if !authoritativeRevision(c.source.Snapshot) && !containsFacts(c.source.Snapshot, previous.Snapshot) {
 					selected.source = *previous
 					selected.source.Snapshot.Complete = false
 					selected.inconsistent = true
