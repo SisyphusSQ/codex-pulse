@@ -8,17 +8,35 @@ import (
 	reporting_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/reporting_do"
 )
 
-func (r *Reporting) LockAccountTokenFact(ctx context.Context, row reporting_do.AccountTokenFact) (current reporting_do.AccountTokenFact, err error) {
+// LockAccountTokenFacts 按调用方的全局 ID 顺序分块插入并锁定读回，保留既有事实供业务层核对。
+func (r *Reporting) LockAccountTokenFacts(ctx context.Context, rows []reporting_do.AccountTokenFact) (current []reporting_do.AccountTokenFact, err error) {
 	db := r.engine.DB(ctx)
-	if err = db.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error; err != nil {
-		return
+	for start := 0; start < len(rows); start += 1000 {
+		chunk := rows[start:min(start+1000, len(rows))]
+		if err = db.Clauses(clause.OnConflict{DoNothing: true}).Create(&chunk).Error; err != nil {
+			return nil, err
+		}
+		ids := make([]string, len(chunk))
+		for i, row := range chunk {
+			ids[i] = row.ID
+		}
+		var stored []reporting_do.AccountTokenFact
+		if err = db.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id IN ?", ids).Order("id").Find(&stored).Error; err != nil {
+			return nil, err
+		}
+		current = append(current, stored...)
 	}
-	err = db.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", row.ID).Take(&current).Error
 	return
 }
 
-func (r *Reporting) SaveAccountTokenSource(ctx context.Context, row reporting_do.AccountTokenSource) error {
-	return r.engine.DB(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
+func (r *Reporting) SaveAccountTokenSources(ctx context.Context, rows []reporting_do.AccountTokenSource) error {
+	for start := 0; start < len(rows); start += 1000 {
+		chunk := rows[start:min(start+1000, len(rows))]
+		if err := r.engine.DB(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&chunk).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *Reporting) SaveAccountTokenPeriod(ctx context.Context, row reporting_do.AccountTokenPeriod) error {

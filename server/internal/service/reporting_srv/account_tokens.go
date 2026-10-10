@@ -14,27 +14,45 @@ import (
 
 func (s *Reporting) acceptAccountTokens(ctx context.Context, p access_dto.Principal, batch reportingv1.Batch, received int64) error {
 	rows := map[string]reporting_do.AccountTokenFact{}
+	accounts := map[string]string{}
+	periods := map[string]reporting_do.AccountTokenPeriod{}
 	for _, u := range batch.AccountUsage {
 		// 允许离线旧周期补传以保持原队列幂等，但查询永远只读当前窗口。
 		if u.CollectedAtMS > received+5*60*1000 {
 			return utils.ErrBadParamInput
 		}
-		account, err := s.resolveAccount(ctx, p, u.Provider, u.LocalScope, &u.AccountID, "confirmed")
-		if err != nil {
-			return err
-		}
-		if account == nil {
-			return utils.ErrBadParamInput
+		bindingKey := reportingv1.Key(u.Provider, u.LocalScope, u.AccountID)
+		accountKey, ok := accounts[bindingKey]
+		if !ok {
+			account, err := s.resolveAccount(ctx, p, u.Provider, u.LocalScope, &u.AccountID, "confirmed")
+			if err != nil {
+				return err
+			}
+			if account == nil {
+				return utils.ErrBadParamInput
+			}
+			accountKey = *account
+			accounts[bindingKey] = accountKey
 		}
 		for _, f := range u.Facts {
-			row := reporting_do.AccountTokenFact{ID: f.ID, AccountKey: *account, Provider: u.Provider, ObservedAtMS: f.ObservedAtMS, TotalTokens: f.TotalTokens}
+			row := reporting_do.AccountTokenFact{ID: f.ID, AccountKey: accountKey, Provider: u.Provider, ObservedAtMS: f.ObservedAtMS, TotalTokens: f.TotalTokens}
 			if previous, ok := rows[row.ID]; ok && previous != row {
 				return utils.ErrConflict
 			}
 			rows[row.ID] = row
 		}
-		period := reporting_do.AccountTokenPeriod{ID: reportingv1.Key(p.ID, *account, strconv.FormatInt(u.ResetsAtMS, 10)), AccountKey: *account, Provider: u.Provider, ClientID: p.ID, WindowStartAtMS: u.WindowStartAtMS, ResetsAtMS: u.ResetsAtMS, CollectedAtMS: u.CollectedAtMS}
-		if err := s.repository.SaveAccountTokenPeriod(ctx, period); err != nil {
+		period := reporting_do.AccountTokenPeriod{ID: reportingv1.Key(p.ID, accountKey, strconv.FormatInt(u.ResetsAtMS, 10)), AccountKey: accountKey, Provider: u.Provider, ClientID: p.ID, WindowStartAtMS: u.WindowStartAtMS, ResetsAtMS: u.ResetsAtMS, CollectedAtMS: u.CollectedAtMS}
+		if previous, ok := periods[period.ID]; !ok || previous.CollectedAtMS < period.CollectedAtMS {
+			periods[period.ID] = period
+		}
+	}
+	periodIDs := make([]string, 0, len(periods))
+	for id := range periods {
+		periodIDs = append(periodIDs, id)
+	}
+	slices.Sort(periodIDs)
+	for _, id := range periodIDs {
+		if err := s.repository.SaveAccountTokenPeriod(ctx, periods[id]); err != nil {
 			return err
 		}
 	}
@@ -43,18 +61,18 @@ func (s *Reporting) acceptAccountTokens(ctx context.Context, p access_dto.Princi
 		ids = append(ids, id)
 	}
 	slices.SortFunc(ids, strings.Compare)
-	for _, id := range ids {
-		row := rows[id]
-		previous, err := s.repository.LockAccountTokenFact(ctx, row)
-		if err != nil {
-			return err
-		}
-		if previous != row {
-			return utils.ErrConflict
-		}
-		if err := s.repository.SaveAccountTokenSource(ctx, reporting_do.AccountTokenSource{ID: reportingv1.Key(p.ID, id), FactID: id, ClientID: p.ID}); err != nil {
-			return err
-		}
+	facts := make([]reporting_do.AccountTokenFact, len(ids))
+	sources := make([]reporting_do.AccountTokenSource, len(ids))
+	for i, id := range ids {
+		facts[i] = rows[id]
+		sources[i] = reporting_do.AccountTokenSource{ID: reportingv1.Key(p.ID, id), FactID: id, ClientID: p.ID}
 	}
-	return nil
+	previous, err := s.repository.LockAccountTokenFacts(ctx, facts)
+	if err != nil {
+		return err
+	}
+	if !slices.Equal(previous, facts) {
+		return utils.ErrConflict
+	}
+	return s.repository.SaveAccountTokenSources(ctx, sources)
 }
