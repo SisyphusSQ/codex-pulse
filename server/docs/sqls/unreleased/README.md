@@ -20,3 +20,8 @@ TOO-523：结构 v3 增加分片暂存和设备有限同步状态。SQL 唯一�
 - 验证：SQLite v3 升级、既有事实保留、初始化/重入测试通过；真实 SeekDB 备份恢复演练和执行结果见[验证记录](../../../../docs/test/center-query-retention-20261003.md)。SeekDB 的 MySQL 协议结果不等同于独立 MySQL 8.4 验收。
 
 TOO-529 的 v5 SQL 已纳入明确计划版本 [v0.15.3](../releases/v0.15.3/README.md)，原始事实源仍为 schema/v5_*.sql；开发验证与真实执行状态分别记录，未回填历史。
+
+
+- [20261013_TOO-582_publications.sql](20261013_TOO-582_publications.sql)：schema v5→v6 的追加 MySQL 表及索引；唯一执行入口为启动迁移器，顺序为先中心后 Helper。不改动旧分片、receipt、来源、配对；CREATE IF NOT EXISTS 可重入，DDL 失败不得写版本标记或监听。尚未归档正式版本，环境执行结果以本轮私有证据和脱敏验收摘要为准。
+
+TOO-582：2026-10-13 私有生产 MySQL 兼容协议环境已执行 v5→v6 并读回版本/摘要，旧分片正常续传；见[验收摘要](../../test/reporting-publications-2026-10-13.md)。正式版本归档与独立 MySQL 8.4 验收仍未执行。

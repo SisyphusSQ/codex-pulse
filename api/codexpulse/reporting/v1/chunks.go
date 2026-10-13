@@ -29,7 +29,7 @@ func SplitSnapshot(s SessionSnapshot) ([]SessionSnapshot, error) {
 	if err != nil || len(body) > MaxSnapshotBytes {
 		return nil, ErrInvalid
 	}
-	if len(s.Contributions)+len(s.Invocations) <= MaxContributions && len(body) < MaxBodyBytes-1024 {
+	if len(s.Contributions)+len(s.Invocations) <= 1000 && len(body) < MaxBodyBytes-1024 {
 		return []SessionSnapshot{s}, nil
 	}
 	hash := sha256.Sum256(body)

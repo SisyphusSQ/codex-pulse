@@ -28,7 +28,8 @@ func (s *Schema) upgrade(ctx context.Context) error {
 	v2 := map[string]string{"mysql": "be7938a996a860030d7484aff0a443fc42672e02d0fe35e004efc80ca289899e", "sqlite": "de4c490365d9ba42a38041a5b6b3f7be4f92e5b2c275dc9b6a51ba0c234862ec"}
 	v3 := map[string]string{"mysql": "c90a79f74c9d2f31987233f7cb335b3a11e74f01858ac9bf64e3e4ef76cb6e0b", "sqlite": "a796cb171ecdf6edbf40fccc9543c1ed2b0012d95248dcdf9da472b3eaf51565"}
 	v4 := map[string]string{"mysql": "c4f4d1e7418f259444a44eadfd9416f41033e6351c94f2db82b37ebf6f7e8450", "sqlite": "ade85380eeb8f7c01b25432092d582d170e6462e3e4f0739f134e6247dae1b9a"}
-	if schema.Version != 5 || !((marker.Version == 4 && marker.Checksum == v4[db.Dialector.Name()]) || (marker.Version == 3 && marker.Checksum == v3[db.Dialector.Name()]) || (marker.Version == 1 && marker.Checksum == legacy[db.Dialector.Name()]) || (marker.Version == 2 && marker.Checksum == v2[db.Dialector.Name()])) {
+	v5 := map[string]string{"mysql": "98d2c4f152659193b3233a790ab9971b69140bd0cc664b3e2ba64e9f89aabddd", "sqlite": "1f476adc4fb3cc1d2f6318073589b48042decd39beb8359710db3f38186f8784"}
+	if schema.Version != 6 || !((marker.Version == 5 && marker.Checksum == v5[db.Dialector.Name()]) || (marker.Version == 4 && marker.Checksum == v4[db.Dialector.Name()]) || (marker.Version == 3 && marker.Checksum == v3[db.Dialector.Name()]) || (marker.Version == 1 && marker.Checksum == legacy[db.Dialector.Name()]) || (marker.Version == 2 && marker.Checksum == v2[db.Dialector.Name()])) {
 		return ErrSchemaIncompatible
 	}
 	statements, checksum, _, err := schema.Definition(db.Dialector.Name())
@@ -37,7 +38,7 @@ func (s *Schema) upgrade(ctx context.Context) error {
 	}
 	upgrade := func(ctx context.Context) error {
 		for _, ddl := range statements {
-			if strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_account_token_") || strings.HasPrefix(ddl, "CREATE INDEX IF NOT EXISTS idx_account_tokens_") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_account_settings ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_snapshot_chunks ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_device_sync ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_retired_observations ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_session_capsules ") || strings.HasPrefix(ddl, "CREATE INDEX IF NOT EXISTS idx_capsules_session ") {
+			if strings.Contains(ddl, "idx_publication_jobs_ready ") || strings.Contains(ddl, "idx_payload_parts_age ") || strings.Contains(ddl, "pulse_payload_owners ") || strings.Contains(ddl, "idx_payload_owners_key ") || strings.Contains(ddl, "idx_usage_versions_time ") || strings.Contains(ddl, "pulse_publication_jobs ") || strings.Contains(ddl, "pulse_session_publications ") || strings.Contains(ddl, "pulse_payload_parts ") || strings.Contains(ddl, "pulse_usage_versions ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_account_token_") || strings.HasPrefix(ddl, "CREATE INDEX IF NOT EXISTS idx_account_tokens_") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_account_settings ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_snapshot_chunks ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_device_sync ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_retired_observations ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_session_capsules ") || strings.HasPrefix(ddl, "CREATE INDEX IF NOT EXISTS idx_capsules_session ") {
 				if err := s.engine.DB(ctx).Exec(ddl).Error; err != nil {
 					return fmt.Errorf("upgrade center structure: %w", err)
 				}

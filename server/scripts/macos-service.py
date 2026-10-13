@@ -13,6 +13,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 
@@ -31,10 +32,28 @@ def service_loaded(target: str) -> bool:
 
 
 def stop(target: str) -> None:
-    if service_loaded(target):
-        subprocess.run(
-            ["launchctl", "bootout", target], check=True, timeout=30
-        )
+    detail = subprocess.run(
+        ["launchctl", "print", target], capture_output=True, text=True, timeout=15
+    )
+    if detail.returncode != 0:
+        return
+    match = re.search(r"^\s*pid = (\d+)\s*$", detail.stdout, re.MULTILINE)
+    pid = int(match.group(1)) if match else None
+    subprocess.run(["launchctl", "bootout", target], check=True, timeout=30)
+    # bootout 返回时旧服务仍可能正在退出；过早 bootstrap 会报 EINPROGRESS。
+    deadline = time.monotonic() + 30
+    while service_loaded(target) or (pid is not None and process_exists(pid)):
+        if time.monotonic() >= deadline:
+            raise RuntimeError("center service did not finish stopping")
+        time.sleep(0.1)
+
+
+def process_exists(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 def validate_managed(plist: Path, root: Path, label: str) -> None:

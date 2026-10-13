@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -62,12 +63,13 @@ func OpenState(ctx context.Context, path string) (*State, error) {
 			if err := tx.Raw("SELECT version FROM reporting_schema WHERE id=1").Scan(&version).Error; err != nil {
 				return err
 			}
-			if version != 1 && version != 2 && version != 3 {
+			if version != 1 && version != 2 && version != 3 && version != 4 {
 				return ErrUnavailable
 			}
 		}
 		for _, sql := range []string{
 			`CREATE TABLE IF NOT EXISTS reporting_account_identities(provider TEXT NOT NULL,local_scope TEXT NOT NULL,account_id TEXT NOT NULL,email TEXT,plan TEXT,confirmed_at_ms INTEGER NOT NULL,collected_at_ms INTEGER NOT NULL,PRIMARY KEY(provider,local_scope)) STRICT`,
+			`CREATE TABLE IF NOT EXISTS reporting_batch_retries(batch_id TEXT PRIMARY KEY,next_attempt_at_ms INTEGER NOT NULL,state TEXT NOT NULL,provider TEXT NOT NULL,failures INTEGER NOT NULL DEFAULT 0) STRICT`,
 			`CREATE TABLE IF NOT EXISTS reporting_facts_checkpoints(partition TEXT NOT NULL,source_key TEXT NOT NULL,digest TEXT NOT NULL,PRIMARY KEY(partition,source_key)) STRICT`,
 			`CREATE TABLE IF NOT EXISTS reporting_schema (id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL, salt BLOB NOT NULL CHECK(length(salt)=32)) STRICT`,
 			`CREATE TABLE IF NOT EXISTS reporting_settings (id INTEGER PRIMARY KEY CHECK(id=1),endpoint TEXT NOT NULL,client_id TEXT NOT NULL,credential TEXT NOT NULL,enabled INTEGER NOT NULL,allow_http INTEGER NOT NULL,interval_seconds INTEGER NOT NULL,history_start_at_ms INTEGER NOT NULL,state TEXT NOT NULL,last_attempt_at_ms INTEGER,last_success_at_ms INTEGER) STRICT`,
@@ -97,7 +99,7 @@ func OpenState(ctx context.Context, path string) (*State, error) {
 		} else if result.Error != nil {
 			return result.Error
 		}
-		if (schema.Version != 1 && schema.Version != 2 && schema.Version != 3) || len(schema.Salt) != 32 {
+		if (schema.Version != 1 && schema.Version != 2 && schema.Version != 3 && schema.Version != 4) || len(schema.Salt) != 32 {
 			return ErrUnavailable
 		}
 		if !tx.Migrator().HasColumn(&queued{}, "priority") {
@@ -108,7 +110,7 @@ func OpenState(ctx context.Context, path string) (*State, error) {
 				return err
 			}
 		}
-		if err := tx.Exec("UPDATE reporting_schema SET version=3 WHERE id=1").Error; err != nil {
+		if err := tx.Exec("UPDATE reporting_schema SET version=4 WHERE id=1").Error; err != nil {
 			return err
 		}
 		if err := tx.Exec(`CREATE TABLE IF NOT EXISTS reporting_full_sync(partition TEXT PRIMARY KEY,state TEXT NOT NULL,started_at_ms INTEGER NOT NULL,exported_sessions INTEGER NOT NULL,acknowledged_batches INTEGER NOT NULL) STRICT`).Error; err != nil {
@@ -230,7 +232,7 @@ func (s *State) Enqueue(ctx context.Context, partition, sweep string, value repo
 		if err := tx.Model(&queued{}).Select("COUNT(*) AS count,COALESCE(SUM(length(body)),0) AS bytes").Scan(&budget).Error; err != nil {
 			return err
 		}
-		if budget.Count+int64(len(rows)) > QueueBatchBudget || budget.Bytes+totalBytes > QueueByteBudget {
+		if budget.Count+int64(len(rows)) > QueueBatchBudget-CurrentQueueBatchBudget || budget.Bytes+totalBytes > QueueByteBudget-CurrentQueueByteBudget {
 			return ErrQueueFull
 		}
 		metadata := value
@@ -252,9 +254,13 @@ func (s *State) Enqueue(ctx context.Context, partition, sweep string, value repo
 		return tx.Model(&fullSync{}).Where("partition = ? AND state = ?", partition, "running").Update("exported_sessions", gorm.Expr("exported_sessions+1")).Error
 	})
 }
-func (s *State) next(ctx context.Context, partition string) (out queued, err error) {
+func (s *State) next(ctx context.Context, partition string, priority ...int) (out queued, err error) {
 	err = s.db.View(ctx, func(_ context.Context, db *gorm.DB) error {
-		if err := db.Where("partition = ?", partition).Order("priority, seq").First(&out).Error; err != nil {
+		query := db.Where("partition = ?", partition).Where("batch_id NOT IN (SELECT batch_id FROM reporting_batch_retries WHERE next_attempt_at_ms > ?)", time.Now().UnixMilli())
+		if len(priority) > 0 {
+			query = query.Where("priority <= ?", priority[0])
+		}
+		if err := query.Order("priority, seq").First(&out).Error; err != nil {
 			return err
 		}
 		if len(out.Body) > reportingv1.MaxBodyBytes {
@@ -296,6 +302,9 @@ func (s *State) Ack(ctx context.Context, item queued, receipt reportingv1.Receip
 			if err := tx.Model(&checkpoint{}).Where("partition = ? AND source_key = ? AND acknowledged_revision < ?", item.Partition, item.SourceKey, item.Revision).Update("acknowledged_revision", item.Revision).Error; err != nil {
 				return err
 			}
+		}
+		if err := tx.Exec("DELETE FROM reporting_batch_retries WHERE batch_id=?", item.BatchID).Error; err != nil {
+			return err
 		}
 		if err := tx.Delete(&actual).Error; err != nil {
 			return err
@@ -554,10 +563,18 @@ func (s *State) EnqueueFactGroups(ctx context.Context, partition string, groups 
 			totalBytes += int64(len(body))
 		}
 		var budget struct{ Count, Bytes int64 }
-		if err := db.Model(&queued{}).Select("COUNT(*) AS count,COALESCE(SUM(length(body)),0) AS bytes").Scan(&budget).Error; err != nil {
+		budgetQuery := db.Model(&queued{})
+		countLimit, byteLimit := QueueBatchBudget-CurrentQueueBatchBudget, QueueByteBudget-CurrentQueueByteBudget
+		if priority <= -2 {
+			budgetQuery = budgetQuery.Where("priority <= ?", -2)
+			countLimit, byteLimit = CurrentQueueBatchBudget, CurrentQueueByteBudget
+		} else {
+			budgetQuery = budgetQuery.Where("priority > ?", -2)
+		}
+		if err := budgetQuery.Select("COUNT(*) AS count,COALESCE(SUM(length(body)),0) AS bytes").Scan(&budget).Error; err != nil {
 			return err
 		}
-		if budget.Count+int64(len(rows)) > QueueBatchBudget || budget.Bytes+totalBytes > QueueByteBudget {
+		if budget.Count+int64(len(rows)) > int64(countLimit) || budget.Bytes+totalBytes > byteLimit {
 			return ErrQueueFull
 		}
 		if err := db.CreateInBatches(rows, 32).Error; err != nil {
@@ -614,4 +631,48 @@ func mergeFactBatch(a, b reportingv1.Batch) reportingv1.Batch {
 		}
 	}
 	return a
+}
+
+// deferBatch 只推迟该不可变批次；其他会话及当前额度仍可选择发送。
+func (s *State) deferBatch(ctx context.Context, item queued, err error) error {
+	return s.db.Write(ctx, func(_ context.Context, db *gorm.DB) error {
+		var failures int
+		if e := db.Raw("SELECT COALESCE(MAX(failures),0) FROM reporting_batch_retries WHERE batch_id=?", item.BatchID).Scan(&failures).Error; e != nil {
+			return e
+		}
+		delay := min(time.Second*time.Duration(1<<min(failures, 9)), 5*time.Minute)
+		if errors.Is(err, ErrProcessing) {
+			delay = 5 * time.Second
+		}
+		if errors.Is(err, ErrPublicationFailed) {
+			delay = 5 * time.Minute
+		}
+		var batch reportingv1.Batch
+		if e := json.Unmarshal(item.Body, &batch); e != nil || len(batch.Sessions) != 1 {
+			return ErrProtocol
+		}
+		return db.Exec("INSERT INTO reporting_batch_retries(batch_id,next_attempt_at_ms,state,provider,failures) VALUES(?,?,?,?,?) ON CONFLICT(batch_id) DO UPDATE SET next_attempt_at_ms=excluded.next_attempt_at_ms,state=excluded.state,provider=excluded.provider,failures=excluded.failures", item.BatchID, time.Now().Add(delay).UnixMilli(), finiteState(err), batch.Sessions[0].Provider, failures+1).Error
+	})
+}
+
+func (s *State) pendingFailures(ctx context.Context, partition string) (out map[string]error, err error) {
+	out = map[string]error{}
+	err = s.db.View(ctx, func(_ context.Context, db *gorm.DB) error {
+		var rows []struct{ Provider, State string }
+		if e := db.Table("reporting_batch_retries r").Select("r.provider,r.state").Joins("JOIN reporting_outbox o ON o.batch_id=r.batch_id").Where("o.partition = ? AND r.next_attempt_at_ms > ?", partition, time.Now().UnixMilli()).Find(&rows).Error; e != nil {
+			return e
+		}
+		for _, r := range rows {
+			value := ErrBatchDeferred
+			if r.State == "processing" {
+				value = ErrProcessing
+			}
+			if r.State == "publication_failed" {
+				value = ErrPublicationFailed
+			}
+			out[r.Provider] = value
+		}
+		return nil
+	})
+	return
 }

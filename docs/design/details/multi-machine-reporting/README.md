@@ -422,3 +422,8 @@ TOO-523 追加模型目录发布时间倒序：Server 独立内嵌官方发布�
 ## DSH 客户端扩展
 
 DSH 复用中心认证、来源隔离、幂等和 canonical 去重，支持 Session、项目、模型、USD 事件费用、缓存及吞吐量胶囊。峰谷价格由本机按已核验的历史版本计算，中心保留版本证据。DSH 不上报工具或正文，不从日志制造账号额度。现有 MySQL provider 字符串与 capsule 表无需 DDL。来源和未知边界见 [DSH](../providers/dsh.md)，验证见 [DSH 验证](../../../test/dsh-provider.md)。
+
+
+## 大快照分片处理与额度隔离（TOO-582）
+
+分片接收、持久后台构建、原子发布与 Helper 每批退避的现行契约见 [共享协议](../../../../api/codexpulse/reporting/v1/README.md#too-582-后台发布与实时额度隔离)。数据库结构仅追加，现有积压原文及确认语义保留；验证入口见 [分片续传 runbook](../../../test/reporting-publications.md)。

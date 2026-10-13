@@ -70,7 +70,7 @@ capsule-only 变化产生持久新 revision，重启续传相同正文；metadat
 
 快照在保留全局 Contribution/Invocation ID 后拆分，所有片段使用相同来源、revision、采集时间与 capsule。`chunk` 携带从 0 开始的 index、count、完整 SHA-256、完整贡献/调用计数。Helper 按最多 1,000 条事实切片，原子预留整个 revision 与全部不可变批次；每个请求仍不超过 8 MiB。只有全部片段确认后才推进 acknowledged_revision。
 
-中心按已鉴权设备、来源与 revision 暂存片段；每设备暂存上限为 2,048 片 / 256 MiB，单快照 64 MiB。重复 batch 返回原确认；同片段不同内容、同版本不同清单返回 409。收齐后校验相同元数据、完整计数、摘要、稳定 ID 和完整 capsule，成功才在同一事务替换来源与投影并清理暂存。未收齐、损坏、乱序或进程重启不会暴露半份快照。新 revision 清理旧的未完成片段；过旧 revision 不覆盖当前事实。
+中心按已鉴权设备、来源与 revision 暂存片段；每设备暂存上限为 2,048 片 / 256 MiB，单快照 64 MiB。重复 batch 返回原确认；同片段不同内容、同版本不同清单返回 409。收齐后持久保存最终批次及后台任务，由中心后台校验相同元数据、完整计数、摘要、稳定 ID 和完整 capsule。后台分批构建不可见版本，最终短事务同时替换来源、投影指针、capsule 与最终 batch receipt；确认后再逐片清理暂存。未收齐、损坏、乱序或进程重启不会暴露半份快照。新 revision 清理旧的未完成片段；过旧 revision 不覆盖当前事实。
 
 最新 quota/Credits 独立于历史游标提取，在队列中优先于历史和 Session；某个 Provider 的导出失败不阻塞其他 Provider、账号事实和状态上报。`sync_state` 仅传有限错误枚举，`sync_checked_at_ms` 保留真实检查时间；采集时间与中心接收时间不被混用，linked_history 仍不是当前额度。
 
@@ -87,3 +87,18 @@ CoreService 新增 `FullSyncReporting(Empty)`，精确握手为 core-rpc-v9。�
 Provider 白名单新增 `dsh`，Session SourceKind 为 `dsh_local`；DeviceStatus 每批最多四个独立客户端。DSH 本机 Session ID 已由源 header ID 派生 hash，Home 继续使用安装级 HMAC。Contribution 输入包含未缓存、缓存读和缓存写，reasoning 为输出子集；采用 `event_cost`，USD 成本与 `:peak` / `:off_peak` 历史版本一同上报，中心不按当前价格重算。
 
 `dsh_local` 也可携带现有 cache_usage/throughput v1 安全胶囊，生命周期基准与历史裁剪边界不变。无可验证官方额度或账户时不生成相关观测，不导出工具调用。Server 应先于 App 升级；旧中心拒绝 DSH 时保留不可变队列，不能当成成功确认。详见 [DSH 设计](../../../../docs/design/details/providers/dsh.md)。
+
+
+## TOO-582 后台发布与实时额度隔离
+
+所有新 Helper Session 超过 1,000 条事实就拆片；既有未分片批次与旧分片正文、ID、revision 不改写。中心单 Session 纯快照批次在达到 1,000 条事实、带 chunk 或将替换已有大投影时走持久后台发布；多 Session/混合事实的旧 v1 批次保持原子接收契约。
+
+最终片保存并创建任务的事务不创建 receipt。处理中返回 HTTP 503 / `X-Pulse-Publication: pending` / `Retry-After: 5`；完整校验失败返回相同 503，header 为 `failed`。原始 batch ID 重试，在成功发布后返回原 receipt；不同语义正文仍为 409。旧客户端把 503 当可重试传输失败，不会误确认或丢弃队列。新 Helper 分别显示 processing/publication_failed，不能把已暂存、后台处理中或队列大小当成发布完成。
+
+持久任务按已鉴权设备与原始 batch ID 去重。后台单 worker、四分钟总预算、五分钟租约与最终 token 核对；payload 每片 256 KiB BLOB，usage 每批 250 行，各数据库步骤有五秒 deadline。中断后按内容键幂等重建；短发布事务校验全部来源修订和 Session 元数据未变，变化则重算，不让旧计算覆盖新事实。现有多机去重、完整/部分保护、价格证据与 correction fence 复用同一仲裁函数。
+
+schema v6 只追加任务、usage 版本、发布指针、payload 分段及引用表。旧内联来源/canonical 与旧 usage 保留并兼容查询；新查询只读取发布指针选定版本。后台只回收无指针引用的派生版本，payload 至少保留一小时且确认无引用；有处理租约时不回收构建数据。已确认分片逐片清理，未确认任务的分片不会因新 revision 到达而被删。
+
+Helper schema v4 追加每批重试时间/有限状态。先提取并发送当前 quota/Credits，再导出账号用量、历史和 Session；Session 传输失败、处理中或永久校验失败仅推迟该批次，不阻塞其他批次。当前事实保留独立 64 批/16 MiB 容量，普通新队列保留 1,984 批/240 MiB 上限。升级前已满的 2,048 批/256 MiB 旧队列保留，仍可使用当前事实的独立 reserve，因此兼容期总上限可达 2,112 批/272 MiB。quota 不额外触发来源刷新，旧账号事实不改绑。
+
+部署先升级中心再升级 Helper；迁移、接收确认、后台发布、统计与真实额度更新分别验收。完整补传仅在所有不可变批次获得最终确认后完成。

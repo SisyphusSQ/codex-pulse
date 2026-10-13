@@ -251,6 +251,9 @@ func (r *Runtime) run() {
 }
 
 func nextCycleDelay(interval int64, retry time.Duration, again bool, err error) (time.Duration, time.Duration) {
+	if errors.Is(err, ErrBatchDeferred) || errors.Is(err, ErrProcessing) || errors.Is(err, ErrPublicationFailed) {
+		return min(5*time.Second, time.Duration(interval)*time.Second), time.Second
+	}
 	// 不可用来源仍保留错误和未完成状态，但不能拖慢其他来源已就绪的分页。
 	// cycle 遇到传输、存储或协议等实际失败时会清除 again，继续沿用退避。
 	if again && (err == nil || errors.Is(err, store.ErrReportingSource)) {
@@ -267,6 +270,12 @@ func nextCycleDelay(interval int64, retry time.Duration, again bool, err error) 
 }
 func finiteState(err error) string {
 	switch {
+	case errors.Is(err, ErrProcessing):
+		return "processing"
+	case errors.Is(err, ErrPublicationFailed):
+		return "publication_failed"
+	case errors.Is(err, ErrBatchDeferred):
+		return "partial"
 	case errors.Is(err, ErrReconnect):
 		return "reconnect_required"
 	case errors.Is(err, ErrProtocol):
@@ -304,9 +313,15 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 		return false, err
 	}
 	defer client.Close()
-	drain := func(limit int) error {
+	var deferred error
+	drain := func(limit int, priority ...int) error {
+		started := time.Now()
 		for range limit {
-			item, err := r.state.next(ctx, cfg.partition())
+			if len(priority) == 0 && time.Since(started) >= 20*time.Second {
+				deferred = ErrBatchDeferred
+				break
+			}
+			item, err := r.state.next(ctx, cfg.partition(), priority...)
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				break
 			}
@@ -315,6 +330,15 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 			}
 			receipt, err := client.Upload(ctx, cfg.Credential, item)
 			if err != nil {
+				if item.SourceKey != "" && (errors.Is(err, ErrTransport) || errors.Is(err, ErrProcessing) || errors.Is(err, ErrPublicationFailed)) {
+					if e := r.state.deferBatch(ctx, item, err); e != nil {
+						return e
+					}
+					if deferred == nil || errors.Is(err, ErrPublicationFailed) {
+						deferred = err
+					}
+					continue
+				}
 				return err
 			}
 			if err := r.state.Ack(ctx, item, receipt); err != nil {
@@ -325,12 +349,14 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 		}
 		return nil
 	}
-	// 先释放少量队列空间，然后优先排入当前额度；历史不会占满每次上传机会。
-	if err := drain(8); err != nil {
+	cfg.State = "ready"
+	sourceErrors, err := r.state.pendingFailures(ctx, cfg.partition())
+	if err != nil {
 		return false, err
 	}
-	cfg.State = "ready"
-	sourceErrors := map[string]error{}
+	for _, err := range sourceErrors {
+		deferred = err
+	}
 	unavailableProviders := map[string]bool{}
 	missing := false
 	retryRequired := false
@@ -347,22 +373,6 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 		}
 	}
 	providers := []string{"codex", "cursor", "grok", "dsh"}
-	if usage, ok := r.source.(interface {
-		AccountUsage(context.Context) ([]FactsGroup, error)
-	}); ok {
-		groups, err := usage.AccountUsage(ctx)
-		if err == nil {
-			_, err = r.state.EnqueueFactGroups(ctx, cfg.partition(), groups, -1)
-			if err == nil {
-				if committed, ok := r.source.(interface{ CommitAccountUsage() }); ok {
-					committed.CommitAccountUsage()
-				}
-			}
-		}
-		if !errors.Is(err, store.ErrReportingSource) {
-			record("codex", err)
-		}
-	}
 	if current, ok := r.source.(interface {
 		CurrentFacts(context.Context, string, int64) (ExportFactsPage, error)
 	}); ok {
@@ -377,8 +387,27 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 				record(provider, err)
 				continue
 			}
-			_, err = r.state.EnqueueFactGroups(ctx, cfg.partition(), page.Groups, -1)
+			_, err = r.state.EnqueueFactGroups(ctx, cfg.partition(), page.Groups, -2)
 			record(provider, err)
+		}
+	}
+	if err := drain(32, -2); err != nil {
+		return false, err
+	}
+	if usage, ok := r.source.(interface {
+		AccountUsage(context.Context) ([]FactsGroup, error)
+	}); ok {
+		groups, err := usage.AccountUsage(ctx)
+		if err == nil {
+			_, err = r.state.EnqueueFactGroups(ctx, cfg.partition(), groups, -1)
+			if err == nil {
+				if committed, ok := r.source.(interface{ CommitAccountUsage() }); ok {
+					committed.CommitAccountUsage()
+				}
+			}
+		}
+		if !errors.Is(err, store.ErrReportingSource) {
+			record("codex", err)
 		}
 	}
 	for _, provider := range providers {
@@ -430,7 +459,7 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 			facts.FullSyncState = status.FullSyncState
 			statuses = append(statuses, facts)
 		}
-		if err := r.state.EnqueueFacts(ctx, cfg.partition(), reportingv1.Batch{Status: statuses}); err != nil {
+		if _, err := r.state.EnqueueFactGroups(ctx, cfg.partition(), []FactsGroup{{Key: reportingv1.Key("device-status"), Batch: reportingv1.Batch{Status: statuses}}}, -2); err != nil {
 			return false, err
 		}
 		cursor.NextDueAtMS = now + cfg.IntervalSeconds*1000
@@ -438,8 +467,17 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 			return false, ErrUnavailable
 		}
 	}
+	if err := drain(32, -2); err != nil {
+		return false, err
+	}
 	if err := drain(32); err != nil {
 		return false, err
+	}
+	if deferred != nil {
+		if errors.Is(deferred, ErrTransport) {
+			return false, ErrBatchDeferred
+		}
+		return false, deferred
 	}
 	pending, err := r.state.Status(ctx)
 	if err != nil {

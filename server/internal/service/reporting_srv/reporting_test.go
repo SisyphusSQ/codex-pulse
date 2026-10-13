@@ -37,7 +37,7 @@ func readSession(t *testing.T, db *gorm.DB) (meta reporting_do.Session, total in
 	if err := db.First(&meta).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Model(&reporting_do.Usage{}).Select("COALESCE(SUM(total_tokens),0)").Scan(&total).Error; err != nil {
+	if err := db.Table(reporting_repo.PublishedUsage).Select("COALESCE(SUM(total_tokens),0)").Scan(&total).Error; err != nil {
 		t.Fatal(err)
 	}
 	return

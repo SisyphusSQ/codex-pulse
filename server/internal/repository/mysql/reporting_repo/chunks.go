@@ -29,7 +29,7 @@ func (r *Reporting) SaveChunk(ctx context.Context, row reporting_do.SnapshotChun
 	return r.engine.DB(ctx).Create(&row).Error
 }
 func (r *Reporting) DeleteChunks(ctx context.Context, client, source string, through int64) error {
-	return r.engine.DB(ctx).Where("client_id = ? AND source_key = ? AND revision <= ?", client, source, through).Delete(&reporting_do.SnapshotChunk{}).Error
+	return r.engine.DB(ctx).Where("client_id = ? AND source_key = ? AND revision <= ?", client, source, through).Where("revision NOT IN (SELECT revision FROM pulse_publication_jobs WHERE client_id = ? AND source_key = ? AND state IN (?,?))", client, source, "pending", "failed").Delete(&reporting_do.SnapshotChunk{}).Error
 }
 func (r *Reporting) SaveSync(ctx context.Context, row reporting_do.DeviceSync) error {
 	var previous reporting_do.DeviceSync

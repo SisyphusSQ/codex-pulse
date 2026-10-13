@@ -19,10 +19,20 @@ func (r *Reporting) WarmCapsule(ctx context.Context, row reporting_do.SessionCap
 	return r.engine.DB(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
 }
 func (r *Reporting) MissingSourceCapsule(ctx context.Context) (row reporting_do.SessionSource, err error) {
+	defer func() {
+		if err == nil {
+			row.Payload, err = ResolvePayload(ctx, r.engine.DB(ctx), row.Payload)
+		}
+	}()
 	err = r.engine.DB(ctx).Where("NOT EXISTS (SELECT 1 FROM pulse_session_capsules c WHERE c.kind='source' AND c.id=pulse_session_sources.id)").Order("id").Take(&row).Error
 	return
 }
 func (r *Reporting) MissingCanonicalCapsule(ctx context.Context) (row reporting_do.CanonicalSnapshot, err error) {
+	defer func() {
+		if err == nil {
+			row.Payload, err = ResolvePayload(ctx, r.engine.DB(ctx), row.Payload)
+		}
+	}()
 	err = r.engine.DB(ctx).Where("NOT EXISTS (SELECT 1 FROM pulse_session_capsules c WHERE c.kind='canonical' AND c.id=pulse_session_canonical.session_key)").Order("session_key").Take(&row).Error
 	return
 }

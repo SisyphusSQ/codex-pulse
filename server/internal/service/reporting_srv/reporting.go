@@ -28,6 +28,8 @@ import (
 
 var ErrReportingVersion = errors.New("reporting version unsupported")
 var ErrReportingBudget = errors.New("reporting merge budget exceeded")
+var ErrPublicationPending = errors.New("reporting publication pending")
+var ErrPublicationFailed = errors.New("reporting publication failed")
 
 // Reporting 接收真实身份的原子批次，仲裁多个采集副本并保留来源证据。
 type Reporting struct {
@@ -106,6 +108,7 @@ func (s *Reporting) Accept(ctx context.Context, p access_dto.Principal, batch re
 	}
 	now := s.now().UnixMilli()
 	receipt = reporting_vo.ReportingReceiptView{Version: reportingv1.Version, BatchID: batch.ID, ReceivedAtMS: now}
+	pending := false
 	err = s.repository.Transaction(ctx, func(ctx context.Context) error {
 		client, err := s.repository.LockClient(ctx, p.ID)
 		if err != nil {
@@ -124,6 +127,30 @@ func (s *Reporting) Accept(ctx context.Context, p access_dto.Principal, batch re
 		}
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
+		}
+		// Helper 持久队列一批一个 Session；混合批次仍保持既有原子事务语义。
+		deferSnapshot := false
+		if len(batch.Sessions) == 1 && len(batch.Accounts)+len(batch.Bindings)+len(batch.Quotas)+len(batch.Credits)+len(batch.Status)+len(batch.AccountUsage) == 0 {
+			part := batch.Sessions[0]
+			deferSnapshot = part.Chunk != nil || len(part.Contributions) >= 1000
+			if !deferSnapshot {
+				var e error
+				deferSnapshot, e = s.repository.HasLargeProjection(ctx, reportingv1.Key(part.Provider, part.SessionID))
+				if e != nil {
+					return e
+				}
+			}
+		}
+		if deferSnapshot {
+			var stageErr error
+			pending, stageErr = s.enqueuePublication(ctx, p, batch, hash, now)
+			if stageErr != nil {
+				return stageErr
+			}
+			if pending {
+				return nil
+			}
+			return s.repository.CommitBatch(ctx, reporting_do.Batch{ClientID: p.ID, BatchID: batch.ID, Digest: hash, ReceivedAtMS: now})
 		}
 		snapshots := slices.Clone(batch.Sessions)
 		slices.SortFunc(snapshots, func(a, b reportingv1.SessionSnapshot) int {
@@ -166,6 +193,9 @@ func (s *Reporting) Accept(ctx context.Context, p access_dto.Principal, batch re
 		}
 		return s.repository.CommitBatch(ctx, reporting_do.Batch{ClientID: p.ID, BatchID: batch.ID, Digest: hash, ReceivedAtMS: now})
 	})
+	if err == nil && pending {
+		err = ErrPublicationPending
+	}
 	return
 }
 func (s *Reporting) Sync(ctx context.Context, p access_dto.Principal) (reporting_vo.SyncView, error) {
@@ -243,35 +273,57 @@ func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, s
 // rebuildSession 仅重建派生投影，来源、确认记录与 revision 均保持不变。
 // 调用方必须持有 session 锁并在同一事务内提交。
 func (s *Reporting) rebuildSession(ctx context.Context, current reporting_do.Session, apply bool) (bool, error) {
-	sessionKey := current.ID
-	stored, err := s.repository.Sources(ctx, sessionKey)
+	stored, err := s.repository.Sources(ctx, current.ID)
 	if err != nil {
 		return false, err
 	}
+	old, err := s.repository.Canonical(ctx, current.ID)
+	found := err == nil
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, err
+	}
+	plan, err := planSession(current, stored, old, found)
+	if err != nil || !apply || !plan.Changed {
+		return plan.Changed, err
+	}
+	if plan.FlagsOnly {
+		return true, s.repository.SaveSessionFlags(ctx, plan.Session)
+	}
+	payload, err := json.Marshal(plan.Snapshot)
+	if err != nil {
+		return false, err
+	}
+	if err = s.repository.SaveCapsule(ctx, plan.Capsule); err != nil {
+		return false, err
+	}
+	return true, s.repository.SaveCanonical(ctx, plan.Session, reporting_do.CanonicalSnapshot{SessionKey: current.ID, Payload: string(payload)}, plan.Usage)
+}
+
+func planSession(current reporting_do.Session, stored []reporting_do.SessionSource, old reporting_do.CanonicalSnapshot, oldFound bool) (out reporting_dto.ProjectionPlan, err error) {
+	sessionKey := current.ID
 	if len(stored) > 128 {
-		return false, ErrReportingBudget
+		return out, ErrReportingBudget
 	}
 	var sources []reporting_dto.SourceSnapshot
 	size := 0
 	for _, row := range stored {
 		size += len(row.Payload)
 		if size > 64<<20 {
-			return false, ErrReportingBudget
+			return out, ErrReportingBudget
 		}
 		var snap reportingv1.SessionSnapshot
 		if err := json.Unmarshal([]byte(row.Payload), &snap, json.RejectUnknownMembers(true)); err != nil {
-			return false, err
+			return out, err
 		}
 		// 旧不可变队列保留原始摘要用于重试；调用事实不再进入业务仲裁。
 		snap.Invocations = nil
 		sources = append(sources, reporting_dto.SourceSnapshot{ID: row.ID, ClientID: row.ClientID, Snapshot: snap})
 	}
 	var accepted *reporting_dto.SourceSnapshot
-	old, err := s.repository.Canonical(ctx, sessionKey)
-	if err == nil {
+	if oldFound {
 		var snap reportingv1.SessionSnapshot
 		if err := json.Unmarshal([]byte(old.Payload), &snap, json.RejectUnknownMembers(true)); err != nil {
-			return false, err
+			return out, err
 		}
 		snap.Invocations = nil
 		for _, row := range stored {
@@ -280,33 +332,27 @@ func (s *Reporting) rebuildSession(ctx context.Context, current reporting_do.Ses
 				break
 			}
 		}
-	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, err
 	}
 	decision := DecideSnapshot(sources, accepted)
 	if decision.Deleted {
-		changed := !current.Deleted || current.Conflict
-		current.Deleted = true
-		current.Conflict = false
-		if !apply || !changed {
-			return changed, nil
-		}
-		return true, s.repository.SaveSessionFlags(ctx, current)
+		out.Session = current
+		out.Changed = !current.Deleted || current.Conflict
+		out.Session.Deleted = true
+		out.Session.Conflict = false
+		out.FlagsOnly = true
+		return out, nil
 	}
 	chosen := decision.Source.Snapshot
 	encoded, err := json.Marshal(chosen)
 	if err != nil {
-		return false, err
+		return out, err
 	}
 	if len(encoded) > 64<<20 || len(chosen.Contributions)+len(chosen.Invocations) > 200000 {
-		return false, ErrReportingBudget
+		return out, ErrReportingBudget
 	}
 	selectedProject := reportingv1.Key(decision.Source.ClientID, chosen.Provider, chosen.ProjectID)
 	meta := reporting_do.Session{ID: sessionKey, Provider: chosen.Provider, SessionID: chosen.SessionID, Title: chosen.Title, ProjectID: selectedProject, SourceKind: chosen.SourceKind, SessionKind: chosen.SessionKind, HistoryStartAtMS: chosen.HistoryStartAtMS, CanonicalSourceID: decision.Source.ID, CanonicalRevision: chosen.Revision, CreatedAtMS: chosen.CreatedAtMS, LastActiveAtMS: chosen.LastActiveAtMS, CollectedAtMS: chosen.CollectedAtMS, Complete: chosen.Complete, Conflict: decision.Conflict, CorrectionFence: decision.CorrectionFence}
-	changed := old.Payload != string(encoded) || !reflect.DeepEqual(current, meta)
-	if !apply || !changed {
-		return changed, nil
-	}
+	out.Changed = old.Payload != string(encoded) || !reflect.DeepEqual(current, meta)
 	usage := make([]reporting_do.Usage, 0, len(chosen.Contributions))
 	for position, c := range chosen.Contributions {
 		row := reporting_do.Usage{SessionKey: sessionKey, ContributionID: c.ID, Position: int64(position), ObservedAtMS: c.ObservedAtMS, Model: c.Model, InputTokens: c.InputTokens, CachedTokens: c.CachedTokens, CacheWriteTokens: c.CacheWriteTokens, OutputTokens: c.OutputTokens, ReasoningTokens: c.ReasoningTokens, TotalTokens: c.TotalTokens, CostMicroUSD: c.CostMicroUSD, ReportedChargeMicroUSD: c.ReportedChargeMicroUSD, PricingVersion: c.PricingVersion, PricingMode: c.PricingMode, CostStatus: c.CostStatus}
@@ -320,12 +366,10 @@ func (s *Reporting) rebuildSession(ctx context.Context, current reporting_do.Ses
 	}
 	capsule, err := sessionCapsule("canonical", sessionKey, sessionKey, "", chosen)
 	if err != nil {
-		return false, err
+		return out, err
 	}
-	if err = s.repository.SaveCapsule(ctx, capsule); err != nil {
-		return false, err
-	}
-	return true, s.repository.SaveCanonical(ctx, meta, reporting_do.CanonicalSnapshot{SessionKey: sessionKey, Payload: string(encoded)}, usage)
+	out.Session, out.Snapshot, out.Usage, out.Capsule = meta, chosen, usage, capsule
+	return out, nil
 }
 func normalizedPercent(value *float64) *float64 {
 	if value == nil {

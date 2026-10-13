@@ -49,18 +49,41 @@ func (r *Reporting) LockSession(ctx context.Context, row reporting_do.Session) (
 	return
 }
 func (r *Reporting) Source(ctx context.Context, id string) (source reporting_do.SessionSource, err error) {
+	defer func() {
+		if err == nil {
+			source.Payload, err = ResolvePayload(ctx, r.engine.DB(ctx), source.Payload)
+		}
+	}()
 	err = r.engine.DB(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).Take(&source).Error
 	return
 }
 func (r *Reporting) SaveSource(ctx context.Context, source reporting_do.SessionSource) error {
+	if err := r.setPayloadOwner(ctx, "source:"+source.ID, source.Payload); err != nil {
+		return err
+	}
 	return r.engine.DB(ctx).Save(&source).Error
 }
 func (r *Reporting) Sources(ctx context.Context, sessionKey string) (sources []reporting_do.SessionSource, err error) {
+	defer func() {
+		if err == nil {
+			for i := range sources {
+				sources[i].Payload, err = ResolvePayload(ctx, r.engine.DB(ctx), sources[i].Payload)
+				if err != nil {
+					return
+				}
+			}
+		}
+	}()
 	// Locking reads also see the latest committed versions under MySQL repeatable-read.
 	err = r.engine.DB(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("session_key = ?", sessionKey).Order("id").Limit(129).Find(&sources).Error
 	return
 }
 func (r *Reporting) Canonical(ctx context.Context, key string) (row reporting_do.CanonicalSnapshot, err error) {
+	defer func() {
+		if err == nil {
+			row.Payload, err = ResolvePayload(ctx, r.engine.DB(ctx), row.Payload)
+		}
+	}()
 	err = r.engine.DB(ctx).Where("session_key = ?", key).Take(&row).Error
 	return
 }
@@ -69,10 +92,16 @@ func (r *Reporting) SaveCanonical(ctx context.Context, session reporting_do.Sess
 	if err := db.Save(&session).Error; err != nil {
 		return err
 	}
+	if err := r.setPayloadOwner(ctx, "canonical:"+session.ID, payload.Payload); err != nil {
+		return err
+	}
 	if err := db.Save(&payload).Error; err != nil {
 		return err
 	}
 	if err := db.Where("session_key = ?", session.ID).Delete(&reporting_do.Usage{}).Error; err != nil {
+		return err
+	}
+	if err := db.Where("session_key = ?", session.ID).Delete(&reporting_do.SessionPublication{}).Error; err != nil {
 		return err
 	}
 	if len(usage) > 0 {
