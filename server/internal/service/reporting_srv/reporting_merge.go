@@ -202,6 +202,10 @@ func DecideSnapshot(sources []reporting_dto.SourceSnapshot, previous *reporting_
 	}
 	conflict := selected.inconsistent
 	for _, c := range candidates {
+		// 选中来源与自身比较不会增加冲突证据，却会重复构建整份事实索引和反射比较。
+		if c.source.ID == selected.source.ID {
+			continue
+		}
 		a, b := selected.source.Snapshot, c.source.Snapshot
 		conflict = conflict || c.inconsistent || (correctionFence && !containsFacts(a, b))
 		if !containsFacts(a, b) && !containsFacts(b, a) {
