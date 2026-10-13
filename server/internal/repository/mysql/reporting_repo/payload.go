@@ -24,19 +24,43 @@ func ResolvePayload(ctx context.Context, db *gorm.DB, payload string) (string, e
 	if !strings.HasPrefix(payload, `{"payload_ref":`) {
 		return payload, nil
 	}
-	var ref reporting_dto.PayloadReference
-	if err := json.Unmarshal([]byte(payload), &ref, json.RejectUnknownMembers(true)); err != nil {
+	ref, err := parsePayloadReference(payload)
+	if err != nil {
 		return "", err
 	}
-	if len(ref.PayloadKey) != 64 || ref.Bytes < 0 || ref.Bytes > reportingv1.MaxSnapshotBytes || ref.Parts != (ref.Bytes+payloadPartBytes-1)/payloadPartBytes {
-		return "", errors.New("invalid stored snapshot manifest")
-	}
-	var out strings.Builder
-	out.Grow(ref.Bytes)
 	var parts []reporting_do.PayloadPart
 	if err := db.WithContext(ctx).Where("payload_key = ?", ref.PayloadKey).Order("part_index").Limit(257).Find(&parts).Error; err != nil {
 		return "", err
 	}
+	return assemblePayload(ref, parts)
+}
+
+// ResolvePayloadParts 校验有序流已经读出的分片，不在流式 rows 上再查询数据库。
+func ResolvePayloadParts(payload string, parts []reporting_do.PayloadPart) (string, error) {
+	if !strings.HasPrefix(payload, `{"payload_ref":`) {
+		return payload, nil
+	}
+	ref, err := parsePayloadReference(payload)
+	if err != nil {
+		return "", err
+	}
+	return assemblePayload(ref, parts)
+}
+
+func parsePayloadReference(payload string) (reporting_dto.PayloadReference, error) {
+	var ref reporting_dto.PayloadReference
+	if err := json.Unmarshal([]byte(payload), &ref, json.RejectUnknownMembers(true)); err != nil {
+		return ref, err
+	}
+	if len(ref.PayloadKey) != 64 || ref.Bytes < 0 || ref.Bytes > reportingv1.MaxSnapshotBytes || ref.Parts != (ref.Bytes+payloadPartBytes-1)/payloadPartBytes {
+		return ref, errors.New("invalid stored snapshot manifest")
+	}
+	return ref, nil
+}
+
+func assemblePayload(ref reporting_dto.PayloadReference, parts []reporting_do.PayloadPart) (string, error) {
+	var out strings.Builder
+	out.Grow(ref.Bytes)
 	if len(parts) != ref.Parts {
 		return "", errors.New("missing stored snapshot parts")
 	}

@@ -74,6 +74,11 @@ func TestVersionedPublicationIsVisibleAtomicallyInStatisticsAndSources(t *testin
 		t.Fatal("segmented source read", err)
 	}
 	decimal(t, own.Totals.TotalTokens, "1100")
+	sources, err := stats.SourceUsage(t.Context(), admin, q)
+	if err != nil || len(sources.Items) != 1 {
+		t.Fatal("published segmented source usage", sources, err)
+	}
+	decimal(t, sources.Items[0].Totals.TotalTokens, "1100")
 }
 func statisticsTestQuery(t *testing.T, values url.Values) statistics_dto.StatisticsQuery {
 	t.Helper()

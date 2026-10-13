@@ -20,3 +20,4 @@
 - [TOO-527 年度五项概览](too-527-annual-metrics.md)
 
 - [TOO-582 分片续传与额度上报验收](reporting-publications-2026-10-13.md)
+- [source-usage 来源扫描回归修复：2026-10-13](source-usage-regression-2026-10-13.md)

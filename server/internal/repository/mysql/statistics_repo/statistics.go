@@ -2,6 +2,7 @@ package statistics_repo
 
 import (
 	"context"
+	"database/sql"
 
 	"gorm.io/gorm"
 
@@ -161,32 +162,68 @@ func (r *Statistics) StreamInvocations(ctx context.Context, q statistics_dto.Sta
 	}
 	return rows.Err()
 }
+
+// StreamSources 在同一有序流中读取内联来源及已发布分片；分片校验不再查询数据库。
 func (r *Statistics) StreamSources(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.SessionSource) error) error {
-	db := r.engine.DB(ctx).Where("session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+	db := r.engine.DB(ctx).Table("pulse_session_sources AS src").
+		Select("src.id,src.session_key,src.client_id,src.home_id,src.source_kind,src.revision,src.collected_at_ms,src.digest,src.payload,part.part_index,part.body").
+		Joins("LEFT JOIN pulse_payload_owners owner ON owner.id=CONCAT('source:',src.id)").
+		Joins("LEFT JOIN pulse_payload_parts part ON part.payload_key=owner.payload_key").
+		Where("src.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
 	if q.ClientID != "" {
-		db = db.Where("client_id = ?", q.ClientID)
+		db = db.Where("src.client_id = ?", q.ClientID)
 	}
-	after := ""
-	for {
-		var page []reporting_do.SessionSource
-		if err := db.Where("id > ?", after).Order("id").Limit(8).Find(&page).Error; err != nil {
-			return err
-		}
-		for _, row := range page {
-			payload, err := reporting_repo.ResolvePayload(ctx, r.engine.DB(ctx), row.Payload)
-			if err != nil {
-				return err
-			}
-			row.Payload = payload
-			if err := visit(row); err != nil {
-				return err
-			}
-			after = row.ID
-		}
-		if len(page) < 8 {
+	rows, err := db.Order("src.session_key,src.id,part.part_index").Rows()
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var current reporting_do.SessionSource
+	var parts []reporting_do.PayloadPart
+	count := 0
+	flush := func() error {
+		if current.ID == "" {
 			return nil
 		}
+		payload, err := reporting_repo.ResolvePayloadParts(current.Payload, parts)
+		if err != nil {
+			return err
+		}
+		current.Payload = payload
+		return visit(current)
 	}
+	for rows.Next() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		var row reporting_do.SessionSource
+		var index sql.NullInt64
+		var body []byte
+		if err := rows.Scan(&row.ID, &row.SessionKey, &row.ClientID, &row.HomeID, &row.SourceKind, &row.Revision, &row.CollectedAtMS, &row.Digest, &row.Payload, &index, &body); err != nil {
+			return err
+		}
+		if row.ID != current.ID {
+			if err := flush(); err != nil {
+				return err
+			}
+			count++
+			if count > statistics_dto.MaximumStatisticsSources {
+				return utils.ErrRequestBudget
+			}
+			current = row
+			parts = nil
+		}
+		if index.Valid {
+			if len(parts) >= 257 {
+				return utils.ErrRequestBudget
+			}
+			parts = append(parts, reporting_do.PayloadPart{PartIndex: int(index.Int64), Body: body})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return flush()
 }
 
 func (r *Statistics) StreamUntimed(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Usage) error) error {
