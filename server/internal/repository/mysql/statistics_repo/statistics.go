@@ -9,6 +9,7 @@ import (
 	access_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/access_do"
 	reporting_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/reporting_do"
 	statistics_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/statistics_dto"
+	reporting_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/reporting_repo"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
 
@@ -100,25 +101,44 @@ func (r *Statistics) streamUsage(ctx context.Context, q statistics_dto.Statistic
 	if heatmap {
 		columns = "/*+ USE_HASH(u) */ " + columns
 	}
-	db := r.usageFilter(ctx, q, r.engine.DB(ctx).Table("pulse_usage AS u").Select(columns).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS))
-	rows, err := db.Rows()
-	if err != nil {
-		return err
+	for _, physical := range []string{"pulse_usage AS u", "pulse_usage_versions AS u"} {
+		base := r.engine.DB(ctx).Table(physical)
+		if physical == "pulse_usage AS u" {
+			base = base.Where("NOT EXISTS (SELECT 1 FROM pulse_session_publications p WHERE p.session_key=u.session_key)")
+		} else {
+			base = base.Joins("JOIN pulse_session_publications p ON p.session_key=u.session_key AND p.generation=u.generation")
+		}
+		db := r.usageFilter(ctx, q, base.Select(columns).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS))
+		rows, err := db.Rows()
+		if err != nil {
+			return err
+		}
+
+		for rows.Next() {
+			if err := ctx.Err(); err != nil {
+				rows.Close()
+				return err
+			}
+			var row reporting_do.Usage
+			if err := rows.Scan(&row.SessionKey, &row.ContributionID, &row.Position, &row.ObservedAtMS, &row.Model, &row.InputTokens, &row.CachedTokens, &row.CacheWriteTokens, &row.OutputTokens, &row.ReasoningTokens, &row.TotalTokens, &row.CostMicroUSD, &row.ReportedChargeMicroUSD, &row.PricingVersion, &row.PricingMode, &row.InputPrice, &row.CachedPrice, &row.CacheWritePrice, &row.OutputPrice, &row.CostStatus); err != nil {
+				rows.Close()
+				return err
+			}
+			if err := visit(row); err != nil {
+				rows.Close()
+				return err
+			}
+		}
+		err = rows.Err()
+		closeErr := rows.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
 	}
-	defer rows.Close()
-	for rows.Next() {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		var row reporting_do.Usage
-		if err := rows.Scan(&row.SessionKey, &row.ContributionID, &row.Position, &row.ObservedAtMS, &row.Model, &row.InputTokens, &row.CachedTokens, &row.CacheWriteTokens, &row.OutputTokens, &row.ReasoningTokens, &row.TotalTokens, &row.CostMicroUSD, &row.ReportedChargeMicroUSD, &row.PricingVersion, &row.PricingMode, &row.InputPrice, &row.CachedPrice, &row.CacheWritePrice, &row.OutputPrice, &row.CostStatus); err != nil {
-			return err
-		}
-		if err := visit(row); err != nil {
-			return err
-		}
-	}
-	return rows.Err()
+	return nil
 }
 func (r *Statistics) StreamInvocations(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Invocation) error) error {
 	db := r.engine.DB(ctx).Table("pulse_invocations AS i").Select("i.session_key,i.invocation_id,i.observed_at_ms,i.kind,i.tool_name,i.outcome,i.duration_ms").Where("i.observed_at_ms >= ? AND i.observed_at_ms < ?", q.StartAtMS, q.EndAtMS).Where("i.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
@@ -146,28 +166,31 @@ func (r *Statistics) StreamSources(ctx context.Context, q statistics_dto.Statist
 	if q.ClientID != "" {
 		db = db.Where("client_id = ?", q.ClientID)
 	}
-	rows, err := db.Model(&reporting_do.SessionSource{}).Order("session_key,id").Rows()
-	if err != nil {
-		return err
+	after := ""
+	for {
+		var page []reporting_do.SessionSource
+		if err := db.Where("id > ?", after).Order("id").Limit(8).Find(&page).Error; err != nil {
+			return err
+		}
+		for _, row := range page {
+			payload, err := reporting_repo.ResolvePayload(ctx, r.engine.DB(ctx), row.Payload)
+			if err != nil {
+				return err
+			}
+			row.Payload = payload
+			if err := visit(row); err != nil {
+				return err
+			}
+			after = row.ID
+		}
+		if len(page) < 8 {
+			return nil
+		}
 	}
-	defer rows.Close()
-	for rows.Next() {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		var row reporting_do.SessionSource
-		if err := db.ScanRows(rows, &row); err != nil {
-			return err
-		}
-		if err := visit(row); err != nil {
-			return err
-		}
-	}
-	return rows.Err()
 }
 
 func (r *Statistics) StreamUntimed(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Usage) error) error {
-	db := r.usageFilter(ctx, q, r.engine.DB(ctx).Table("pulse_usage AS u").Select("u.session_key,u.contribution_id,u.model").Where("u.observed_at_ms IS NULL"))
+	db := r.usageFilter(ctx, q, r.engine.DB(ctx).Table(reporting_repo.PublishedUsage).Select("u.session_key,u.contribution_id,u.model").Where("u.observed_at_ms IS NULL"))
 	rows, err := db.Rows()
 	if err != nil {
 		return err

@@ -120,6 +120,12 @@ func (c *Client) request(ctx context.Context, path, credential string, body []by
 	if response.StatusCode == 401 || response.StatusCode == 403 {
 		return ErrReconnect
 	}
+	if response.StatusCode == 503 && response.Header.Get("X-Pulse-Publication") == "pending" {
+		return ErrProcessing
+	}
+	if response.StatusCode == 503 && response.Header.Get("X-Pulse-Publication") == "failed" {
+		return ErrPublicationFailed
+	}
 	if response.StatusCode == 429 || response.StatusCode >= 500 {
 		return ErrTransport
 	}

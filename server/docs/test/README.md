@@ -18,3 +18,5 @@
 - [TOO-526 全部接口与 SQL 性能优化](too-526-performance.md)
 
 - [TOO-527 年度五项概览](too-527-annual-metrics.md)
+
+- [TOO-582 分片续传与额度上报验收](reporting-publications-2026-10-13.md)

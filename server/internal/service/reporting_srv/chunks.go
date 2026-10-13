@@ -18,12 +18,16 @@ import (
 
 func (s *Reporting) acceptChunk(ctx context.Context, p access_dto.Principal, part reportingv1.SessionSnapshot, now int64) error {
 	key := reportingv1.Key(p.ID, part.Provider, part.HomeID, part.SessionID)
-	previous, err := s.repository.Source(ctx, key)
+	previous, err := s.repository.SourceMetadata(ctx, key)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
 	if previous.ID != "" && previous.Revision >= part.Revision {
 		if previous.Revision == part.Revision {
+			previous, err = s.repository.Source(ctx, key)
+			if err != nil {
+				return err
+			}
 			var accepted reportingv1.SessionSnapshot
 			if err := json.Unmarshal([]byte(previous.Payload), &accepted); err != nil {
 				return err
@@ -73,6 +77,9 @@ func (s *Reporting) acceptChunk(ctx context.Context, p access_dto.Principal, par
 			if previous.Payload != string(payload) {
 				return utils.ErrConflict
 			}
+			if len(metadata) == part.Chunk.Count {
+				return ErrPublicationPending
+			}
 			return nil
 		}
 	}
@@ -97,27 +104,5 @@ func (s *Reporting) acceptChunk(ctx context.Context, p access_dto.Principal, par
 	if len(metadata)+1 < part.Chunk.Count {
 		return nil
 	}
-	rows, err := s.repository.Chunks(ctx, p.ID, key, part.Revision)
-	if err != nil {
-		return err
-	}
-	parts := make([]reportingv1.SessionSnapshot, 0, len(rows))
-	for _, row := range rows {
-		var value reportingv1.SessionSnapshot
-		if err := json.Unmarshal([]byte(row.Payload), &value, json.RejectUnknownMembers(true)); err != nil {
-			return err
-		}
-		parts = append(parts, value)
-	}
-	full, err := reportingv1.AssembleSnapshot(parts)
-	if err != nil {
-		return utils.ErrBadParamInput
-	}
-	if err := validateStableIDs(reportingv1.Batch{Sessions: []reportingv1.SessionSnapshot{full}}); err != nil {
-		return err
-	}
-	if err := s.acceptSession(ctx, p, full); err != nil {
-		return err
-	}
-	return s.repository.DeleteChunks(ctx, p.ID, key, part.Revision)
+	return ErrPublicationPending
 }

@@ -214,7 +214,7 @@ func (b Batch) validate(factBudget int) error {
 			return ErrInvalid
 		}
 		statusSeen[s.Provider] = true
-		if !slices.Contains([]string{"", "ready", "partial", "source_budget_exceeded", "source_unavailable", "queue_full", "protocol_rejected", "storage_unavailable"}, s.SyncState) || !optionalTimestamp(s.SyncCheckedAtMS) || !slices.Contains([]string{"", "running", "completed"}, s.FullSyncState) {
+		if !slices.Contains([]string{"", "ready", "partial", "source_budget_exceeded", "source_unavailable", "queue_full", "protocol_rejected", "storage_unavailable", "processing", "publication_failed"}, s.SyncState) || !optionalTimestamp(s.SyncCheckedAtMS) || !slices.Contains([]string{"", "running", "completed"}, s.FullSyncState) {
 			return ErrInvalid
 		}
 		if !provider(s.Provider) || !text(s.Version, 64) || !optionalTimestamp(s.CollectedAtMS) || !optionalTimestamp(s.CoverageStartMS) || !optionalTimestamp(s.CoverageEndMS) || s.PendingBatches < 0 || !slices.Contains([]string{"ready", "partial", "disabled", "reconnect_required", "queue_full", "source_unavailable"}, s.Status) {

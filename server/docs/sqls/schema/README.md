@@ -20,3 +20,8 @@ SQLite 只证明开发测试结果；SeekDB 的 MySQL 协议连接、DDL 和备�
 结构 v4 新增 [MySQL v4](v4_mysql.sql) / [SQLite v4](v4_sqlite.sql)：`pulse_session_capsules` 保存可重建的 TPS/缓存/完成状态投影，按 Session 索引；`pulse_retired_observations` 保存已精简额度事实的 ID 与摘要。迁移只新增表，后台精简由 `server.quotaMaintenance` 显式启用。v3 → v4 启动会读回新表字段后更新标记，SQLite 同时创建查询索引。四周期删除与重复观测精简须先备份，回滚到 v3 需要匹配旧二进制与备份库，不能只替换二进制。执行证据见[查询与保留验证](../../../../docs/test/center-query-retention-20261003.md)。
 
 结构 v5 新增 [MySQL v5](v5_mysql.sql) / [SQLite v5](v5_sqlite.sql)：账号 Token 事实按稳定 ID 去重，采集来源与当前周期能力独立保存；只追加表/索引，不回填或删除旧数据。启动读回后更新标记。发布 SQL 见 [v0.15.3](../releases/v0.15.3/README.md)，归属及失败语义见[设计](../../../../docs/design/details/account-cycle-tokens.md)。
+
+
+## v6 后台发布
+
+TOO-582 追加 [MySQL v6](v6_mysql.sql) / [SQLite v6](v6_sqlite.sql)。v1..v5 已登记摘要可自动升级；不 ALTER、回填或删除旧表。新表记录最终待确认批次、不可见 usage 版本、原子发布指针及分段快照引用。新版本不可直接降级运行旧二进制；恢复须使用一致数据库备份，不能仅回切旧程序。未发布 SQL 与执行证据见 [unreleased](../unreleased/README.md)。

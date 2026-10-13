@@ -27,6 +27,15 @@ func (r *Reporting) Accept(c *echo.Context) error {
 		return err
 	}
 	receipt, err := r.service.Accept(c.Request().Context(), apphttp.Principal(c), reportingv1.Batch(request))
+	if errors.Is(err, reporting_srv.ErrPublicationPending) || errors.Is(err, reporting_srv.ErrPublicationFailed) {
+		state := "pending"
+		if errors.Is(err, reporting_srv.ErrPublicationFailed) {
+			state = "failed"
+		}
+		c.Response().Header().Set("X-Pulse-Publication", state)
+		c.Response().Header().Set("Retry-After", "5")
+		return echo.NewHTTPError(http.StatusServiceUnavailable, http.StatusText(http.StatusServiceUnavailable))
+	}
 	if errors.Is(err, reporting_srv.ErrReportingVersion) {
 		return echo.NewHTTPError(http.StatusUpgradeRequired, http.StatusText(http.StatusUpgradeRequired))
 	}

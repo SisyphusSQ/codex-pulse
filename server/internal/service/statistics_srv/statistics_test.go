@@ -31,6 +31,50 @@ func statisticsFixture(t *testing.T) (*Statistics, *reporting_srv.Reporting, acc
 	stats.now = func() time.Time { return time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC) }
 	return stats, reporting_srv.NewReporting(reporting_repo.NewReporting(engine)), admin, clients
 }
+
+func TestVersionedPublicationIsVisibleAtomicallyInStatisticsAndSources(t *testing.T) {
+	stats, r, admin, clients := statisticsFixture(t)
+	full := centerfixture.Snapshot()
+	centerfixture.SendSnapshot(t, r, clients[0], full)
+	full.Revision = 2
+	full.CollectedAtMS = 4000
+	for i := range 1000 {
+		full.Contributions = append(full.Contributions, centerfixture.Contribution(1, int64(2000+i)))
+	}
+	parts, err := reportingv1.SplitSnapshot(full)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, part := range parts {
+		_, err = r.Accept(t.Context(), clients[0], reportingv1.Batch{Version: 1, ID: uuid.New().String(), Sessions: []reportingv1.SessionSnapshot{part}})
+		if i < len(parts)-1 && err != nil {
+			t.Fatal(err)
+		}
+		if i == len(parts)-1 && !errors.Is(err, reporting_srv.ErrPublicationPending) {
+			t.Fatal(err)
+		}
+	}
+	q := statisticsTestQuery(t, nil)
+	before, err := stats.Summary(t.Context(), admin, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decimal(t, before.Totals.TotalTokens, "100")
+	if _, err := r.ProcessPublication(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	after, err := stats.Summary(t.Context(), admin, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decimal(t, after.Totals.TotalTokens, "1100")
+	q.ClientID = clients[0].ID
+	own, err := stats.Summary(t.Context(), admin, q)
+	if err != nil {
+		t.Fatal("segmented source read", err)
+	}
+	decimal(t, own.Totals.TotalTokens, "1100")
+}
 func statisticsTestQuery(t *testing.T, values url.Values) statistics_dto.StatisticsQuery {
 	t.Helper()
 	if values == nil {

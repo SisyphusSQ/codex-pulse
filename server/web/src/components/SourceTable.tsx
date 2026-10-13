@@ -6,7 +6,7 @@ import { dateTime, integer, providerNames } from '../format';
 
 const sourceStates: Record<string,string> = { ready:'采集就绪',partial:'部分可用',source_unavailable:'来源不可用',paused:'已暂停',disabled:'已关闭',reconnect_required:'需重新接入',failed:'采集失败',unknown:'状态未知' };
 
-export const syncStates:Record<string,string>={ready:'同步就绪',partial:'部分可用',source_budget_exceeded:'来源快照超过上限',source_unavailable:'来源不可用',queue_full:'待传队列已满',protocol_rejected:'协议不兼容',storage_unavailable:'同步存储不可用'};
+export const syncStates:Record<string,string>={processing:'中心处理中',publication_failed:'中心处理失败',ready:'同步就绪',partial:'部分可用',source_budget_exceeded:'来源快照超过上限',source_unavailable:'来源不可用',queue_full:'待传队列已满',protocol_rejected:'协议不兼容',storage_unavailable:'同步存储不可用'};
 
 function latestCollection(d:Device):number|null{const dates=d.providers.flatMap(p=>p.collected_at_ms===null?[]:[p.collected_at_ms]);return dates.length?Math.max(...dates):null;}
 export function SourceTable({ devices, compact=false, zone='Asia/Shanghai',selectedId,onSelect }: { devices:Device[]; compact?:boolean; zone?:string;selectedId?:string;onSelect?(id:string):void }) {

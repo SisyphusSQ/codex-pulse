@@ -33,6 +33,18 @@ func TestChunkedSnapshotAtomicReplayAndCorruption(t *testing.T) {
 	for index := len(parts) - 1; index >= 0; index-- {
 		batch := reportingv1.Batch{Version: 1, ID: uuid.New().String(), Sessions: []reportingv1.SessionSnapshot{parts[index]}}
 		first, err := s.Accept(t.Context(), clients[0], batch)
+		if index == 0 {
+			if !errors.Is(err, ErrPublicationPending) {
+				t.Fatal("last chunk must wait for publication", err)
+			}
+			if _, total := readSession(t, db); total != 100 {
+				t.Fatal("staging leaked", total)
+			}
+			if ok, e := s.ProcessPublication(t.Context()); !ok || e != nil {
+				t.Fatal("publication", ok, e)
+			}
+			first, err = s.Accept(t.Context(), clients[0], batch)
+		}
 		if err != nil {
 			t.Fatal(index, err)
 		}
@@ -57,6 +69,11 @@ func TestChunkedSnapshotAtomicReplayAndCorruption(t *testing.T) {
 	if err := db.Model(&reporting_do.Invocation{}).Count(&count).Error; err != nil || count != 0 {
 		t.Fatal("deprecated invocations persisted", count, err)
 	}
+	for range len(parts) + 1 {
+		if err := s.repository.CleanupPublication(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := db.Model(&reporting_do.SnapshotChunk{}).Count(&count).Error; err != nil || count != 0 {
 		t.Fatal("completed staging retained", count, err)
 	}
@@ -71,8 +88,13 @@ func TestChunkedSnapshotAtomicReplayAndCorruption(t *testing.T) {
 		if index < len(parts)-1 && err != nil {
 			t.Fatal(err)
 		}
-		if index == len(parts)-1 && !errors.Is(err, utils.ErrBadParamInput) {
-			t.Fatal("corrupt digest accepted", err)
+		if index == len(parts)-1 {
+			if !errors.Is(err, ErrPublicationPending) {
+				t.Fatal("corrupt final part must be durably staged", err)
+			}
+			if _, err = s.ProcessPublication(t.Context()); !errors.Is(err, utils.ErrBadParamInput) {
+				t.Fatal("corrupt digest accepted", err)
+			}
 		}
 	}
 	_, total := readSession(t, db)

@@ -9,18 +9,23 @@ import (
 )
 
 var (
-	ErrSettings    = errors.New("invalid reporting settings")
-	ErrQueueFull   = errors.New("reporting queue is full")
-	ErrPending     = errors.New("reporting scope has pending batches")
-	ErrUnavailable = errors.New("reporting storage unavailable")
-	ErrReconnect   = errors.New("reporting requires pairing")
-	ErrProtocol    = errors.New("reporting protocol rejected")
-	ErrTransport   = errors.New("reporting transport unavailable")
+	ErrSettings          = errors.New("invalid reporting settings")
+	ErrQueueFull         = errors.New("reporting queue is full")
+	ErrPending           = errors.New("reporting scope has pending batches")
+	ErrUnavailable       = errors.New("reporting storage unavailable")
+	ErrReconnect         = errors.New("reporting requires pairing")
+	ErrProtocol          = errors.New("reporting protocol rejected")
+	ErrTransport         = errors.New("reporting transport unavailable")
+	ErrProcessing        = errors.New("center snapshot is processing")
+	ErrPublicationFailed = errors.New("center snapshot was rejected")
+	ErrBatchDeferred     = errors.New("reporting batch deferred")
 )
 
 const DefaultIntervalSeconds int64 = 60
 const QueueByteBudget int64 = 256 << 20
 const QueueBatchBudget = 2048
+const CurrentQueueByteBudget int64 = 16 << 20
+const CurrentQueueBatchBudget = 64
 
 // Status is the local RPC whitelist; service credentials and pairing codes are excluded.
 type Status struct {
