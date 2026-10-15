@@ -71,7 +71,7 @@ func TestDSHTitleMigrationPreservesV36FactsAndChecksum(t *testing.T) {
 	}
 	runner := dshTitleUpgradeRunner(database)
 	report, err := runner.run(t.Context())
-	if err != nil || !equalInts(report.AppliedVersions, []int{37}) {
+	if err != nil || !equalInts(report.AppliedVersions, []int{37, 38}) {
 		t.Fatal("title migration failed", report, err)
 	}
 	after, err := r.DSHSnapshot(t.Context())
@@ -86,7 +86,7 @@ func TestDSHTitleMigrationPreservesV36FactsAndChecksum(t *testing.T) {
 	if err := r.ReplaceDSHSnapshot(t.Context(), before); err != nil {
 		t.Fatal("widened title contract unavailable", err)
 	}
-	assertMigrationVersionAndHistory(t, database, 37, 37)
+	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, applicationSchemaVersion)
 }
 
 func TestDSHTitleMigrationRollsBackLineageAndFacts(t *testing.T) {

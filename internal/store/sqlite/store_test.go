@@ -513,6 +513,29 @@ func TestCallbackSessionsAreBoundToQueueOwnedPools(t *testing.T) {
 	}
 }
 
+func TestCanceledTransactionInitializationKeepsSharedWriterOpen(t *testing.T) {
+	store := openTestStore(t, Config{})
+	createEventsTable(t, store)
+	ctx, cancel := context.WithCancel(t.Context())
+	tx, err := store.writerSQL.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		t.Fatal(err)
+	}
+	if _, err := openGORM(tx); err == nil {
+		t.Fatal("initializing a rolled-back transaction succeeded")
+	}
+	if err := insertEvent(store, t.Context(), "after-canceled-transaction"); err != nil {
+		t.Fatalf("canceled transaction closed shared pool: %v", err)
+	}
+	if values := readEventValues(t, store); len(values) != 1 || values[0] != "after-canceled-transaction" {
+		t.Fatalf("writer did not recover: %v", values)
+	}
+}
+
 func TestStoreSupportsConcurrentWALReadsAndQueuedWrites(t *testing.T) {
 	store := openTestStore(t, Config{
 		WriteQueueCapacity: 64,

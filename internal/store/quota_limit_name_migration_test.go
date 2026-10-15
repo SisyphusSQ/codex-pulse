@@ -50,7 +50,7 @@ func TestApplicationMigrationV19AddsQuotaLimitNameWithoutChangingExistingFacts(t
 		t.Fatalf("run(v18->v21) error = %v", err)
 	}
 	if report.FromVersion != 18 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37}) || backupVersions != [2]int{18, applicationSchemaVersion} {
+		!equalInts(report.AppliedVersions, []int{19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38}) || backupVersions != [2]int{18, applicationSchemaVersion} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, applicationSchemaVersion)

@@ -15,7 +15,7 @@ import (
 func TestApplicationSchemaVersionIncludesLightUsageSummaryIndex(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV37Version {
+	if applicationSchemaVersion != applicationSchemaV38Version {
 		t.Fatalf("applicationSchemaVersion = %d, want 34", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
@@ -37,7 +37,7 @@ func TestApplicationSchemaVersionIncludesLightUsageSummaryIndex(t *testing.T) {
 		t.Fatalf("run(v16->v21) error = %v", err)
 	}
 	if report.FromVersion != 16 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37}) || backupVersions != [2]int{16, applicationSchemaVersion} {
+		!equalInts(report.AppliedVersions, []int{17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38}) || backupVersions != [2]int{16, applicationSchemaVersion} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, applicationSchemaVersion)
@@ -225,7 +225,7 @@ func TestApplicationSchemaV31AddsLightTokenCounterCheckpoints(t *testing.T) {
 		t.Fatalf("run(v30->v31) error = %v", err)
 	}
 	if report.FromVersion != 30 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{31, 32, 33, 34, 35, 36, 37}) || backupVersions != [2]int{30, applicationSchemaVersion} {
+		!equalInts(report.AppliedVersions, []int{31, 32, 33, 34, 35, 36, 37, 38}) || backupVersions != [2]int{30, applicationSchemaVersion} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, applicationSchemaVersion)

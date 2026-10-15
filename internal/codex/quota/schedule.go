@@ -35,6 +35,7 @@ type RefreshPlanInput struct {
 	Schedule        *store.SourceRefreshSchedule
 	SourceState     *store.SourceState
 	Windows         []store.QuotaCurrent
+	BindingChanged  bool
 }
 
 type RefreshDecision struct {
@@ -75,6 +76,12 @@ func (policy RefreshPolicy) Plan(input RefreshPlanInput) (RefreshDecision, error
 	if input.Schedule != nil && input.Schedule.ActiveClaimID != nil &&
 		input.Trigger != store.RefreshTriggerScheduled {
 		return preservedRefreshDecision(input.Schedule), nil
+	}
+	if input.BindingChanged {
+		if decision, fenced := activeRetryAfterDecision(input.Schedule, input.SourceState, input.NowMS); fenced {
+			return decision, nil
+		}
+		return immediateRefreshDecision(input.NowMS, store.RefreshReasonRecovery), nil
 	}
 
 	switch input.Trigger {

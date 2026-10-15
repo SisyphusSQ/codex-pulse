@@ -44,6 +44,14 @@ TOO-463 为这段 unassigned history 提供显式、可撤销的曲线关联。S
 
 账号切换保留现有 Home generation fence。锁顺序是：Home generation drain → account transition → quota admission → repository 写事务。A→B→A 恢复 A 的历史观察时间戳，但使用新的 binding generation。Cursor、Grok、API Subscription 的现有逻辑不得被 Codex binding 改动影响。
 
+### 账号切换与手动刷新等待（TOO-633）
+
+确认新 binding generation 后，quota 与 Reset Credits 立即安排一次 claimed refresh；即使切回已有历史的账号，也不沿用它的普通刷新周期或因历史 `server_error` 从当前时间重新计算完整退避。该次刷新仍校验账号、Home、claim 和存储状态，成功前只显示该账号自己的最后可信值及原采集时间。
+
+普通网络、超时、认证和服务错误的自动退避留在各来源 schedule 内，手动刷新可以越过；60 秒手动最小间隔及同账号 quota/reset companion 规则保留。明确的 `http_429` 则在 claim 完成的同一写事务中持久化全局 `retry_after` fence，期限仍取本地退避与可信 Retry-After 中较晚者；即使没有 Retry-After，也保留已有的 429 退避。该 fence 对手动、自动、另一个来源及后续账号切换生效，重启不清除，到期自动放行。未知 RPC 错误不推断为 HTTP 429。
+
+application schema v38 扩大全局 fence 的 reason 白名单并保留旧 migration checksum：普通 `network_backoff` 全局行不再拦截，旧人工间隔保留；从明确 429 的来源状态、schedule 与旧 fence 重建服务端等待。旧版本混合记录无法精确拆分时，明确 429 的已有等待上界保守保留。实际领取被全局 fence 拦截时，回执返回真实的等待 reason 和期限，`fetched=false`；不能把仅改为 manual 的计划或重读缓存表示为已更新。验收见 [刷新可靠性](../../../test/quota-refresh-reliability.md)。
+
 ### 多账号最后额度快照（TOO-465）
 
 Codex 主窗口新增独立「账号额度」页，不把额度历史塞进 Settings。Helper 在一个 SQLite read snapshot 中组合 detected 账号元数据与各账号已经通过 projection/evidence 校验的 `quota_current`；当前账号排在最前，非当前账号只有存在保留额度事实时才展示。当前与历史账号使用同一个紧凑账号组，并在左对齐的自适应网格中以约 300–340pt 宽度展示；账号摘要沿用中性账号卡视觉，每个额度窗口直接使用现有 `SectionCard` 视觉。窗口标题由 `limit_id + window_minutes` 派生，按实际时长排序，不得把 `primary / secondary` 固定解释成短周期或周周期，也不得为缺失周期补 `--` 占位卡。同一 `limit_id + window_minutes` 的重复候选按可信度合并。每个窗口展示最后验证的剩余百分比、reset、数据状态与采集时间；百分比未知时不绘制 0% 进度条。reset 已经过期时显示“已结束”，历史卡只显示绝对 reset 时间、不显示倒计时，也不发起任何旧账号请求；当前账号区的刷新入口只刷新当前账号。

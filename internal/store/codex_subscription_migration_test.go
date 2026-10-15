@@ -14,7 +14,7 @@ import (
 
 func TestCurrentSchemaIncludesCodexSubscriptionMigrationV33(t *testing.T) {
 	t.Parallel()
-	if applicationSchemaVersion != applicationSchemaV37Version {
+	if applicationSchemaVersion != applicationSchemaV38Version {
 		t.Fatalf("applicationSchemaVersion = %d, want 34", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
@@ -61,7 +61,7 @@ func TestCodexSubscriptionMigrationUpgradesV32AndBackfillsScopes(t *testing.T) {
 		t.Fatalf("run(v32->v34) error = %v", err)
 	}
 	if report.FromVersion != 32 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{33, 34, 35, 36, 37}) || backupVersions != [2]int{32, applicationSchemaVersion} {
+		!equalInts(report.AppliedVersions, []int{33, 34, 35, 36, 37, 38}) || backupVersions != [2]int{32, applicationSchemaVersion} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, applicationSchemaVersion)

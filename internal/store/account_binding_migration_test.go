@@ -14,7 +14,7 @@ import (
 func TestAccountBindingMigrationPreservesLegacyDefaultAndSealsOldClaims(t *testing.T) {
 	t.Parallel()
 
-	if applicationSchemaVersion != applicationSchemaV37Version {
+	if applicationSchemaVersion != applicationSchemaV38Version {
 		t.Fatalf("applicationSchemaVersion = %d, want 34", applicationSchemaVersion)
 	}
 	database := openTestDatabase(t)
@@ -35,7 +35,7 @@ func TestAccountBindingMigrationPreservesLegacyDefaultAndSealsOldClaims(t *testi
 		t.Fatalf("run(v31->v32) error = %v", err)
 	}
 	if report.FromVersion != 31 || report.TargetVersion != applicationSchemaVersion ||
-		!equalInts(report.AppliedVersions, []int{32, 33, 34, 35, 36, 37}) || backupVersions != [2]int{31, applicationSchemaVersion} {
+		!equalInts(report.AppliedVersions, []int{32, 33, 34, 35, 36, 37, 38}) || backupVersions != [2]int{31, applicationSchemaVersion} {
 		t.Fatalf("migration report = %#v backup=%v", report, backupVersions)
 	}
 	assertMigrationVersionAndHistory(t, database, applicationSchemaVersion, applicationSchemaVersion)
@@ -277,7 +277,7 @@ func assertAccountBindingSchemaContract(t *testing.T, database *storesqlite.Stor
 	t.Helper()
 	if err := database.View(t.Context(), func(ctx context.Context, connection *gorm.DB) error {
 		for _, objects := range [][]storeschema.Object{
-			accountBindingSchemaObjects,
+			currentAccountBindingSchemaObjects(),
 			quotaSchemaObjectsV32,
 			quotaProjectionSchemaObjectsV32,
 			quotaScheduleSchemaObjectsV32,
