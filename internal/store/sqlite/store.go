@@ -430,7 +430,14 @@ func (store *Store) executeWrite(job writeJob) (returnErr error) {
 	return nil
 }
 
+// borrowedTransaction 保留事务方法，但不向 GORM 暴露拥有共享连接池的原始
+// *sql.Tx。否则事务在初始化前被取消时，GORM 的错误清理会关闭父 *sql.DB。
+type borrowedTransaction struct{ *sql.Tx }
+
 func openGORM(connection gorm.ConnPool) (*gorm.DB, error) {
+	if transaction, ok := connection.(*sql.Tx); ok {
+		connection = borrowedTransaction{Tx: transaction}
+	}
 	return gorm.Open(libtnbsqlite.New(libtnbsqlite.Config{Conn: connection}), &gorm.Config{
 		DisableAutomaticPing:   true,
 		SkipDefaultTransaction: true,

@@ -384,11 +384,6 @@ func (coordinator *QuotaRefreshCoordinator) RequestRefreshResult(
 		return claimed, false, err
 	}
 	completed, execErr := coordinator.executeClaim(ctx, snapshot, descriptor, claimed, requestID)
-	if execErr == nil {
-		if err := coordinator.raiseNetworkBackoffFence(ctx, completed, coordinator.clock().UnixMilli()); err != nil {
-			return completed, true, err
-		}
-	}
 	if execErr == nil && trigger == store.RefreshTriggerManual {
 		readCtx, cancelRead := context.WithTimeout(context.WithoutCancel(ctx), coordinator.completionTimeout)
 		defer cancelRead()
@@ -479,9 +474,6 @@ func (coordinator *QuotaRefreshCoordinator) runDueCycleLocked(
 		if _, err := coordinator.executeClaim(ctx, snapshot, descriptor, claimed, requestID); err != nil {
 			cycleErrors.add(err, isPermanentQuotaRefreshCycleError(err))
 		}
-	}
-	if err := coordinator.raiseDueCycleBackoffFence(ctx, snapshot, nowMS); err != nil {
-		cycleErrors.add(err, isPermanentQuotaRefreshCycleError(err))
 	}
 	return cycleErrors.result()
 }
@@ -775,6 +767,7 @@ func (coordinator *QuotaRefreshCoordinator) planSource(
 		Source: descriptor.source, Trigger: trigger, Enabled: descriptor.enabled,
 		NowMS: nowMS, IntervalSeconds: descriptor.intervalSeconds,
 		Schedule: schedule, SourceState: state, Windows: windows,
+		BindingChanged: schedule != nil && schedule.BindingGeneration != descriptor.bindingGeneration,
 	})
 	return schedule, decision, err
 }
@@ -926,43 +919,6 @@ func (coordinator *QuotaRefreshCoordinator) deactivateAccountSchedules(
 func accountScopedRefreshSchedule(schedule store.SourceRefreshSchedule) bool {
 	return schedule.SourceType == store.QuotaSourceTypeAppServerRateLimits ||
 		schedule.SourceType == store.ResetCreditsSourceTypeAppServer
-}
-
-func (coordinator *QuotaRefreshCoordinator) raiseDueCycleBackoffFence(
-	ctx context.Context,
-	snapshot preferences.Snapshot,
-	nowMS int64,
-) error {
-	descriptors, err := coordinator.descriptors(ctx, snapshot)
-	if err != nil {
-		return err
-	}
-	for _, descriptor := range descriptors {
-		schedule, err := coordinator.loadSchedule(ctx, descriptor.sourceInstanceID)
-		if err != nil {
-			return err
-		}
-		if schedule == nil {
-			continue
-		}
-		if err := coordinator.raiseNetworkBackoffFence(ctx, *schedule, nowMS); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (coordinator *QuotaRefreshCoordinator) raiseNetworkBackoffFence(
-	ctx context.Context,
-	schedule store.SourceRefreshSchedule,
-	nowMS int64,
-) error {
-	if schedule.Reason != store.RefreshReasonNetworkBackoff || schedule.NextDueAtMS == nil {
-		return nil
-	}
-	return coordinator.repository.RaiseSourceRefreshGlobalFence(
-		ctx, *schedule.NextDueAtMS, "network_backoff", nowMS,
-	)
 }
 
 func (coordinator *QuotaRefreshCoordinator) descriptor(

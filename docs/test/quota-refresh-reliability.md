@@ -72,3 +72,41 @@ bash scripts/macos/build-dev-app.sh
 真实故障注入、真实 sleep/wake 与双账号/Home 切换为 `Not Run`；相关取消、generation/fence 与睡眠保护仅有 synthetic/race 证据。自查未新增认证或 TCP surface，日志使用有限白名单，未放宽账号 fence 或数据库保护。
 
 完整 smoke 的原生键盘失败不降为 Pass；本次人工额度页与手动请求、正常到期持续刷新仅作为对应范围的 Pass。
+
+## TOO-633：账号切换与手动刷新退避回归
+
+2026-10-15 排查确认：切回账号时，目标账号历史失败被重新解释为一次当前退避；全局 `network_backoff` 又拦截了策略层允许的 manual 请求。等待到期后的请求本身正常。修复将普通来源退避与明确 429 的跨账号等待分开。
+
+测试只使用 synthetic Home、临时数据库和注入 reader，不访问个人凭据或调用真实限流接口：
+
+```bash
+go test ./internal/scheduler -run 'TestQuotaRefreshSwitchAndManualRefreshRespectOnlyServerFence|TestQuotaRefreshServerLimitBlocksCompanionAndExpires' -count=1
+go test ./internal/app -run 'TestAccountBindingSwitchRefreshesReturningAccountWithoutManualRequest|TestAccountBinding|TestQuotaRuntime|TestApplicationQuotaRuntime' -count=1
+go test ./internal/store -run 'TestQuotaRefreshFenceMigration|TestSourceRefreshSchedule|TestAccountBindingMigration|TestDSHTitleMigration|TestApplicationSchemaV32ChecksumIsFrozen' -count=1
+```
+
+- 切回历史失败账号立即抓取，普通全局退避不阻止 manual；成功记录必须前进，不能只断言调用次数。
+- A→B→A 在原周期尚未到期时自动取得 A 的新额度，不依赖手动刷新，且 B 的百分比不串到 A。
+- 实际记录 429 后，manual/foreground、quota/reset companion、切号与重新 Initialize 均不能绕过截止时间；到期后实际成功。回执必须 `fetched=false` 并含正确的 `retry_after` 及期限。
+- v37→v38 去除普通全局退避、保留人工间隔、从明确 429 重建等待（含旧全局行缺失的情况）；失败时 DDL、旧行和 migration ledger 全部回滚；旧 checksum 不变。
+- 切号取消旧事务后，GORM 初始化失败不得关闭共享 writer 连接池。`TestCanceledTransactionInitializationKeepsSharedWriterOpen` 使用已回滚事务稳定复现并验证后续真实写入；SQLite 包 race 验证同时覆盖提交、回滚、队列和备份。
+
+```bash
+go test -race ./internal/store/sqlite -count=1
+```
+
+本轮代码与 synthetic 聚焦回归不表示已替换安装版或完成真实双账号切换验收。真实 A→B→A、CI、签名和发布均须单独记录；不代用户切换账号或注入真实 429。
+
+### 2026-10-15 本轮结果
+
+| 检查 | 结果与范围 |
+| --- | --- |
+| quota / scheduler 包测试 | PASS，包含普通退避、实际 429、有/无 Retry-After、跨来源/账号等待与到期恢复 |
+| Store 包测试 | PASS（220.977s）；早先 3 个旧版本/DDL 预期失败已修正后重跑通过，v32 frozen checksum 保持不变 |
+| App 账号与额度 runtime 聚焦 | PASS；新增 A→B→A 自动刷新场景连续 4 次 race PASS |
+| SQLite 包 race | PASS，包含已取消事务初始化不关闭共享 writer、提交/回滚、队列和备份 |
+| scheduler / Store 新场景 race | PASS |
+| Core / Helper 额度、账号与刷新回执聚焦 | PASS |
+| 真实双账号 E2E / CI / 安装替换 / 提交 / 发布 | NOT_RUN |
+
+并发检查最初发现的共享池关闭已由取消事务的确定性回归复现并修复。自动刷新测试在切换合成 reader 前收口旧请求，避免把另一路异步身份发现中的临时 pending 误作稳定结果；不以重复运行消除失败。

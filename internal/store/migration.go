@@ -56,7 +56,8 @@ const (
 	applicationSchemaV35Version = 35
 	applicationSchemaV36Version = 36
 	applicationSchemaV37Version = 37
-	applicationSchemaVersion    = applicationSchemaV37Version
+	applicationSchemaV38Version = 38
+	applicationSchemaVersion    = applicationSchemaV38Version
 )
 
 var (
@@ -376,6 +377,7 @@ var applicationMigrations = []migrationDefinition{
 	},
 	{version: applicationSchemaV36Version, name: "dsh-local-facts", checksum: applicationSchemaV36Checksum(), apply: migrateDSHForV36},
 	{version: applicationSchemaV37Version, name: "dsh-session-titles", checksum: applicationSchemaV37Checksum(), apply: migrateDSHTitlesForV37},
+	{version: applicationSchemaV38Version, name: "quota-refresh-server-fence", checksum: applicationSchemaV38Checksum(), apply: migrateQuotaRefreshFenceForV38},
 }
 
 type sourceFailureMigrationColumn struct {
@@ -1003,7 +1005,7 @@ func verifyApplicationSchema(ctx context.Context, transaction *gorm.DB) error {
 		ingestSchemaObjects, attributionSchemaObjects, costSchemaObjects, bootstrapSchemaObjects,
 		schedulerSchemaObjects, lifecycleSchemaObjects,
 		currentQuotaSchemaObjects(), quotaProjectionSchemaObjectsV32, quotaScheduleSchemaObjectsV32,
-		accountBindingSchemaObjects,
+		currentAccountBindingSchemaObjects(),
 		metricsSchemaObjects, quotaPerformanceSchemaObjects,
 		storelight.CurrentSchemaObjects(),
 		currentDSHProviderSchemaObjects(),

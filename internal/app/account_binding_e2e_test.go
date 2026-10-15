@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -31,6 +32,72 @@ const (
 	accountBindingSecretToken  = "token-secret-a"
 	accountBindingSecretCredit = "credit-secret-a"
 )
+
+func TestAccountBindingSwitchRefreshesReturningAccountWithoutManualRequest(t *testing.T) {
+	database, repository := openQuotaRuntimeStore(t)
+	defer closeQuotaRuntimeStore(t, database)
+	key := quotaRuntimeTestScopeKey()
+	stored, err := repository.EnsureCodexAccountScopeKey(t.Context(), key, quotaRuntimeNowMS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopeA, err := accountbinding.DeriveScope(stored, []byte(accountBindingSecretA))
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopeB, err := accountbinding.DeriveScope(stored, []byte(accountBindingSecretB))
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, _, err := repository.ConfirmCodexAccountBinding(t.Context(), scopeA, quotaRuntimeNowMS, store.CodexAccountBindingReasonStartup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := &accountBindingE2EReader{accountID: accountBindingSecretA, used: 25, creditID: accountBindingSecretCredit}
+	home := writeSyntheticAuthHome(t, accountBindingSecretToken)
+	loader := &quotaRuntimePreferencesLoader{snapshot: enabledQuotaRuntimePreferences(t, home)}
+	var now atomic.Int64
+	now.Store(quotaRuntimeNowMS)
+	runtime, err := startApplicationQuotaRuntime(t.Context(), ApplicationQuotaRuntimeConfig{
+		Repository: repository, Preferences: loader, Reader: reader, ScopeKey: stored,
+		Binding: quotaonline.AccountBindingFence{AccountScope: scopeA, BindingGeneration: binding.BindingGeneration},
+		Clock:   func() time.Time { return time.UnixMilli(now.Load()) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := runtime.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	}()
+	waitForQuotaRuntimeState(t, repository, store.QuotaSourceInstanceAppServer(scopeA), func(state store.SourceState) bool { return state.LastSuccessAtMS != nil })
+	for _, account := range []struct {
+		id, scope string
+		used      int32
+	}{
+		{id: accountBindingSecretB, scope: scopeB, used: 77},
+		{id: accountBindingSecretA, scope: scopeA, used: 31},
+	} {
+		// 本用例只验证确认后的自动刷新；先收口旧请求，避免合成 reader 的瞬时
+		// 变更同时触发另一路异步账号发现，取消路径由 SQLite 回归单独覆盖。
+		if err := runtime.SealAndDrain(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		reader.set(account.id, account.used)
+		switchAt := now.Add(10_000)
+		if err := runtime.account.HandleObservedScopeChange(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		waitForQuotaRuntimeState(t, repository, store.QuotaSourceInstanceAppServer(account.scope), func(state store.SourceState) bool {
+			return state.LastSuccessAtMS != nil && *state.LastSuccessAtMS >= switchAt
+		})
+		current := queryBoundCurrent(t, repository, switchAt)
+		if current.AccountScope != account.scope || !windowHasUsed(current, float64(account.used)) {
+			t.Fatalf("switched quota=%#v", current)
+		}
+	}
+}
 
 func TestAccountBindingSyntheticABAEndToEnd(t *testing.T) {
 	t.Parallel()

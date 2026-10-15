@@ -166,11 +166,11 @@ func (repository *Repository) ClaimSourceRefresh(
 		if existing.ActiveClaimID != nil || existing.NextDueAtMS == nil || *existing.NextDueAtMS > atMS {
 			return nil
 		}
-		blocked, reason, err := sourceRefreshGlobalFenceState(ctx, transaction, atMS)
+		notBeforeMS, reason, err := sourceRefreshGlobalFenceState(ctx, transaction, atMS)
 		if err != nil {
 			return err
 		}
-		if blocked {
+		if notBeforeMS > atMS {
 			companion := false
 			if reason == sourceRefreshGlobalFenceManual && trigger == RefreshTriggerManual {
 				companion, err = sourceRefreshSameAccountManualCompanion(
@@ -181,6 +181,12 @@ func (repository *Repository) ClaimSourceRefresh(
 				}
 			}
 			if !companion {
+				// 返回实际拦截原因与期限，不把未执行的 manual 计划当作回执。
+				stored.NextDueAtMS = new(notBeforeMS)
+				stored.Reason = RefreshReasonRetryAfter
+				if reason == sourceRefreshGlobalFenceManual {
+					stored.Reason = RefreshReasonManual
+				}
 				return nil
 			}
 		}
@@ -277,6 +283,16 @@ func (repository *Repository) CompleteSourceRefresh(
 		}
 		if sourceRefreshClaimState(claim.State) != sourceRefreshClaimActive {
 			return sourceRefreshConflict("source refresh completion claim is finalized")
+		}
+		state, found, err := sourceStateByID(ctx, transaction, completion.SourceInstanceID)
+		if err != nil {
+			return err
+		}
+		if found && state.LastFailureCode != nil && *state.LastFailureCode == SourceFailureHTTP429 && completion.NextDueAtMS != nil {
+			// 与 claim 收口原子保存，账号切换、重启及并发手动请求均不能越过 429。
+			if err := raiseSourceRefreshGlobalFence(ctx, transaction, *completion.NextDueAtMS, sourceRefreshGlobalFenceRateLimit, completion.AtMS); err != nil {
+				return err
+			}
 		}
 		if existing.Revision == math.MaxInt64 {
 			return invalidRecord("source refresh schedule revision is exhausted")
@@ -641,8 +657,9 @@ func validSourceRefreshIdentity(sourceInstanceID, sourceType, scopeKey string) b
 }
 
 const (
-	sourceRefreshGlobalFenceManual  = "manual_interval"
-	sourceRefreshGlobalFenceBackoff = "network_backoff"
+	sourceRefreshGlobalFenceManual    = "manual_interval"
+	sourceRefreshGlobalFenceBackoff   = "network_backoff"
+	sourceRefreshGlobalFenceRateLimit = "retry_after"
 )
 
 func (repository *Repository) ListSourceRefreshSchedules(ctx context.Context) ([]SourceRefreshSchedule, error) {
@@ -768,19 +785,19 @@ func sourceRefreshGlobalFenceState(
 	ctx context.Context,
 	transaction *gorm.DB,
 	atMS int64,
-) (bool, string, error) {
+) (int64, string, error) {
 	var model sourceRefreshGlobalFenceModel
 	err := transaction.WithContext(ctx).Where("source_group = ?", sourceRefreshGlobalFenceGroup).Take(&model).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, "", nil
+		return 0, "", nil
 	}
 	if err != nil {
-		return false, "", err
+		return 0, "", err
 	}
-	if model.NotBeforeMS <= atMS {
-		return false, model.Reason, nil
+	if model.NotBeforeMS <= atMS || model.Reason == sourceRefreshGlobalFenceBackoff {
+		return 0, model.Reason, nil
 	}
-	return true, model.Reason, nil
+	return model.NotBeforeMS, model.Reason, nil
 }
 
 func sourceRefreshSameAccountManualCompanion(
@@ -822,7 +839,7 @@ func raiseSourceRefreshGlobalFence(
 	atMS int64,
 ) error {
 	if notBeforeMS < 0 || notBeforeMS > runtimeclock.MaxTimestampMS || atMS < 0 || atMS > runtimeclock.MaxTimestampMS ||
-		(reason != sourceRefreshGlobalFenceManual && reason != sourceRefreshGlobalFenceBackoff) {
+		(reason != sourceRefreshGlobalFenceManual && reason != sourceRefreshGlobalFenceBackoff && reason != sourceRefreshGlobalFenceRateLimit) {
 		return invalidRecord("source refresh global fence is invalid")
 	}
 	var current sourceRefreshGlobalFenceModel
@@ -830,8 +847,15 @@ func raiseSourceRefreshGlobalFence(
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
-	if err == nil && current.NotBeforeMS >= notBeforeMS {
-		return nil
+	if err == nil && current.Reason != sourceRefreshGlobalFenceBackoff {
+		notBeforeMS = max(current.NotBeforeMS, notBeforeMS)
+		// 限流与手动间隔共用一行时，限流语义优先，不能被 companion 豁免。
+		if current.NotBeforeMS > atMS && current.Reason == sourceRefreshGlobalFenceRateLimit {
+			reason = sourceRefreshGlobalFenceRateLimit
+		}
+		if notBeforeMS == current.NotBeforeMS && reason == current.Reason {
+			return nil
+		}
 	}
 	model := sourceRefreshGlobalFenceModel{
 		SourceGroup: sourceRefreshGlobalFenceGroup, NotBeforeMS: notBeforeMS, Reason: reason, UpdatedAtMS: atMS,

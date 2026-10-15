@@ -157,3 +157,67 @@ func TestReportingRecentPageSkipsOldSessionsAndPreservesFullFactIdentity(t *test
 		t.Fatal("range changed stable ID")
 	}
 }
+
+func TestReportingRecentPageUsesActiveTokenFactsInsteadOfMetadataRecency(t *testing.T) {
+	for _, recency := range []*int64{nil, new(int64(10))} {
+		name := "missing_recency"
+		if recency != nil {
+			name = "stale_recency"
+		}
+		t.Run(name, func(t *testing.T) {
+			repo := lightIndexRepositoryFixture(t)
+			ctx := t.Context()
+			identity := lightRolloutFixture()
+			if err := repo.ReplaceLightMetadata(ctx, storelight.LightMetadataSnapshot{
+				Home: identity.Home, Generation: 2, ReadyAtMS: 1000,
+				Sessions: []storelight.LightSessionMetadata{{SessionID: "one", CWD: "/synthetic", RolloutPath: new(identity.Path), CreatedAtMS: 1, UpdatedAtMS: 130, RecencyAtMS: recency}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			generation, err := repo.StartLightTokenRebuild(ctx, "one", identity, "parser-v1", 130)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.CommitLightTokenBatch(ctx, storelight.LightTokenBatch{
+				SessionID: "one", Generation: generation, UpdatedAtMS: 130, Activate: true,
+				Checkpoint:  storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true, InputTokens: 3},
+				TimedDeltas: []storelight.LightTokenTimedDelta{{SourceOffset: 100, ObservedAtMS: 90, InputTokens: 1}, {SourceOffset: 200, ObservedAtMS: 120, InputTokens: 1}, {SourceOffset: 300, ObservedAtMS: 120, InputTokens: 1}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			source := ReportingSource{HomeID: "synthetic", Path: identity.Home.Path, DeviceID: identity.Home.DeviceID, Inode: identity.Home.Inode, RecentAfterMS: 100}
+			page, err := repo.coreTestRepository.Repository.ReportingPage(ctx, "codex", source, "")
+			if err != nil || len(page.Sessions) != 1 || len(page.Sessions[0].Contributions) != 3 {
+				t.Fatalf("ongoing consumption or boundary context missing: %+v, %v", page, err)
+			}
+			facts := page.Sessions[0].Contributions
+			if facts[1].ID == facts[2].ID {
+				t.Fatal("duplicate ordinal identity lost")
+			}
+			page, err = repo.coreTestRepository.Repository.ReportingPage(ctx, "codex", source, "one")
+			if err != nil || len(page.Sessions) != 0 {
+				t.Fatal("session cursor replayed", err)
+			}
+			source.RecentAfterMS = 121
+			page, err = repo.coreTestRepository.Repository.ReportingPage(ctx, "codex", source, "")
+			if err != nil || len(page.Sessions) != 0 {
+				t.Fatal("old token facts entered recent page", err)
+			}
+			pending, err := repo.StartLightTokenRebuild(ctx, "one", identity, "parser-v2", 200)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := repo.CommitLightTokenBatch(ctx, storelight.LightTokenBatch{
+				SessionID: "one", Generation: pending, UpdatedAtMS: 200,
+				Checkpoint:  storelight.LightTokenCheckpoint{DurableOffset: 100, InputTokens: 1},
+				TimedDeltas: []storelight.LightTokenTimedDelta{{SourceOffset: 100, ObservedAtMS: 200, InputTokens: 1}},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			page, err = repo.coreTestRepository.Repository.ReportingPage(ctx, "codex", source, "")
+			if err != nil || len(page.Sessions) != 0 {
+				t.Fatal("pending generation selected an inactive fact", err)
+			}
+		})
+	}
+}

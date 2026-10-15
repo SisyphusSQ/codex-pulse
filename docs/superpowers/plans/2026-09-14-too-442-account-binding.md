@@ -729,6 +729,8 @@ claim CAS 条件增加 `binding_generation`；fetch request 携带 claim scope/g
 
 manual refresh 成功 admission 时写 `now + 60s`；网络 backoff 写 max(existing, computed)。quota 和 reset logical source 都在 claim 前检查同一 `codex_app_server_rate_limits` fence。
 
+2026-10-15 TOO-633 修订：上述网络全局 backoff 为 v32 历史行为。v38 后普通失败只保留来源 schedule 退避，不阻止手动刷新或新 binding 的首次抓取；明确 429 的等待以 `retry_after` 在 claim 完成事务内持久化，并拦截两个来源、手动请求及账号切换。当前契约以 `docs/design/details/quota/README.md` 的 TOO-633 小节为准。
+
 - [x] **Step 6：验证**
 
 Run: `go test -race ./internal/scheduler ./internal/store ./internal/codex/quota -run 'Test.*(Account|Binding|Scope|Generation|Manual)' -count=1`

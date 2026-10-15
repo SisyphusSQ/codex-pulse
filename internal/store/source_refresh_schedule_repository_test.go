@@ -199,7 +199,7 @@ func TestSourceRefreshScheduleClearGlobalFenceUnblocksHomeRearm(t *testing.T) {
 		t.Fatalf("Upsert() error = %v", err)
 	}
 	if err := repository.RaiseSourceRefreshGlobalFence(
-		context.Background(), 330_000, "network_backoff", 1_000,
+		context.Background(), 330_000, "retry_after", 1_000,
 	); err != nil {
 		t.Fatalf("RaiseSourceRefreshGlobalFence() error = %v", err)
 	}

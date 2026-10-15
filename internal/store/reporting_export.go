@@ -86,7 +86,12 @@ func exportReportingCodex(db *gorm.DB, source ReportingSource, after string, pag
 	}
 	query := db.Table("light_sessions").Where("session_id > ?", after)
 	if source.RecentAfterMS > 0 {
-		query = query.Where("recency_at_ms >= ?", source.RecentAfterMS)
+		// App Server 的会话 recency 可能早于持续运行中的 Token 消费。
+		// 以活动代的消费事实选候选会话，完整导出仍保留边界前端点与稳定 ordinal。
+		query = query.Where(`EXISTS (SELECT 1 FROM light_token_timed AS recent
+			WHERE recent.session_id = light_sessions.session_id
+			AND recent.generation = light_sessions.active_token_generation
+			AND recent.observed_at_ms >= ?)`, source.RecentAfterMS)
 	}
 	if err := query.Order("session_id").Limit(16).Find(&sessions).Error; err != nil {
 		return err
