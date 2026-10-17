@@ -37,6 +37,17 @@ func (r *Access) ClientBySecret(ctx context.Context, hash string) (access_do.Cli
 	err := r.engine.DB(ctx).Where("secret_hash = ?", hash).Take(&client).Error
 	return client, err
 }
+
+// ClientForUpdate 在调用方事务内锁定授权，与续期和撤销串行化。
+func (r *Access) ClientForUpdate(ctx context.Context, id string) (access_do.Client, error) {
+	var client access_do.Client
+	err := r.engine.DB(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).Take(&client).Error
+	return client, err
+}
+
+func (r *Access) ExtendBrowser(ctx context.Context, id string, expiresAtMS int64) error {
+	return r.engine.DB(ctx).Model(&access_do.Client{}).Where("id = ?", id).Update("expires_at_ms", expiresAtMS).Error
+}
 func (r *Access) Clients(ctx context.Context) ([]access_do.Client, error) {
 	var clients []access_do.Client
 	err := r.engine.DB(ctx).Where("revoked_at_ms IS NULL").Order("created_at_ms DESC, id").Limit(1001).Find(&clients).Error

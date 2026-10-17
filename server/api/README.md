@@ -5,7 +5,7 @@
 | 路由 | 客户端与权限 |
 | --- | --- |
 | POST /api/v1/pair | 匿名的一次性码交换入口；服务端固定用途、限速、4 KiB、严格 JSON |
-| GET /api/v1/session、POST /api/v1/logout | 管理浏览器自己的入口绑定会话 |
+| GET /api/v1/session、POST /api/v1/session、POST /api/v1/logout | 管理浏览器自己的入口绑定会话：只读恢复、14 天滑动续期、退出撤销 |
 | POST /api/v1/pairings | 管理员签发 admin/collector 用途的短期码 |
 | GET /api/v1/clients、POST /api/v1/clients/:id/revoke | 管理员查看/撤销客户端；历史不因撤销删除 |
 | POST /api/v1/projects/associate | 管理员显式关联/解除选定中心项目；普通来源更新保留管理关系 |
@@ -20,6 +20,10 @@
 账号关系只由本机同一 confirmed context 提供；邮箱不唯一，HMAC-only 历史保留待关联。Quota 不上传本地 window_generation，中心依据真实窗口/reset/时间建立周期；Reset Credits 不含 raw credit ID 或响应。传输凭据只在 Header/Cookie，不进入统计 DTO。批次只在事务提交后确认，重试相同批次返回原确认。
 
 仲裁、历史定价证据、纠正与来源预算的具体规则见 [共享上报协议](../../api/codexpulse/reporting/v1/README.md)。接收层以已鉴权 collector 为来源 owner，浏览器管理凭证不能上报或读取 collector-only 的同步进度。账号/额度/credits 先存储白名单事实与确认关系，中央周期/节奏由对应服务计算。
+
+## 浏览器会话滑动续期
+
+GET /api/v1/session 只读返回当前会话；POST 同一路由以空对象 body 和当前 Cookie、Origin、X-Pulse-CSRF 请求续期，返回相同 SessionView 并设置续期 Cookie。服务端在事务内重新检查 admin 用途、入口、撤销和当前有效期，更新为当前时间 +14 天且不缩短已有期限。过期或撤销返回401；缺失CSRF、错误Origin或collector管理请求拒绝。数据库失败不签发Cookie、不返回续期成功。现有有效会话直接沿用，配对码仍10分钟单次使用，不修改数据库结构。
 
 ## 管理端统计查询
 

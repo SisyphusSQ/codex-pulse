@@ -30,10 +30,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSession(null);
       setStatus('anonymous');
     };
-    api.session(controller.signal).then((value) => {
+    api.session(controller.signal).then(async (value) => {
       if (controller.signal.aborted) return;
       api.setSession(value);
-      setSession(value);
+      const renewed = await api.renewSession(controller.signal);
+      if (controller.signal.aborted) return;
+      setSession(renewed);
       setStatus('authenticated');
       setError(null);
     }).catch((cause: unknown) => {
