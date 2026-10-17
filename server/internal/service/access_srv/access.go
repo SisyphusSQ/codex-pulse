@@ -177,6 +177,37 @@ func (s *Access) Authenticate(ctx context.Context, credential, origin, csrf stri
 	return access_dto.Principal{ID: client.ID, Purpose: client.Purpose, Name: client.Name, Origin: client.Origin, ExpiresAtMS: client.ExpiresAtMS}, nil
 }
 
+// RenewBrowser 仅延长仍有效的当前浏览器；锁内重新检查，不能复活过期或撤销授权。
+func (s *Access) RenewBrowser(ctx context.Context, principal access_dto.Principal) (access_dto.Principal, error) {
+	if err := RequireAdmin(principal); err != nil {
+		return access_dto.Principal{}, err
+	}
+	var renewed access_dto.Principal
+	err := s.repository.Transaction(ctx, func(ctx context.Context) error {
+		client, err := s.repository.ClientForUpdate(ctx, principal.ID)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.ErrUnauthorized
+		}
+		if err != nil {
+			return err
+		}
+		now := s.now().UnixMilli()
+		if client.Purpose != access_dto.PurposeAdmin || principal.Origin == "" || client.Origin != principal.Origin || client.RevokedAtMS != nil || client.ExpiresAtMS == nil || *client.ExpiresAtMS <= now {
+			return utils.ErrUnauthorized
+		}
+		// 并发请求或时钟回拨时不缩短已生效窗口。
+		expiresAtMS := max(*client.ExpiresAtMS, now+browserLifetime.Milliseconds())
+		if expiresAtMS != *client.ExpiresAtMS {
+			if err := s.repository.ExtendBrowser(ctx, client.ID, expiresAtMS); err != nil {
+				return err
+			}
+		}
+		renewed = access_dto.Principal{ID: client.ID, Purpose: client.Purpose, Name: client.Name, Origin: client.Origin, ExpiresAtMS: new(expiresAtMS)}
+		return nil
+	})
+	return renewed, err
+}
+
 func (s *Access) Clients(ctx context.Context, principal access_dto.Principal) (access_vo.ClientListView, error) {
 	if err := RequireAdmin(principal); err != nil {
 		return access_vo.ClientListView{}, err

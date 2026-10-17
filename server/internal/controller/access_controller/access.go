@@ -28,6 +28,7 @@ func NewAccess(service *access_srv.Access, config config.Config) *Access {
 func (a *Access) Register(e *echo.Echo) {
 	e.POST("/api/v1/pair", a.Pair)
 	e.GET("/api/v1/session", a.Session)
+	e.POST("/api/v1/session", a.RenewSession)
 	e.POST("/api/v1/logout", a.Logout)
 	e.POST("/api/v1/pairings", a.Issue)
 	e.POST("/api/v1/pairings/revoke", a.RevokePairing)
@@ -55,7 +56,7 @@ func (a *Access) Pair(c *echo.Context) error {
 	if request.Mode == "collector" {
 		return vo.CommSuccResp(c, access_vo.CollectorPairView{ClientID: paired.Principal.ID, Credential: paired.Credential, ProtocolVersion: reportingv1.Version})
 	}
-	c.SetCookie(&http.Cookie{Name: apphttp.SessionCookieName(origin), Value: paired.Credential, Path: "/", HttpOnly: true, Secure: strings.HasPrefix(origin, "https://"), SameSite: http.SameSiteStrictMode, Expires: time.UnixMilli(*paired.ExpiresAtMS)})
+	setSessionCookie(c, origin, paired.Credential, *paired.ExpiresAtMS)
 	return vo.CommSuccResp(c, access_vo.SessionView{ClientID: paired.Principal.ID, Name: paired.Principal.Name, Purpose: paired.Principal.Purpose, CSRF: paired.CSRF, ExpiresAtMS: paired.ExpiresAtMS})
 }
 
@@ -69,6 +70,25 @@ func (a *Access) Session(c *echo.Context) error {
 		return utils.ErrUnauthorized
 	}
 	return vo.CommSuccResp(c, access_vo.SessionView{ClientID: principal.ID, Name: principal.Name, Purpose: principal.Purpose, CSRF: access_srv.CSRFToken(cookie.Value, principal.Origin), ExpiresAtMS: principal.ExpiresAtMS})
+}
+
+// RenewSession 通过统一 Origin/CSRF 鉴权后续期，GET 会话查询保持只读。
+func (a *Access) RenewSession(c *echo.Context) error {
+	principal := apphttp.Principal(c)
+	cookie, err := c.Request().Cookie(apphttp.SessionCookieName(principal.Origin))
+	if err != nil {
+		return utils.ErrUnauthorized
+	}
+	renewed, err := a.service.RenewBrowser(c.Request().Context(), principal)
+	if err != nil {
+		return err
+	}
+	setSessionCookie(c, renewed.Origin, cookie.Value, *renewed.ExpiresAtMS)
+	return vo.CommSuccResp(c, access_vo.SessionView{ClientID: renewed.ID, Name: renewed.Name, Purpose: renewed.Purpose, CSRF: access_srv.CSRFToken(cookie.Value, renewed.Origin), ExpiresAtMS: renewed.ExpiresAtMS})
+}
+
+func setSessionCookie(c *echo.Context, origin, credential string, expiresAtMS int64) {
+	c.SetCookie(&http.Cookie{Name: apphttp.SessionCookieName(origin), Value: credential, Path: "/", HttpOnly: true, Secure: strings.HasPrefix(origin, "https://"), SameSite: http.SameSiteStrictMode, Expires: time.UnixMilli(expiresAtMS)})
 }
 
 func (a *Access) Logout(c *echo.Context) error {

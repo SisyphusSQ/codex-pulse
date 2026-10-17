@@ -12,6 +12,39 @@ beforeEach(() => { api.setSession(null); window.location.hash = '#/'; fetcher.mo
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('browser authorization', () => {
+  it('renews the restored session with CSRF before opening the application', async () => {
+    const renewed = { ...syntheticSession, expires_at_ms: Date.now() + 14 * 86400000 };
+    fetcher.mockImplementation(async (path, options) => {
+      if (path === '/api/v1/session') return success(options?.method === 'POST' ? renewed : syntheticSession);
+      return success([]);
+    });
+    render(<PulseApp queryClient={createQueryClient()} />);
+    await screen.findByRole('button', { name: '退出授权' });
+    const calls = fetcher.mock.calls.filter(([path]) => path === '/api/v1/session');
+    expect(calls.map(([, options]) => options?.method)).toEqual(['GET', 'POST']);
+    expect(calls[1][1]).toMatchObject({ credentials: 'same-origin', headers: { 'X-Pulse-CSRF': syntheticSession.csrf }, body: '{}' });
+    expect(localStorage.length).toBe(0);expect(sessionStorage.length).toBe(0);
+  });
+
+  it('shows a retryable error when renewal fails and recovers without pairing', async () => {
+    let failRenewal = true;
+    fetcher.mockImplementation(async (path, options) => {
+      if (path === '/api/v1/session') {
+        if (options?.method === 'POST' && failRenewal) return new Response('', { status: 503 });
+        return success(syntheticSession);
+      }
+      return success([]);
+    });
+    render(<PulseApp queryClient={createQueryClient()} />);
+    await screen.findByText('数据未能读取');
+    expect(screen.queryByRole('button', { name: '退出授权' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('浏览器配对码')).not.toBeInTheDocument();
+    failRenewal = false;
+    await userEvent.setup().click(screen.getByRole('button', { name: '重新读取' }));
+    await screen.findByRole('button', { name: '退出授权' });
+    expect(fetcher.mock.calls.filter(([path, options]) => path === '/api/v1/session' && options?.method === 'POST')).toHaveLength(2);
+  });
+
   it('shows pairing failure in a notification and preserves the entered code without inserting a form alert', async () => {
     fetcher.mockImplementation(async path => new Response('', { status: path === '/api/v1/session' ? 401 : 409 }));
     render(<PulseApp queryClient={createQueryClient()} />);

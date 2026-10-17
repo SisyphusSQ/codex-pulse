@@ -86,6 +86,7 @@ export class ApiClient {
   }
 
   async session(signal?: AbortSignal) { return readSession(await this.request<unknown>('/api/v1/session', { signal })); }
+  async renewSession(signal?: AbortSignal) { return readSession(await this.request<unknown>('/api/v1/session', { body: {}, signal })); }
   async pair(code: string) { return readSession(await this.request<unknown>('/api/v1/pair', { body: { code, mode: 'browser' } })); }
   logout() { return this.request<{ applied: boolean }>('/api/v1/logout', { body: {} }); }
 }
