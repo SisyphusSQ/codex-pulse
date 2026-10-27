@@ -17,7 +17,7 @@ import (
 	access_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/access_srv"
 )
 
-//go:embed models-20261002.json
+//go:embed models-20261027.json
 var publicModels []byte
 
 //go:embed plans-20261002.json
@@ -38,7 +38,7 @@ func (s *Catalog) Current(ctx context.Context, p access_dto.Principal) (out cata
 }
 
 func (s *Catalog) current(ctx context.Context) (out catalog_vo.Response, err error) {
-	out.Version = "reference-2026-10-02"
+	out.Version = "reference-2026-10-27"
 	out.Models = []catalog_vo.Model{}
 	out.Plans = []catalog_vo.Plan{}
 	if err = json.Unmarshal(publicModels, &out.Models, json.RejectUnknownMembers(true)); err != nil {

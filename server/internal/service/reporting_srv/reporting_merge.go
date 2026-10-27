@@ -47,7 +47,7 @@ func pricingEvidence(s reportingv1.SessionSnapshot) int {
 	return known
 }
 func enrichable(a, b reportingv1.SessionSnapshot) bool {
-	// 相同 Token 身份允许 unknown -> 已有历史价格证据，不覆盖两份不同的已知价格。
+	// 相同 Token 身份允许 unknown -> 已有历史价格证据；继承相同费率的目录版本不制造冲突。
 	facts := make(map[string]reportingv1.Contribution)
 	for _, c := range a.Contributions {
 		facts[c.ID] = c
@@ -57,12 +57,20 @@ func enrichable(a, b reportingv1.SessionSnapshot) bool {
 		if !ok {
 			continue
 		}
-		if previous.CostStatus == "known" && c.CostStatus == "known" && !reflect.DeepEqual(previous, c) {
+		if previous.CostStatus == "known" && c.CostStatus == "known" && !samePricedContribution(previous, c) {
 			return false
 		}
 	}
 	return true
 }
+
+// samePricedContribution 只忽略目录版本标签；模型、Token、费率及金额必须完全相同。
+// 目录增补新型号时旧型号费率会继承到新版本，保留原快照的版本来源。
+func samePricedContribution(a, b reportingv1.Contribution) bool {
+	a.PricingVersion, b.PricingVersion = nil, nil
+	return reflect.DeepEqual(a, b)
+}
+
 func mergeCandidates(sources []reporting_dto.SourceSnapshot) (out []candidate) {
 	dashboard := make(map[string]int)
 	for _, source := range sources {

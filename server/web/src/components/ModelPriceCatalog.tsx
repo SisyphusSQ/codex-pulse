@@ -5,8 +5,8 @@ import {Link} from 'react-router-dom';
 import {referenceAmount,sourceLink,type ModelPrice} from '../api/catalog';
 import {dayjs,dateTime,providerNames} from '../format';
 
-// 2026-10-03 核对 https://learn.chatgpt.com/docs/models；旧型号仍可从实际用量和历史证据查阅。
-const codexReferenceModels=new Set(['gpt-6.1-sol','gpt-6-astra','gpt-6-sol','gpt-6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna']);
+// 2026-10-27 增补 Terra；原目录 2026-10-03 核对 https://learn.chatgpt.com/docs/models；旧型号仍可从实际用量和历史证据查阅。
+const codexReferenceModels=new Set(['gpt-6.1-terra','gpt-6.1-sol','gpt-6-astra','gpt-6-sol','gpt-6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna']);
 type Scope='related'|'used'|'history';
 interface ModelGroup extends ModelPrice {rates:ModelPrice[];used:boolean;usageModel:string}
 interface Props {models:ModelPrice[];used:ReadonlySet<string>;provider:string;initialSearch?:string;initialVersion?:string;usageError?:Error|null;usageLoading?:boolean}
@@ -26,7 +26,7 @@ function isReferenceRate(row:ModelPrice,used:boolean):boolean {
 }
 function baselineOrder(a:ModelPrice,b:ModelPrice):number {
  const rank=(r:ModelPrice)=>r.evidence==='observed'?10:(/Ultrafast/i.test(r.mode)?4:/Fast/i.test(`${r.mode} ${r.model}`)?2:0)+(/长上下文|500k/i.test(`${r.mode} ${r.model}`)?1:0);
- return rank(a)-rank(b)||(b.effective_from_ms??b.verified_at_ms)-(a.effective_from_ms??a.verified_at_ms)||a.key.localeCompare(b.key);
+ return rank(a)-rank(b)||Number(/缓存12小时/.test(a.mode))-Number(/缓存12小时/.test(b.mode))||(b.effective_from_ms??b.verified_at_ms)-(a.effective_from_ms??a.verified_at_ms)||a.key.localeCompare(b.key);
 }
 function releaseOrder(a:ModelPrice,b:ModelPrice):number {
  const left=a.released_at_ms??-Infinity,right=b.released_at_ms??-Infinity;
@@ -40,7 +40,7 @@ const releaseDate=(row:ModelPrice)=>row.released_at_ms==null?'未知':dayjs(row.
 const priceColumns=(keys:('input_price'|'cached_price'|'cache_write_price'|'output_price')[])=>keys.map(key=>({title:({input_price:'输入',cached_price:'缓存输入',cache_write_price:'缓存写入',output_price:'输出'})[key],align:'right' as const,width:110,...decimalSorter<ModelPrice>(r=>r[key]),render:(_:unknown,row:ModelPrice)=>referenceAmount(row[key],row.currency)}));
 
 function RateDetails({row}:{row:ModelGroup}) {
- const special=row.rates.filter(r=>r.evidence==='current'&&isReferenceRate(r,row.used)&&r.key!==row.key).sort(baselineOrder);
+ const special=row.rates.filter(r=>r.evidence==='current'&&(isReferenceRate(r,row.used)||r.currency==='USD'&&r.unit==='1M tokens'&&/Batch|Flex/i.test(r.mode))&&r.key!==row.key).sort(baselineOrder);
  const credits=row.rates.filter(r=>r.evidence==='current'&&r.currency==='credits');
  const historical=row.rates.filter(r=>r.evidence==='historical');
  const ratesTable=(rates:ModelPrice[])=><Table<ModelPrice> rowKey="key" size="small" dataSource={rates} pagination={false} scroll={{x:850}} columns={[{title:'更新日期',...decimalSorter<ModelPrice>(r=>r.effective_from_ms??r.verified_at_ms,true),render:(_,r)=>dayjs(r.effective_from_ms??r.verified_at_ms).utc().format('YYYY-MM-DD')},{title:'计费条件',width:240,render:(_,r)=><>{r.mode}{r.model!==row.model&&<div className="metric-note">{r.model}</div>}<div className="metric-note">{r.currency} / {r.unit}</div></>},...priceColumns(['input_price','cached_price','cache_write_price','output_price']),{title:'来源与说明',width:240,render:(_,r)=><>{source(r.source_url)}<div className="metric-note">{r.version}</div><div className="metric-note">{r.notes}</div></>}]} />;

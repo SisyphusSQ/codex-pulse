@@ -41,7 +41,7 @@ struct QuotaPaceStateView: View {
 private struct QuotaPaceCenterView: View {
     let response: Codexpulse_Core_V1_QuotaPaceResponse
     let currentWindows: [Codexpulse_Core_V1_CurrentWindow]
-    @State private var selectedWindowID: String?
+    @State private var selectedWindowID: String? = nil
 
     private var windows: [QuotaPaceWindowPresentation] {
         response.pace.windows.map {
@@ -86,8 +86,9 @@ private struct QuotaPaceCenterView: View {
             }
         }
         .accessibilityIdentifier("quota.pace.center")
-        .onAppear { normalizeSelection() }
-        .onChange(of: windows.map(\.id)) { _, _ in normalizeSelection() }
+        .onChange(of: windows.map(\.id), initial: true) { _, ids in
+            selectedWindowID = SegmentedSelection.resolved(selectedWindowID, in: ids)
+        }
     }
 
     @ViewBuilder
@@ -109,54 +110,11 @@ private struct QuotaPaceCenterView: View {
     }
 
     private var windowPicker: some View {
-        GeometryReader { geometry in
-            let width = QuotaPaceWindowPickerLayout.width(
-                availableWidth: geometry.size.width,
-                segmentedIdealWidth: segmentedPickerIdealWidth
-            )
-            picker
-                .pickerStyle(.segmented)
-                .tint(.blue)
-                .frame(width: width, height: 26)
-                .clipped()
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .labelsHidden()
-        }
-        .frame(height: 26)
+        DynamicSegmentedSelector(
+            choices: windows.map { SegmentedChoice(id: $0.id, title: localizedCopy(title(for: $0))) },
+            selection: $selectedWindowID
+        )
         .accessibilityIdentifier("quota.pace.window-picker")
-    }
-
-    private var picker: some View {
-        Picker("额度窗口", selection: selectedWindowBinding) {
-            ForEach(windows) { window in
-                Text(localizedCopy(title(for: window))).tag(window.id)
-            }
-        }
-    }
-
-    private var segmentedPickerIdealWidth: CGFloat {
-        let control = NSSegmentedControl(
-            labels: windows.map { localizedCopy(title(for: $0)) },
-            trackingMode: .selectOne,
-            target: nil,
-            action: nil
-        )
-        control.controlSize = .regular
-        return control.fittingSize.width
-    }
-
-    private var selectedWindowBinding: Binding<String> {
-        Binding(
-            get: { selectedWindow?.id ?? "" },
-            set: { selectedWindowID = $0 }
-        )
-    }
-
-    private func normalizeSelection() {
-        if let selectedWindowID, windows.contains(where: { $0.id == selectedWindowID }) {
-            return
-        }
-        selectedWindowID = windows.first?.id
     }
 
     private func title(for window: QuotaPaceWindowPresentation) -> String {

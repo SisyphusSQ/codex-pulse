@@ -37,7 +37,7 @@ it('groups modes around the standard rate, hides irrelevant API rows and keeps e
  vi.stubGlobal('fetch',async(path:RequestInfo|URL)=>new Response(JSON.stringify({code:200,data:String(path).includes('/statistics/usage')?usage:{version:'test',models,plans:[]}})));
  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter><Pricing /></MemoryRouter></QueryClientProvider>);
  await screen.findByText('gpt-6.1-sol');const row=screen.getByRole('row',{name:/gpt-6.1-sol Standard/});expect(within(row).getByText('$2.00')).toBeInTheDocument();expect(screen.getAllByRole('link',{name:'查看用量'})).toHaveLength(2);expect(screen.queryByText('text-embedding-3-small')).not.toBeInTheDocument();expect(screen.queryByText('gpt-3.5-turbo')).not.toBeInTheDocument();expect(screen.queryByText('Batch · 短上下文')).not.toBeInTheDocument();
- const user=userEvent.setup();await user.click(within(row).getByRole('button',{name:/展开行|Expand row/}));await user.click(screen.getByRole('button',{name:'其他计费条件（2）'}));expect(screen.getByText('Fast · 短上下文')).toBeInTheDocument();expect(screen.getByText('Standard · 长上下文')).toBeInTheDocument();expect(screen.queryByText('Batch · 短上下文')).not.toBeInTheDocument();await user.click(screen.getByRole('button',{name:'订阅 Credits 参考'}));expect(screen.getByText('Standard · Codex Credits')).toBeInTheDocument();
+ const user=userEvent.setup();await user.click(within(row).getByRole('button',{name:/展开行|Expand row/}));await user.click(screen.getByRole('button',{name:'其他计费条件（3）'}));expect(screen.getByText('Fast · 短上下文')).toBeInTheDocument();expect(screen.getByText('Standard · 长上下文')).toBeInTheDocument();expect(screen.getByText('Batch · 短上下文')).toBeInTheDocument();await user.click(screen.getByRole('button',{name:'订阅 Credits 参考'}));expect(screen.getByText('Standard · Codex Credits')).toBeInTheDocument();
  await user.click(screen.getByRole('tab',{name:'订阅与额度'}));await user.click(screen.getByRole('tab',{name:'模型价格'}));await user.click(screen.getByText('近30天已使用'));await waitFor(()=>expect(screen.getAllByRole('link',{name:'查看用量'})).toHaveLength(1));expect(screen.getByRole('link',{name:'查看用量'})).toHaveAttribute('href','/usage/models?provider=cursor&model=Composer%202.5%20(Fast)');
 });
 
@@ -74,4 +74,21 @@ it('shows DSH OpenAI reference and historical prices with DSH usage links',async
  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={['/pricing?provider=dsh']}><Pricing /></MemoryRouter></QueryClientProvider>);
  await screen.findByText('gpt-6.1-sol');expect(screen.getByText('$2.00')).toBeInTheDocument();expect(screen.getByRole('link',{name:'查看用量'})).toHaveAttribute('href','/usage/models?provider=dsh&model=gpt-6.1-sol');
  await userEvent.setup().click(screen.getByText('历史计价'));expect(await screen.findByText('gpt-6.1-sol')).toBeInTheDocument();expect(screen.getByText('$0.10')).toBeInTheDocument();
+});
+
+it('shows unused Terra and its retention, Batch and Flex conditions from the new public catalog',async()=>{
+ const models=(await import('../../../internal/service/catalog_srv/models-20261027.json')).default;
+ vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({code:200,data:{version:'reference-2026-10-27',models,plans:[]}})));
+ render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={['/pricing?provider=codex']}><Pricing /></MemoryRouter></QueryClientProvider>);
+ const row=await screen.findByRole('row',{name:/gpt-6.1-terra Standard · 短上下文/});
+ expect(within(row).getByText('$1.00')).toBeInTheDocument();
+ expect(within(row).getByText('$0.05')).toBeInTheDocument();
+ expect(within(row).getByText('$5.00')).toBeInTheDocument();
+ expect(within(row).getByRole('link',{name:'查看用量'})).toHaveAttribute('href','/usage/models?provider=codex&model=gpt-6.1-terra');
+ const user=userEvent.setup();await user.click(within(row).getByRole('button',{name:/展开行|Expand row/}));
+ await user.click(screen.getByRole('button',{name:'其他计费条件（15）'}));
+ expect(screen.getByText('Standard · 短上下文 · 缓存12小时')).toBeInTheDocument();
+ expect(screen.getByText('Batch · 短上下文')).toBeInTheDocument();
+ expect(screen.getByText('Flex · 长上下文')).toBeInTheDocument();
+ expect(screen.getByText('Fast · 长上下文 · 缓存12小时')).toBeInTheDocument();
 });

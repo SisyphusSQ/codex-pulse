@@ -100,3 +100,131 @@ func TestDSHCodexHistoricalCostRevisionAndThreeDeviceCopies(t *testing.T) {
 		t.Fatal("copies duplicated the session", err)
 	}
 }
+
+func TestTerraHistoricalCostRevisionAndThreeDeviceCopies(t *testing.T) {
+	stats, reporting, admin, clients := statisticsFixture(t)
+	snapshot := throughputSnapshot()
+	snapshot.Provider, snapshot.SourceKind = "dsh", "dsh_local"
+	for i := range snapshot.Contributions {
+		c := &snapshot.Contributions[i]
+		c.Model = new("gpt-6.1-terra")
+		c.PricingMode, c.CostStatus = "event_cost", "unpriced"
+		c.CostMicroUSD, c.Rates, c.PricingVersion = nil, nil, nil
+	}
+	fixStatisticsIDs(&snapshot)
+	for _, client := range clients {
+		centerfixture.SendSnapshot(t, reporting, client, snapshot)
+	}
+	q := statisticsTestQuery(t, url.Values{"provider": {"dsh"}, "start_at_ms": {"0"}, "end_at_ms": {"4000000"}})
+	before, err := stats.Usage(t.Context(), admin, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decimal(t, before.Totals.TotalTokens, "2000")
+	snapshot.Revision++
+	for i := range snapshot.Contributions {
+		c := &snapshot.Contributions[i]
+		id := reportingv1.ContributionID(snapshot.Provider, snapshot.SessionID, *c, 0)
+		c.CostStatus = "known"
+		c.CostMicroUSD = new(int64(10000))
+		c.PricingVersion = new("openai-api-2026-10-26")
+		if c.ID != id {
+			t.Fatal("cost changed identity")
+		}
+	}
+	// 同一设备先补费用，其他两台仍是未计价副本；canonical 应采用更完整的价格证据。
+	for _, client := range clients {
+		centerfixture.SendSnapshot(t, reporting, client, snapshot)
+		centerfixture.SendSnapshot(t, reporting, client, snapshot)
+		after, err := stats.Usage(t.Context(), admin, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decimal(t, after.Totals.TotalTokens, "2000")
+		decimal(t, after.Totals.CostMicroUSD, "20000")
+		if len(after.Models) != 1 || after.Models[0].Provider != "dsh" || len(after.Totals.PricingVersions) != 1 || after.Totals.PricingVersions[0] != "openai-api-2026-10-26" {
+			t.Fatal("historical cost or DSH identity lost", after)
+		}
+	}
+	list, err := stats.Sessions(t.Context(), admin, q)
+	if err != nil || len(list.Items) != 1 {
+		t.Fatal("copies duplicated the session", err)
+	}
+}
+
+func TestTerraMixedSessionRollingUpgradeKeepsCostAndDeduplicates(t *testing.T) {
+	for _, provider := range []string{"codex", "dsh"} {
+		t.Run(provider, func(t *testing.T) {
+			stats, reporting, admin, clients := statisticsFixture(t)
+			old := throughputSnapshot()
+			old.Provider = provider
+			old.SourceKind = "light_index"
+			if provider == "dsh" {
+				old.SourceKind = "dsh_local"
+			}
+			for i := range old.Contributions {
+				c := &old.Contributions[i]
+				c.Model, c.CostStatus = new("gpt-6.1-terra"), "unpriced"
+				c.Rates, c.CostMicroUSD, c.PricingVersion = nil, nil, nil
+				c.PricingMode = "codex_model_sum"
+				if provider == "dsh" {
+					c.PricingMode = "event_cost"
+				}
+			}
+			sol := &old.Contributions[0]
+			sol.Model, sol.CostStatus = new("gpt-6.1-sol"), "known"
+			sol.PricingVersion = new("openai-api-2026-09-29")
+			if provider == "codex" {
+				sol.Rates = &reportingv1.Rates{InputMicroUSD: new(int64(2_000_000)), CachedMicroUSD: new(int64(100_000)), OutputMicroUSD: new(int64(10_000_000))}
+			} else {
+				sol.CostMicroUSD = new(int64(10_000))
+			}
+			fixStatisticsIDs(&old)
+			for _, client := range clients {
+				centerfixture.SendSnapshot(t, reporting, client, old)
+			}
+			upgraded := old
+			upgraded.Revision++
+			upgraded.Contributions = append([]reportingv1.Contribution(nil), old.Contributions...)
+			for i := range upgraded.Contributions {
+				upgraded.Contributions[i].PricingVersion = new("openai-api-2026-10-26")
+			}
+			terra := &upgraded.Contributions[1]
+			terra.CostStatus = "known"
+			if provider == "codex" {
+				terra.Rates = &reportingv1.Rates{InputMicroUSD: new(int64(1_000_000)), CachedMicroUSD: new(int64(50_000)), OutputMicroUSD: new(int64(5_000_000))}
+			} else {
+				terra.CostMicroUSD = new(int64(5_000))
+			}
+			q := statisticsTestQuery(t, url.Values{"provider": {provider}, "start_at_ms": {"0"}, "end_at_ms": {"4000000"}})
+			assertCost := func() {
+				t.Helper()
+				usage, err := stats.Usage(t.Context(), admin, q)
+				if err != nil {
+					t.Fatal(err)
+				}
+				decimal(t, usage.Totals.TotalTokens, "2000")
+				decimal(t, usage.Totals.CostMicroUSD, "15000")
+				if usage.Coverage.ConflictedSessions != 0 {
+					t.Fatal("catalog-only changes created conflict", usage.Coverage)
+				}
+				sessions, err := stats.Sessions(t.Context(), admin, q)
+				if err != nil || len(sessions.Items) != 1 {
+					t.Fatal("rolling upgrade duplicated session", err)
+				}
+			}
+			centerfixture.SendSnapshot(t, reporting, clients[1], upgraded)
+			assertCost()
+			// The old Helper can continue to publish a higher local revision without Terra prices.
+			old.Revision = 3
+			centerfixture.SendSnapshot(t, reporting, clients[0], old)
+			assertCost()
+			for _, client := range clients {
+				upgraded.Revision = 4
+				centerfixture.SendSnapshot(t, reporting, client, upgraded)
+				centerfixture.SendSnapshot(t, reporting, client, upgraded)
+				assertCost()
+			}
+		})
+	}
+}

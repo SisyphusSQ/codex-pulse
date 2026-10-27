@@ -84,7 +84,7 @@ func TestDSHCodexUsesHistoricalOpenAIPriceAndExclusiveTokenBuckets(t *testing.T)
 		t.Fatal("current price rewrote historical price", before, after)
 	}
 	peak, ok := DSHRateAt("openai-codex", "gpt-6.1-sol", time.Date(2027, 1, 4, 2, 0, 0, 0, time.UTC).UnixMilli())
-	if !ok || peak != rate {
+	if !ok || peak.InputMicros != rate.InputMicros || peak.CachedMicros != rate.CachedMicros || peak.OutputMicros != rate.OutputMicros || peak.Period != "" {
 		t.Fatal("OpenAI used DeepSeek calendar", peak, ok)
 	}
 }

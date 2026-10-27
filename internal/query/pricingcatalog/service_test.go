@@ -270,3 +270,58 @@ func TestDSHReferenceIncludesOpenAIWithoutClaimingOnePriceSource(t *testing.T) {
 		t.Fatal("DSH OpenAI model omitted")
 	}
 }
+
+func TestCurrentReturnsGPT61TerraStandardPrices(t *testing.T) {
+	t.Parallel()
+	catalog := pricing.BuiltinOpenAI20261026()
+	service, err := NewService(&readerStub{catalog: catalog}, func() time.Time {
+		return time.UnixMilli(catalog.VerifiedAtMS)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := service.Current(t.Context(), agentprovider.Scope{Provider: agentprovider.Codex})
+	if err != nil || got.PricingVersion != catalog.PricingVersion || got.Basis != BasisStandard {
+		t.Fatalf("Current(6.1 Terra) = %#v, %v", got, err)
+	}
+	for _, item := range got.Items {
+		if item.ModelID != "gpt-6.1-terra" {
+			continue
+		}
+		if item.InputMicros.Value == nil || *item.InputMicros.Value != 1_000_000 ||
+			item.CachedInputMicros.Value == nil || *item.CachedInputMicros.Value != 50_000 ||
+			item.OutputMicros.Value == nil || *item.OutputMicros.Value != 5_000_000 ||
+			item.CacheWriteMicros.Value != nil {
+			t.Fatalf("6.1 Terra reference price = %#v", item)
+		}
+		return
+	}
+	t.Fatal("6.1 Terra reference price missing")
+}
+
+func TestDSHTerraReferenceKeepsMixedSourceAndProvider(t *testing.T) {
+	at := time.Date(2026, 10, 27, 2, 0, 0, 0, time.UTC)
+	service, err := NewService(&readerStub{}, func() time.Time { return at })
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := service.Current(t.Context(), agentprovider.Scope{Provider: agentprovider.DSH})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.SourceURL != nil || out.ProviderContext.EffectiveProvider != agentprovider.DSH || out.Basis != "dsh_provider_api_reference" || out.PricingVersion != "deepseek-usd-2026-10-06+openai-api-2026-10-26" {
+		t.Fatal("mixed catalog claimed a single source", out)
+	}
+	found := false
+	for _, item := range out.Items {
+		if item.ModelID == "OpenAI / gpt-6.1-terra" {
+			found = true
+			if item.InputMicros.Value == nil || *item.InputMicros.Value != 1_000_000 || item.CachedInputMicros.Value == nil || *item.CachedInputMicros.Value != 50_000 || item.OutputMicros.Value == nil || *item.OutputMicros.Value != 5_000_000 || item.CacheWriteMicros.Value != nil {
+				t.Fatal("wrong OpenAI rate", item)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("DSH OpenAI model omitted")
+	}
+}

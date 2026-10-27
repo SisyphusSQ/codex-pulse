@@ -8,8 +8,8 @@ import (
 func TestGPT61SolCatalogPreservesHistoryAndIndependentCopies(t *testing.T) {
 	t.Parallel()
 	versions := BuiltinOpenAICatalog()
-	if len(versions) != 8 {
-		t.Fatalf("catalog versions = %d, want 8", len(versions))
+	if len(versions) != 9 {
+		t.Fatalf("catalog versions = %d, want 9", len(versions))
 	}
 	current, previous := versions[7], versions[6]
 	if current.PricingVersion != "openai-api-2026-09-29" ||
