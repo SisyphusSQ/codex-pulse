@@ -248,3 +248,12 @@ func TestSessionTitleIsStableOpaqueAndContentFree(t *testing.T) {
 		t.Fatalf("missing title = %#v", missing)
 	}
 }
+
+func TestGPT61TerraNormalization(t *testing.T) {
+	for _, raw := range []string{"gpt-6.1-terra", " OpenAI/GPT-6.1-Terra ", "codex:gpt-6.1-terra"} {
+		got := NormalizeModel(raw)
+		if got.Key != "gpt-6.1-terra" || got.DisplayName != "GPT-6.1 Terra" {
+			t.Fatalf("normalized = %#v", got)
+		}
+	}
+}

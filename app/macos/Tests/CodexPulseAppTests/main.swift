@@ -496,6 +496,7 @@ private func testReferencePriceFormattingPreservesPrecisionAndUnknown() throws {
         "gpt-6-sol",
         "gpt-6-luna",
         "gpt-6.1-sol",
+        "gpt-6.1-terra",
     ] {
         try expect(
             ReferencePriceFormatter.shouldDisplay(modelID: visibleModel),
@@ -11271,24 +11272,63 @@ private func testQuotaPacePlotBorderShapeStaysInsideThePlotArea() throws {
     )
 }
 
-private func testQuotaPaceWindowPickerUsesIntrinsicWidthOnDedicatedRow() throws {
-    try expect(
-        QuotaPaceWindowPickerLayout.width(
-            availableWidth: 620,
-            segmentedIdealWidth: 511
-        ) == 511,
-        "quota pace must give the segmented picker its full intrinsic width on a dedicated row"
-    )
+private func testSegmentedSelectionTransitions() throws {
+    try expect(SegmentedSelection.resolved("c", in: ["a", "b", "c"]) == "c", "keep valid ID")
+    try expect(SegmentedSelection.resolved("c", in: []) == nil, "empty has no selection")
+    try expect(SegmentedSelection.resolved("c", in: ["a"]) == "a", "shrink resolves before render")
+    try expect(SegmentedSelection.resolved("c", in: ["x", "y"]) == "x", "replacement uses first")
+    try expect(SegmentedSelection.resolved("c", in: ["c", "a", "b"]) == "c", "reorder keeps ID")
+    try expect(SegmentedSelection.moved("c", in: ["a", "b", "c"], by: 1) == "c", "right boundary")
+    try expect(SegmentedSelection.moved("c", in: ["a", "b", "c"], by: -1) == "b", "left navigation")
+    try expect(SegmentedSelection.moved(nil, in: [], by: -1) == nil, "empty navigation")
 }
 
-private func testQuotaPaceWindowPickerNeverExceedsDedicatedRowWidth() throws {
-    try expect(
-        QuotaPaceWindowPickerLayout.width(
-            availableWidth: 360,
-            segmentedIdealWidth: 511
-        ) == 360,
-        "quota pace must keep the segmented picker inside its dedicated row"
-    )
+@MainActor
+private func testDynamicSegmentedSelectorMountedUpdates() async throws {
+    let selected = SelectionBox()
+    func selector(_ ids: [String]) -> DynamicSegmentedSelector {
+        DynamicSegmentedSelector(
+            choices: ids.map { SegmentedChoice(id: $0, title: "额度窗口 \($0) · Weekly allowance") },
+            selection: Binding(get: { selected.value }, set: { selected.value = $0 })
+        )
+    }
+    func containsSegmentedControl(_ view: NSView) -> Bool {
+        view is NSSegmentedControl || view.subviews.contains(where: containsSegmentedControl)
+    }
+    let host = NSHostingView(rootView: selector(["a", "b", "c"]))
+    host.frame = NSRect(x: 0, y: 0, width: 360, height: 80)
+    let window = NSWindow(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = host
+    defer { window.contentView = nil }
+    for _ in 0..<20 {
+        for ids in [[], ["a"], ["a", "b"], ["x", "y", "z"], ["c", "b", "a"], ["a", "b", "c"]] {
+            selected.value = "c"
+            host.rootView = selector(ids)
+            host.needsLayout = true
+            host.layoutSubtreeIfNeeded()
+            try await sleepForTest(.milliseconds(2))
+            try expect(selected.value == SegmentedSelection.resolved("c", in: ids), "mounted updates must normalize selected ID")
+            try expect(!containsSegmentedControl(host), "dynamic window selector must not create NSSegmentedControl")
+            try expect(host.fittingSize.width <= 360, "long window labels must fit a narrow row")
+        }
+    }
+    // Continue from the live binding rather than resetting the selected ID at every refresh.
+    let transitions: [([String], String?)] = [
+        (["a", "b"], "a"), (["b", "a"], "a"), ([], nil),
+        (["c", "a"], "c"), (["x"], "x"), (["a", "b", "c"], "a"),
+    ]
+    for (ids, expected) in transitions {
+        host.rootView = selector(ids)
+        host.needsLayout = true
+        host.layoutSubtreeIfNeeded()
+        try await sleepForTest(.milliseconds(2))
+        try expect(selected.value == expected, "successive refreshes must preserve valid IDs without resurrecting a removed selection")
+    }
+}
+
+@MainActor
+private final class SelectionBox {
+    var value: String? = "c"
 }
 
 private func testQuotaPaceXAxisKeepsBoundaryLabelsWithoutBoundaryGridLines() throws {
@@ -13607,6 +13647,12 @@ struct CodexPulseAppTestMain {
             print("CodexPulseApp quota refresh tests passed")
             return
         }
+        if CommandLine.arguments.contains("--quota-window-only") {
+            try testSegmentedSelectionTransitions()
+            try await testDynamicSegmentedSelectorMountedUpdates()
+            print("CodexPulseApp dynamic quota window tests passed")
+            return
+        }
         if CommandLine.arguments.contains("--pricing-only") {
             try testReferencePriceFormattingPreservesPrecisionAndUnknown()
             try testQuotaUsageShowsIndependentReferencePriceCatalogAndBillingBoundary()
@@ -13789,8 +13835,8 @@ struct CodexPulseAppTestMain {
         try testQuotaPacePresentationAnchorsSingleUsedObservationAtCycleStart()
         try testQuotaPaceIdealReferenceShapeRunsFromTopLeftToBottomRight()
         try testQuotaPacePlotBorderShapeStaysInsideThePlotArea()
-        try testQuotaPaceWindowPickerUsesIntrinsicWidthOnDedicatedRow()
-        try testQuotaPaceWindowPickerNeverExceedsDedicatedRowWidth()
+        try testSegmentedSelectionTransitions()
+        try await testDynamicSegmentedSelectorMountedUpdates()
         try testQuotaPaceXAxisKeepsBoundaryLabelsWithoutBoundaryGridLines()
         try testEnglishQuotaPaceComparisonPreservesArgumentTypesWhenWordOrderChanges()
         try testQuotaPaceForecastUsesCoarseRelativeUnitsAndHonestFallbacks()

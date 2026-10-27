@@ -169,6 +169,23 @@ func BuiltinOpenAI20260929() CatalogVersion {
 	return catalog
 }
 
+// BuiltinOpenAI20261026 从官方发布日 UTC 日界增补 GPT-6.1 Terra。
+// 发布日来源为官方 API changelog；边界只表示日粒度基础文本估算。
+func BuiltinOpenAI20261026() CatalogVersion {
+	catalog := BuiltinOpenAI20260929()
+	catalog.PricingVersion = "openai-api-2026-10-26"
+	catalog.EffectiveFromMS = 1792972800000
+	catalog.CreatedAtMS = 1793067098166
+	catalog.VerifiedAtMS = 1793067098166
+	catalog.Models = append(catalog.Models, ModelPrice{
+		MatchKind: ModelMatchExact, ModelPattern: "gpt-6.1-terra", Priority: 100,
+		InputMicrosPerMillion:       new(int64(1_000_000)),
+		CachedInputMicrosPerMillion: new(int64(50_000)),
+		OutputMicrosPerMillion:      new(int64(5_000_000)),
+	})
+	return catalog
+}
+
 // BuiltinOpenAICatalog 返回按生效时间升序排列的完整内置价格历史。
 func BuiltinOpenAICatalog() []CatalogVersion {
 	return []CatalogVersion{
@@ -180,6 +197,7 @@ func BuiltinOpenAICatalog() []CatalogVersion {
 		BuiltinOpenAI20260905(),
 		BuiltinOpenAI20260922(),
 		BuiltinOpenAI20260929(),
+		BuiltinOpenAI20261026(),
 	}
 }
 

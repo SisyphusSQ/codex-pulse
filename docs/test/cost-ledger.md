@@ -227,3 +227,13 @@ make verify
 - 只清理本轮产生的 ignored build/package artifacts，不删除仓库外本地归档、已有 `.artifacts/runs/` 或其他未跟踪内容。
 - closeout 前把 PENDING 更新为真实结果；未执行的 gate 不得写成 PASS。
 - Issue/PR 记录 `actions_disabled_by_user`，普通 Execution Issue 不触发 release。
+
+## GPT-6.1 Terra（TOO-654）
+
+追加第九版不可变目录 `openai-api-2026-10-26`，exact key `gpt-6.1-terra`，Standard 基础文本 input/cached/output 为每百万 Token `$1/$0.05/$5`。发布日来自 [官方 API Changelog](https://developers.openai.com/api/docs/changelog) 的 2026-10-26 条目，`effective_from_ms=1792972800000` 为 UTC 日界，只代表日粒度估算。核对时刻 `1793067098166`，价格来自 [官方模型页](https://developers.openai.com/api/docs/models/gpt-6.1-terra)。旧八版 metadata 与费率不变；未知 suffix、snapshot 和无后缀 `gpt-6.1` 仍无价。
+
+本机维持 Standard 基础文本 API 等价估算，不根据型号或聚合 Token 推断 Fast、长上下文、缓存写入保留时间或订阅扣费。中心公开参考目录单独列出这些已核实条件，缓存写入区分 30 分钟/12 小时；当前目录不重估已接受历史费用。DSH `openai-codex` 按请求时间复用此版本，仍属 DSH，input/cache/output 使用互斥分量，output 已含 reasoning。
+
+回归入口：`go test ./internal/pricing ./internal/attribution ./internal/lightindex ./internal/store ./internal/query/pricingcatalog ./internal/reporting ./internal/dshprovider -run 'GPT61|Terra|Current|TestDSH|TestReportingExport|TestTokenScannerRestores|TestNormalizeModel'`。Terra 升级测试先装旧八版、写入已结构化 Token，再两次安装新目录；验证概览、会话、项目统一从无价变为 `$1.56`，检查点及 Token 不变。样例为 100 万 input（含 20 万 cached）、10 万 output、5 万独立 reasoning。补报测试验证排队旧批次不可变、新 revision 使用相同贡献身份；中心三设备副本与重复批次不重复累计。
+
+本次聚焦入口通过；完整 CI、生产、三台真实设备 E2E 与长期运行不由这些测试证明。相关证据与限制见 [TOO-654 验证记录](too-654-terra-segmented.md)。

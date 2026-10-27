@@ -454,13 +454,16 @@ private struct CursorOverviewContentView: View {
 			VStack(alignment: .trailing, spacing: 6) {
 				HStack(spacing: 8) {
 					Text("分析范围").font(.subheadline).foregroundStyle(.secondary)
-					Picker("分析范围", selection: rangeBinding) {
-						ForEach(ranges) { range in
-							Text(verbatim: localization.textValue(range.title)).tag(range)
-						}
-					}
-					.labelsHidden()
-					.pickerStyle(.segmented)
+					DynamicSegmentedSelector(
+						choices: ranges.map { SegmentedChoice(id: $0.rawValue, title: localization.textValue($0.title)) },
+						selection: Binding(
+							get: { selectedRange.rawValue },
+							set: { value in
+								guard let value, let range = DateRangePreset(rawValue: value), ranges.contains(range) else { return }
+								onSelectRange(range)
+							}
+						)
+					)
 					.frame(width: 340)
 				}
 				if let dataAsOf = overview.dataAsOfMS {
@@ -470,13 +473,6 @@ private struct CursorOverviewContentView: View {
 				}
 			}
 		}
-	}
-
-	private var rangeBinding: Binding<DateRangePreset> {
-		Binding(
-			get: { selectedRange },
-			set: { value in onSelectRange(value) }
-		)
 	}
 
 	private func activityNotice(_ summary: CursorOverviewSummaryPresentation) -> some View {

@@ -51,3 +51,9 @@ V0.15.1 正式订阅页复用批准的购买页层级：Codex、Cursor、Grok �
 DSH 的 `openai-codex` 模型继续属于 DSH 客户端。中心价目表增加该路由适用的 OpenAI Standard 基础文本参考快照及历史价格版本，默认参考视图和历史视图均能查阅；已观测且已有参考证据的型号不再标成参考价未知。用量入口、模型/设备筛选与历史深链仍使用 `provider=dsh`。
 
 实际费用由 Mac Helper 按请求时间和 DSH 互斥 Token 分量计算，上报 event_cost 与原 OpenAI 版本；中心保留上报结果，不套 DeepSeek 峰谷规则或用当前目录重算。旧已索引事实重新导出后按同一贡献身份的更高 revision 补齐费用，多机 unknown → known 副本不重复计数。Web 说明为“模型 API 公价估算”，区分 DeepSeek 峰谷价和 OpenAI 历史价，不能当成订阅实际扣费或额度。无需 API/DDL/权限变更；来源与验证见 [DSH](../providers/dsh.md) 和 [验证记录](../../../test/dsh-provider.md)。
+
+## TOO-654：GPT-6.1 Terra
+
+中心模型参考快照增补 Terra，保留旧条目核对时间与订阅目录；Standard 短上下文为默认，其他模式、长上下文、30 分钟/12 小时缓存写入展开查看。Batch/Flex 作为附加条件可见，不参与默认基础行选择。发布日期按官方 Changelog 的 2026-10-26 UTC 自然日独立记录。当前公开价不重估历史上报；Mac 和 DSH 继续使用不可变的 Standard 基础文本历史目录，费用补齐以同一贡献身份的更高 revision 上报。无 Core/Reporting contract 或 DDL 变更。
+
+TOO-654 二次 Review：对于同一贡献身份的两份已知价格证据，只有目录版本标签不同，而模型、Token、计价模式、费率和金额全部一致时，允许作为等价证据参与 unknown → known 补价；保留各来源快照原始版本。实际费率、金额或模型差异继续标记冲突，不取较高/较低值，也不跨不可比较副本拼接。该规则覆盖 Codex rates 与 DSH event_cost 的分批升级。

@@ -14,7 +14,7 @@ import (
 	catalog_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/catalog_vo"
 )
 
-//go:embed releases-20261003.json
+//go:embed releases-20261027.json
 var publicReleases []byte
 
 func applyModelReleases(models []catalog_vo.Model) error {

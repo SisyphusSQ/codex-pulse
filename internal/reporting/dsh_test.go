@@ -29,7 +29,7 @@ func TestDSHCollectorExporterDurableQueueAndDisable(t *testing.T) {
 	for _, tc := range []struct {
 		route, model string
 		cost         int64
-	}{{"deepseek-account", "deepseek-flash", 136}, {"openai-codex", "gpt-6.1-sol", 2230}} {
+	}{{"deepseek-account", "deepseek-flash", 136}, {"openai-codex", "gpt-6.1-sol", 2230}, {"openai-codex", "gpt-6.1-terra", 1115}} {
 		t.Run(tc.route, func(t *testing.T) {
 			ctx := t.Context()
 			root := t.TempDir()
@@ -48,6 +48,9 @@ func TestDSHCollectorExporterDurableQueueAndDisable(t *testing.T) {
 			state, statePath := testState(t)
 			prefs := &dshTestPreferences{snapshot: preferences.Snapshot{Providers: preferences.DefaultProviderPreferences()}}
 			at := time.Date(2026, 10, 6, 2, 0, 0, 0, time.UTC).UnixMilli()
+			if tc.model == "gpt-6.1-terra" {
+				at = time.Date(2026, 10, 27, 2, 0, 0, 0, time.UTC).UnixMilli()
+			}
 			logs := filepath.Join(root, "sessions")
 			sessionDir := filepath.Join(logs, "project", "session")
 			if err := os.MkdirAll(sessionDir, 0700); err != nil {
@@ -175,6 +178,63 @@ func TestDSHCostRevisionKeepsContributionAndQueuedHistory(t *testing.T) {
 	snap.Contributions[0].CostStatus = "known"
 	snap.Contributions[0].CostMicroUSD = new(int64(20))
 	snap.Contributions[0].PricingVersion = new("openai-api-2026-09-29")
+	if id := reportingv1.ContributionID(snap.Provider, snap.SessionID, snap.Contributions[0], 0); id != snap.Contributions[0].ID {
+		t.Fatal("price altered contribution identity")
+	}
+	if err := state.Enqueue(ctx, "center", "new", snap); err != nil {
+		t.Fatal(err)
+	}
+	unchanged, err := state.next(ctx, "center")
+	if err != nil || string(unchanged.Body) != string(old.Body) {
+		t.Fatal("pending old batch mutated", err)
+	}
+	if err := state.Ack(ctx, old, reportingv1.Receipt{Version: 1, BatchID: old.BatchID}); err != nil {
+		t.Fatal(err)
+	}
+	next, err := state.next(ctx, "center")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var batch reportingv1.Batch
+	if err := json.Unmarshal(next.Body, &batch); err != nil {
+		t.Fatal(err)
+	}
+	if err := batch.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	revision := batch.Sessions[0]
+	if revision.Revision != 2 || len(revision.Contributions) != 1 || revision.Contributions[0].ID != snap.Contributions[0].ID || revision.Contributions[0].CostMicroUSD == nil || *revision.Contributions[0].CostMicroUSD != 20 {
+		t.Fatal("historical price revision lost", revision)
+	}
+	if err := state.Enqueue(ctx, "center", "repeat", snap); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Ack(ctx, next, reportingv1.Receipt{Version: 1, BatchID: next.BatchID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.next(ctx, "center"); err == nil {
+		t.Fatal("same price revision was repeated")
+	}
+}
+
+func TestTerraCostRevisionKeepsContributionAndQueuedHistory(t *testing.T) {
+	state, _ := testState(t)
+	ctx := t.Context()
+	snap := testSnapshot()
+	snap.Provider, snap.SourceKind = "dsh", "dsh_local"
+	snap.Contributions[0].Model = new("gpt-6.1-terra")
+	snap.Contributions[0].PricingMode = "event_cost"
+	snap.Contributions[0].ID = reportingv1.ContributionID(snap.Provider, snap.SessionID, snap.Contributions[0], 0)
+	if err := state.Enqueue(ctx, "center", "old", snap); err != nil {
+		t.Fatal(err)
+	}
+	old, err := state.next(ctx, "center")
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap.Contributions[0].CostStatus = "known"
+	snap.Contributions[0].CostMicroUSD = new(int64(20))
+	snap.Contributions[0].PricingVersion = new("openai-api-2026-10-26")
 	if id := reportingv1.ContributionID(snap.Provider, snap.SessionID, snap.Contributions[0], 0); id != snap.Contributions[0].ID {
 		t.Fatal("price altered contribution identity")
 	}
