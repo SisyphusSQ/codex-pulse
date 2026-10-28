@@ -26,9 +26,12 @@ internal static class QuotaSummary
             var remaining=known?window.RemainingPercent.ToString("N0",l.Culture)+"%":"—";
             var row=new StackPanel { Spacing=5 };
             row.Children.Add(PresentationControls.Text(name+" · "+duration+" · "+l.Text("剩余 ","Remaining ")+remaining,16));
-            var progress=new ProgressBar { Minimum=0,Maximum=100,Value=known?window.RemainingPercent:0, Height=6, Foreground=known?new SolidColorBrush(window.RemainingPercent>40?ColorHelper.FromArgb(255,44,157,89):window.RemainingPercent>20?ColorHelper.FromArgb(255,184,135,13):ColorHelper.FromArgb(255,210,66,66)):Charts.NeutralBrush };
-            AutomationProperties.SetName(progress,name+" · "+remaining+" · "+(known?window.RemainingPercent>40?l.Text("正常","Normal"):window.RemainingPercent>20?l.Text("需要关注","Needs attention"):l.Text("需要处理","Action required"):l.Text("暂不可用","Unavailable")));
-            row.Children.Add(progress);
+            if(known)
+            {
+                var progress=new ProgressBar { Minimum=0,Maximum=100,Value=window.RemainingPercent,Height=6,Foreground=new SolidColorBrush(window.RemainingPercent>40?ColorHelper.FromArgb(255,44,157,89):window.RemainingPercent>20?ColorHelper.FromArgb(255,184,135,13):ColorHelper.FromArgb(255,210,66,66)) };
+                AutomationProperties.SetName(progress,name+" · "+remaining+" · "+(window.RemainingPercent>40?l.Text("正常","Normal"):window.RemainingPercent>20?l.Text("需要关注","Needs attention"):l.Text("需要处理","Action required")));
+                row.Children.Add(progress);
+            }
             var freshness=window.Freshness=="fresh" || !known?"":l.Text(" · 上次可信额度"," · Last known quota");
             row.Children.Add(PresentationControls.Text(l.Text("重置时间 ","Resets ")+l.Timestamp(window.HasResetsAtMs?window.ResetsAtMs:null)+freshness,12));
             body.Children.Add(row);
