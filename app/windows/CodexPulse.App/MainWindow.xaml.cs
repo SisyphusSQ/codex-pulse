@@ -21,6 +21,7 @@ public sealed partial class MainWindow : Window
     public Workspace Workspace { get; } = new();
     public Localization Localization { get; } = new();
     public FeatureClient Client { get; }
+    public AnalysisNavigation Analysis {get;}=new();
     public HelperSession? Session { get; private set; }
     public SettingsResponse? Settings { get; private set; }
     public string BundleVersion { get; } = typeof(MainWindow).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
@@ -50,6 +51,8 @@ public sealed partial class MainWindow : Window
         Client = new(() => Session?.Connection.Raw ?? throw new IOException("helper_disconnected"));
         PageCatalog.Register(Feature.Summary, host => new DashboardPage(host));
         PageCatalog.Register(Feature.Overview, host => new OverviewPage(host));
+        PageCatalog.Register(Feature.Sessions, host => new SessionsPage(host));
+        PageCatalog.Register(Feature.Projects, host => new ProjectsPage(host));
         InitializeComponent();
         try { preferences = WindowPreferences.Load(Options.Runtime); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or System.Security.SecurityException)
@@ -73,6 +76,7 @@ public sealed partial class MainWindow : Window
     public void Navigate(Feature feature) { Selection = null; Workspace.Navigate(feature); }
     public void OpenSession(string id, UTCTimeRange range) { Selection = new(Feature.Sessions, id, range.Clone()); Workspace.Navigate(Feature.Sessions); }
     public void OpenProject(string dimension, UTCTimeRange range) { Selection = new(Feature.Projects, dimension, range.Clone()); Workspace.Navigate(Feature.Projects); }
+    public void OpenProjectList(string project,UTCTimeRange range) {Selection=new(Feature.Projects,"",range.Clone(),project);Workspace.Navigate(Feature.Projects);}
     public void OpenProvider(string provider) { applying=true; Workspace.SelectProvider(provider); applying=false; Navigate(Feature.Overview); }
     public void SetPageState(LoadKind state) => PageStatus.Text = Localization.State(state);
     public void SetPageState(FeaturePage owner, LoadKind state) { if (ReferenceEquals(owner, page)) SetPageState(state); }
@@ -163,6 +167,7 @@ public sealed partial class MainWindow : Window
                 {
                     if (change is null || change.Domain is "account" or "settings")
                     {
+                        Analysis.Clear();Selection=null;
                         page?.Cancel(); Client.Invalidate(); Workspace.ResetContext();
                     }
                     pendingDomains.Add(change?.Domain ?? "settings");

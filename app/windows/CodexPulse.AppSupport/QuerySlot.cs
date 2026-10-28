@@ -1,7 +1,7 @@
 namespace CodexPulse.AppSupport;
 
 public enum LoadKind { Idle, Loading, Ready, Empty, Partial, Stale, Unavailable, Cancelled, RecoveryBlocked }
-public sealed record LoadState<T>(LoadKind Kind, T? Value = default, string? Reason = null) where T : class;
+public sealed record LoadState<T>(LoadKind Kind, T? Value = default, string? Reason = null, string? Field = null) where T : class;
 
 // Each view owns a slot. A replacement request invalidates the old completion even
 // when a transport ignores cancellation; previous values survive only in the same context.
@@ -40,9 +40,10 @@ public sealed class QuerySlot<T> : IDisposable where T : class
         catch (OperationCanceledException) { Publish(version, new(LoadKind.Cancelled, previous)); }
         catch (Grpc.Core.RpcException error)
         {
-            var reason = CodexPulse.CoreClient.CoreConnection.ErrorDetail(error)?.Code ?? error.StatusCode.ToString();
+            var detail = CodexPulse.CoreClient.CoreConnection.ErrorDetail(error);
+            var reason = detail?.Code ?? error.StatusCode.ToString();
             if (error.StatusCode == Grpc.Core.StatusCode.Cancelled) Publish(version, new(LoadKind.Cancelled, previous));
-            else Publish(version, new(previous is null ? LoadKind.Unavailable : LoadKind.Stale, previous, reason));
+            else Publish(version, new(previous is null ? LoadKind.Unavailable : LoadKind.Stale, previous, reason, detail?.HasField==true?detail.Field:null));
         }
         catch (IOException) { Publish(version, new(previous is null ? LoadKind.Unavailable : LoadKind.Stale, previous, "connection")); }
         finally

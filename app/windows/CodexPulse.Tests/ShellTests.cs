@@ -36,6 +36,10 @@ internal static class ShellTests
         Require(slot.State.Kind == LoadKind.Unavailable && slot.State.Value is null, "different context cannot retain previous account values");
         slot.Clear(true);
         Require(slot.State.Kind == LoadKind.RecoveryBlocked && slot.State.Value is null, "recovery blocks normal values");
+        var cursorError=new Google.Rpc.Status{Code=(int)StatusCode.InvalidArgument,Message="query request is invalid"};
+        cursorError.Details.Add(Google.Protobuf.WellKnownTypes.Any.Pack(new ErrorDetail{Code="validation",Field="turnPage.cursor",MessageKey="query.validation"}));
+        await slot.LoadAsync("typed-cursor",_=>Task.FromException<BootstrapResponse>(cursorError.ToRpcException()));
+        Require(slot.State is{Kind:LoadKind.Unavailable,Reason:"validation",Field:"turnPage.cursor"},"typed cursor failure keeps the responsible field for targeted page reset");
 
         var client = new FeatureClient(() => null!);
         var context = new QueryContext("codex", new(2026,10,28), new(2026,10,29), "Asia/Hong_Kong", 1);

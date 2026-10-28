@@ -97,3 +97,17 @@ POSIX FIFO fixture 仅在 Unix 执行；Windows 原生非普通对象边界以 j
 - 原生检查中发现并修复：范围标题截断、小时横轴错用时间戳 offset 后缀、日期切换抢走焦点、年度缓存受当前范围影响，以及未归类项目名称空白。最终仅保留安全项目名/聚合在 UI；无正文、账号凭据或原始日志进入提交版材料。
 
 这些是本卡开发与局部真实窗口证据，未声明完整真实源事实→Helper→UI/Server 对账、最终索引完成或 Master 通过。当前 Windows 环境未执行 macOS 同视口实际窗口比较；仅对齐产品合同和 Mac 页面结构。多显示器/DPI 与最终业务矩阵留在 Master 集成验收。Cursor/Grok/DSH 本轮真实环境验收按用户明确豁免；fixture 不作为真实通过。安全自查：查询只走受鉴权 CoreService，客户端不读取业务文件/凭据、不重算账本，年度与当前覆盖分离，opaque 下钻状态只在内存。
+
+## 会话与项目开发验证
+
+2026-10-29：
+
+- C# `dotnet run --project app/windows/CodexPulse.Tests --no-restore` 65 项断言通过。分析页新增覆盖 opaque cursor 原样回传/返回/重置、防重复下一页、Provider 与范围、服务端筛选/排序、精确毫秒区间 clone、ProjectDetail 范围互斥、普通日期下钻不截到 now、unknown confidence、缓存/TPS 真实零与未知、单位转换、跨 Provider 选择隔离及两类贡献 cursor 独立。typed RPC error 的 cursor field 也已回归。
+- 最终 WinUI locked/no-restore 构建成功（0 warnings/errors）。本卡只改 C# 与文档，沿用 E09 已通过的 Go UsageCost/DashboardSummary 合同证据，不重复运行未修改的 Go 包；无 Proto/Go/Swift 生产合同变化。
+- 原生窗口真实 Home＋ACL 私有 runtime 的进程/参数/preferences 身份读回全部一致，摘要 `9c883cdeaa79cca0`。实际查看中文 1400×960 DIP 分栏与 760×720 DIP 列表/详情布局、长标题、缓存与 TPS、键盘 Down 切会话、详情返回后重新打开同一项、真实未归类项目和关联项目/会话下钻。
+- 真实列表切每页 10 条后执行下一页/上一页，第二页显示剩余结果且无虚构下一页。精确项目筛选从 13 条返回对应 1 条；Ctrl+R 重查期间保留尚未应用的筛选草稿。API 等价金额/Token 及 unknown 沿用 Helper，不把分页行重新聚合成总量。
+- 实际失败与修复：关联项目曾因同时提交 local range 与 exact_range 被 Helper 拒绝，改用互斥请求构造后重新走真实路径，已归类项目详情恢复；普通列表下钻结束时间误截到 now 已修复并在原生读回中保留至下一日本地零点。还修复旧实体内容残留、筛选草稿被刷新覆盖、同项返回后无法再次打开及不可读的列表辅助功能名称，并补充空轮次说明。
+
+未执行：已选真实代表样本没有返回超过 20 条的单个项目模型/Session contribution 页或会话轮次页，未穷举其他样本；相关 cursor 独立性和请求合同由开发断言覆盖，不能写成真实多页通过。同名不同项目以身份保持与展示规则处理，当前未取得真实重复名样本。最终源事实与中心同范围对账仍归 Master；本卡中文实际窗口不代替最终完整中英文/DPI/多屏矩阵。其余 Provider 的真实验收按用户豁免。
+
+安全自查：仅调用已鉴权 Core RPC；原始正文、Agent 凭据、业务数据库和 JSONL 不进入 C#；使用静态原生模板的数据绑定，不拼接数据为 XAML；opaque identity/cursor 只在进程内，按上下文取消与隔离。提交/合并收尾复用本轮证据，不重复测试或宣称无 CI 的 PR 已通过 CI。
