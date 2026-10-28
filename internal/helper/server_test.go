@@ -92,7 +92,7 @@ func TestGRPCServerAuthenticatesHandshakeAndNegotiatesContract(t *testing.T) {
 		t.Fatalf("Handshake(valid) error = %v", err)
 	}
 	if response.ContractVersion != core.ContractVersion || response.HelperVersion != "test-helper" ||
-		response.QueryVersion != basequery.ContractVersion || response.Transport != "grpc+unix" {
+		response.QueryVersion != basequery.ContractVersion || response.Transport != transportName {
 		t.Fatalf("Handshake(valid) response = %#v", response)
 	}
 

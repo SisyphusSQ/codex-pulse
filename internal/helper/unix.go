@@ -1,3 +1,5 @@
+//go:build !windows
+
 package helper
 
 import (
@@ -11,6 +13,12 @@ import (
 )
 
 const maxUnixSocketPathBytes = 103
+
+const transportName = "grpc+unix"
+
+func listenEndpoint(config RuntimeConfig) (net.Listener, func() error, error) {
+	return ListenUnix(config.SocketPath)
+}
 
 var ErrUnsafeUnixSocket = errors.New("helper unix socket is unsafe")
 

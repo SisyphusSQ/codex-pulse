@@ -237,7 +237,7 @@ func (api *grpcAPI) Handshake(
 	}
 	return &corev1.HandshakeResponse{
 		HelperVersion: api.helperVersion, ContractVersion: core.ContractVersion,
-		QueryVersion: basequery.ContractVersion, Transport: "grpc+unix",
+		QueryVersion: basequery.ContractVersion, Transport: transportName,
 	}, nil
 }
 

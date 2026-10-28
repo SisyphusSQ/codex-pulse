@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
@@ -41,8 +40,7 @@ type updatesFileCursor struct {
 	size     int64
 	modNano  int64
 	offset   int64
-	device   uint64
-	inode    uint64
+	identity string
 	usage    []store.GrokUsageEvent
 	tools    []store.GrokToolEvent
 	turns    map[string]int64
@@ -334,8 +332,8 @@ func mergeUpdates(
 	if err != nil {
 		return 0, updatesFileCursor{}
 	}
-	device, inode, hasIdentity := fileIdentity(info)
-	sameFile := hasIdentity && previous.inode != 0 && previous.device == device && previous.inode == inode
+	identity, hasIdentity := fileIdentity(path, info)
+	sameFile := hasIdentity && previous.identity != "" && previous.identity == identity
 	unchanged := sameFile && previous.size == info.Size()
 	if unchanged {
 		replayUpdatesCursor(previous, snapshot)
@@ -378,8 +376,8 @@ func mergeUpdates(
 	afterRequests, afterTools := sessionCounts(snapshot, sessionID)
 	cursor := updatesFileCursor{
 		size: info.Size(), modNano: info.ModTime().UnixNano(), offset: offset,
-		device: device, inode: inode,
-		usage: fileUsageEvents(snapshot, sessionID), tools: fileToolEvents(snapshot, sessionID),
+		identity: identity,
+		usage:    fileUsageEvents(snapshot, sessionID), tools: fileToolEvents(snapshot, sessionID),
 		turns:    map[string]int64{},
 		newTools: map[string]int64{},
 	}
@@ -426,14 +424,6 @@ func replayUpdatesCursor(cursor updatesFileCursor, snapshot *collectedSnapshot) 
 			session.ToolCallCount += count
 		}
 	}
-}
-
-func fileIdentity(info os.FileInfo) (uint64, uint64, bool) {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, 0, false
-	}
-	return uint64(stat.Dev), uint64(stat.Ino), true
 }
 
 func sessionCounts(snapshot *collectedSnapshot, sessionID string) (int64, int64) {

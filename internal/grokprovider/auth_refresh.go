@@ -1,7 +1,6 @@
 package grokprovider
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,10 +13,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
 var ErrAuthRefreshFailed = errors.New("grok authentication refresh failed")
@@ -29,7 +27,8 @@ const (
 )
 
 type authFileLock struct {
-	file *os.File
+	file      *os.File
+	closeFile func() error
 }
 
 type oidcMetadata struct {
@@ -98,24 +97,24 @@ func acquireAuthFileLock(ctx context.Context, authPath string) (*authFileLock, e
 	lockPath := filepath.Join(filepath.Dir(authPath), "auth.json.lock")
 	deadline := time.Now().Add(authLockTimeout)
 	for {
-		file, err := openAuthLockFile(lockPath)
+		file, closeFile, err := openAuthLockFile(lockPath)
 		if err != nil {
 			return nil, ErrAuthRefreshFailed
 		}
-		err = unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
-		if err == nil && authLockInodeIsLive(file, lockPath) {
+		locked, err := platformfs.TryLock(file)
+		if locked && authLockInodeIsLive(file, lockPath) {
 			if writeAuthLockHolder(file) != nil {
-				_ = unix.Flock(int(file.Fd()), unix.LOCK_UN)
-				_ = file.Close()
+				_ = platformfs.Unlock(file)
+				_ = closeFile()
 				return nil, ErrAuthRefreshFailed
 			}
-			return &authFileLock{file: file}, nil
+			return &authFileLock{file: file, closeFile: closeFile}, nil
 		}
-		if err == nil {
-			_ = unix.Flock(int(file.Fd()), unix.LOCK_UN)
+		if locked {
+			_ = platformfs.Unlock(file)
 		}
-		_ = file.Close()
-		if err != nil && !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
+		_ = closeFile()
+		if err != nil {
 			return nil, ErrAuthRefreshFailed
 		}
 		if !time.Now().Before(deadline) {
@@ -131,39 +130,6 @@ func acquireAuthFileLock(ctx context.Context, authPath string) (*authFileLock, e
 		case <-timer.C:
 		}
 	}
-}
-
-func openAuthLockFile(path string) (*os.File, error) {
-	descriptor, err := unix.Open(
-		path, unix.O_RDWR|unix.O_CREAT|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0o600,
-	)
-	if err != nil {
-		return nil, err
-	}
-	file := os.NewFile(uintptr(descriptor), path)
-	if file == nil {
-		_ = unix.Close(descriptor)
-		return nil, ErrAuthRefreshFailed
-	}
-	info, err := file.Stat()
-	stat, statOK := infoSyscallStat(info)
-	if err != nil || !info.Mode().IsRegular() || !statOK || stat.Nlink != 1 {
-		_ = file.Close()
-		return nil, ErrAuthRefreshFailed
-	}
-	if err := file.Chmod(0o600); err != nil {
-		_ = file.Close()
-		return nil, err
-	}
-	return file, nil
-}
-
-func infoSyscallStat(info os.FileInfo) (*syscall.Stat_t, bool) {
-	if info == nil {
-		return nil, false
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	return stat, ok
 }
 
 func authLockInodeIsLive(file *os.File, path string) bool {
@@ -189,8 +155,8 @@ func (lock *authFileLock) release() {
 	if lock == nil || lock.file == nil {
 		return
 	}
-	_ = unix.Flock(int(lock.file.Fd()), unix.LOCK_UN)
-	_ = lock.file.Close()
+	_ = platformfs.Unlock(lock.file)
+	_ = lock.closeFile()
 }
 
 func (reader *AuthReader) refreshOIDCCredential(
@@ -382,37 +348,4 @@ func (reader *AuthReader) persistRefreshedCredential(scopeKey string, account gr
 func mustMarshalAuthString(value string) json.RawMessage {
 	encoded, _ := json.Marshal(value)
 	return encoded
-}
-
-func writeAuthFileAtomic(path string, content []byte) error {
-	file, err := os.CreateTemp(filepath.Dir(path), ".auth.json.*.tmp")
-	if err != nil {
-		return err
-	}
-	temporary := file.Name()
-	defer func() { _ = os.Remove(temporary) }()
-	if err := file.Chmod(0o600); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if _, err := io.Copy(file, bytes.NewReader(content)); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(temporary, path); err != nil {
-		return fmt.Errorf("replace auth file: %w", err)
-	}
-	directory, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer directory.Close()
-	return directory.Sync()
 }

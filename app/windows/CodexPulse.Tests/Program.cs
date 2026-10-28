@@ -18,3 +18,6 @@ Require(methods.Single(m => m.Name == "SubscribeInvalidations").IsServerStreamin
     "invalidation retains server streaming contract");
 Require(methods.Single(m => m.Name == "UpdateAPICredential").IsServerStreaming == false,
     "credential mutation uses generated unary contract");
+
+if (args.Length == 3 && args[0] == "--transport") await TransportTests.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]));
+if (args.Length == 3 && args[0] == "--wire-peer") await TransportTests.WirePeer(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]));
