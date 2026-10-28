@@ -6,13 +6,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
@@ -812,8 +812,8 @@ func TestSessionDetailStoreToQueryFallbackDoesNotExposeAggregateTrend(t *testing
 
 	ctx := context.Background()
 	dataDirectory := filepath.Join(t.TempDir(), "private")
-	if err := os.Mkdir(dataDirectory, 0o700); err != nil {
-		t.Fatalf("os.Mkdir(private data directory) error = %v", err)
+	if err := platformfs.Mkdir(dataDirectory, 0o700); err != nil {
+		t.Fatalf("platformfs.Mkdir(private data directory) error = %v", err)
 	}
 	database, err := storesqlite.Open(ctx, storesqlite.Config{
 		Path: filepath.Join(dataDirectory, "session-fallback.db"),
@@ -944,8 +944,8 @@ func TestSessionDetailStoreToQueryPreservesRepeatedDSTHour(t *testing.T) {
 
 	ctx := context.Background()
 	dataDirectory := filepath.Join(t.TempDir(), "private")
-	if err := os.Mkdir(dataDirectory, 0o700); err != nil {
-		t.Fatalf("os.Mkdir(private data directory) error = %v", err)
+	if err := platformfs.Mkdir(dataDirectory, 0o700); err != nil {
+		t.Fatalf("platformfs.Mkdir(private data directory) error = %v", err)
 	}
 	database, err := storesqlite.Open(ctx, storesqlite.Config{
 		Path: filepath.Join(dataDirectory, "session-dst.db"),
@@ -963,8 +963,8 @@ func TestSessionDetailStoreToQueryPreservesRepeatedDSTHour(t *testing.T) {
 	if err := repository.EnsureApplicationSchema(ctx); err != nil {
 		t.Fatalf("EnsureApplicationSchema() error = %v", err)
 	}
-	home := storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
-	rolloutPath := "/confirmed-home/sessions/repeated-hour.jsonl"
+	home := storelight.LightHomeIdentity{Path: t.TempDir(), DeviceID: "1", Inode: 2}
+	rolloutPath := filepath.Join(home.Path, "sessions", "repeated-hour.jsonl")
 	if err := lightRepository.ReplaceLightMetadata(ctx, storelight.LightMetadataSnapshot{
 		Home: home, Generation: 1, ReadyAtMS: 1_000,
 		Sessions: []storelight.LightSessionMetadata{{

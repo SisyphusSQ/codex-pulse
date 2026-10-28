@@ -21,4 +21,4 @@ Require(methods.Single(m => m.Name == "UpdateAPICredential").IsServerStreaming =
 
 if (args.Length == 3 && args[0] == "--transport") await TransportTests.Run(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]));
 if (args.Length == 3 && args[0] == "--wire-peer") await TransportTests.WirePeer(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]));
-if (args.Length == 0) await ShellTests.Run();
+if (args.Length == 0) { await ShellTests.Run(); DashboardTests.Run(); }

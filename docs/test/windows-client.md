@@ -85,3 +85,15 @@ POSIX FIFO fixture 仅在 Unix 执行；Windows 原生非普通对象边界以 j
 本节只证明基础壳层、权威启动/Provider 状态及展示机制。汇总/分析/管理页面、托盘、完整恢复/故障和安装/中心闭环仍由后续卡与 Master 完成。独立 physical DPI/多屏组合、完整恢复窗口与 Helper 异常的原生矩阵尚未执行，不能据此声称全产品 UI 或 Master 已通过。
 
 安全自查：C# 仅消费 CoreService 与窗口平台偏好，不读取业务 SQLite/JSONL/Agent 凭据；查询缓存有界且隔离，mutation 未知先读回，新增探针不输出完整环境或秘密。提交/合并阶段复用上述开发证据，不重复测试。
+
+## 汇总与概览开发验证
+
+2026-10-29：
+
+- `dotnet run --project app/windows/CodexPulse.Tests --no-restore`：44 项断言通过。新增验证覆盖真实通用周额度边界、明确回退、周期溢出、25 小时 DST 日期、int64 图表对账、unknown 不补零、模型 bucket 不匹配时保留总量、年度完整/partial/全未知、昨日续接 streak、年度 totals 漂移、页面范围独立及小时横轴不误用 UTC offset。
+- `go test ./internal/query/dashboardsummary ./internal/query/usagecost -count=1 -timeout=90s` 的两包分别通过。DashboardSummary 的 Codex/Cursor/Grok/DSH fixture 验证已知子集、年度局部失败、reported 与 estimated 独立、模型命名空间及 DSH 无官方额度。UsageCost 首轮暴露两个 Unix 目录权限夹具，替换为现有 platformfs 私有目录入口；DST 夹具的 rollout/Home 路径改为平台绝对路径后，该包通过。没有放宽生产权限或身份校验。
+- WinUI/Helper locked build 和客户端 locked/no-restore build 成功，0 warnings / 0 errors。无新增依赖、Proto 或业务计价变化。
+- 实际原生窗口使用真实 Home 和已有 ACL 私有开发 runtime；App/Helper 环境、父子关系、runtime 参数、Preferences 物理身份全部读回一致，脱敏身份摘要仍为 `9c883cdeaa79cca0`。已查看英文宽窗口、中文/英文 760×720 DIP 窄窗口，额度周期/今日范围、年度热力图、当前用量、模型环图/构成条、小时趋势、星期小时热力图、真实长会话名和项目排行。窄窗口排行纵向排列，图表 Tooltip 显示真实时间/offset/单位，未知日格不伪造零。
+- 原生检查中发现并修复：范围标题截断、小时横轴错用时间戳 offset 后缀、日期切换抢走焦点、年度缓存受当前范围影响，以及未归类项目名称空白。最终仅保留安全项目名/聚合在 UI；无正文、账号凭据或原始日志进入提交版材料。
+
+这些是本卡开发与局部真实窗口证据，未声明完整真实源事实→Helper→UI/Server 对账、最终索引完成或 Master 通过。当前 Windows 环境未执行 macOS 同视口实际窗口比较；仅对齐产品合同和 Mac 页面结构。多显示器/DPI 与最终业务矩阵留在 Master 集成验收。Cursor/Grok/DSH 本轮真实环境验收按用户明确豁免；fixture 不作为真实通过。安全自查：查询只走受鉴权 CoreService，客户端不读取业务文件/凭据、不重算账本，年度与当前覆盖分离，opaque 下钻状态只在内存。

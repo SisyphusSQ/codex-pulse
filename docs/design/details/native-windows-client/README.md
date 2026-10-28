@@ -72,3 +72,13 @@ AppSupport 的 Workspace、QuerySlot 与 FeatureClient 不依赖 WinUI。缓存�
 业务偏好由 Go 独占。C# 只在当前用户 `HKCU\Software\CodexPulse\Windows\Profiles\<runtime 摘要>` 保存窗口主题、导航、Provider 和尺寸；不读 Go SQLite/JSONL/Preferences 或 Agent 凭据。开发 Home 由 CODEX_HOME 或显式 `--codex-home` 传入，runtime 由 CODEX_PULSE_APP_RUNTIME 或 `--runtime-directory` 传入；默认开发 runtime 位于 LocalAppData/CodexPulse/development。关闭窗口的基础实现先取消通知、排空 Helper 后结束，正式托盘/单实例/异常进程策略由生命周期工作包接入。
 
 `scripts/windows/probe-binding` 只读回指定 App/Helper 的 CODEX_HOME、Helper runtime 参数、私有目录 ACL 和 Preferences 物理身份，stdout 仅输出匹配布尔值、PID 与身份摘要；不打印完整环境、路径或凭据。真实 UI 验收结合该读回，不能只凭启动命令判断已使用真实 Home。
+
+## 汇总与概览
+
+Windows 汇总直接消费 DashboardSummary 的 totals、coverage、provider slices、按客户端趋势、带 Provider 命名空间的模型 Top N 与各自额度，不在 C# 重算跨客户端业务合计。API 等价估算与 reported amount 始终独立。模型 Top N 的已知余量仅作“其他已知模型”的展示分组；未知构成不参与环图或堆叠图。
+
+概览按额度、独立年度活动、当前范围用量/成本、模型趋势与构成、活动分布、会话/项目摘要和适用的调用画像组织。Cursor 另按 Cursor Models / Other Models / 未归类用量池回显官方金额和 Token fee，不与 API 估算混算；Cursor/Grok 不查询调用画像，DSH 不制造官方额度。会话排行使用 Helper 的最近活动筛选和生命周期累计值，明确区别于当前精确范围的项目贡献。下钻携带仅在内存中保存的 opaque identity 与精确 UTC 范围，完整详情由会话/项目工作包接入。
+
+日期使用本地日半开区间和明确 IANA 时区。各页面独立保留范围；Codex 概览读取 Go 的 overview_range 默认值，周/月额度范围按真实 window_minutes/reset/evaluated_at 解析；无法取得时明确标注回退最近 7/30 天。年度查询固定最近 365 个本地自然日，其缓存与当前范围分离。年度、额度、用量与排行各有 QuerySlot；局部错误保留本区块 last-success，额度失效不重载年度日桶。
+
+图表使用原生 WinUI 向量与控件，浮点仅用于像素坐标。Token/微美元维持整数，堆叠图、构成条、环图和零填充先用整数对账；模型日桶无法对账时只显示权威总量。年度完整覆盖可补零，partial 的缺失日保持未知，完全未知年度不生成零统计；已知本机子集与 totals 对齐时显示并标注本地口径。活动时间线和星期小时两组 Token 都与 totals 一致后才把缺格视为零，会话数量不跨桶相加。图表有精确值 Tooltip、明细 Expander 与文本辅助功能名称；日历和表格局部横向滚动，主体纵向滚动，窄窗口 KPI 换行、排行纵向排列。
