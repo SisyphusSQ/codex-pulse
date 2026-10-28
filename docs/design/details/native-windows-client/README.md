@@ -82,3 +82,13 @@ Windows 汇总直接消费 DashboardSummary 的 totals、coverage、provider sli
 日期使用本地日半开区间和明确 IANA 时区。各页面独立保留范围；Codex 概览读取 Go 的 overview_range 默认值，周/月额度范围按真实 window_minutes/reset/evaluated_at 解析；无法取得时明确标注回退最近 7/30 天。年度查询固定最近 365 个本地自然日，其缓存与当前范围分离。年度、额度、用量与排行各有 QuerySlot；局部错误保留本区块 last-success，额度失效不重载年度日桶。
 
 图表使用原生 WinUI 向量与控件，浮点仅用于像素坐标。Token/微美元维持整数，堆叠图、构成条、环图和零填充先用整数对账；模型日桶无法对账时只显示权威总量。年度完整覆盖可补零，partial 的缺失日保持未知，完全未知年度不生成零统计；已知本机子集与 totals 对齐时显示并标注本地口径。活动时间线和星期小时两组 Token 都与 totals 一致后才把缺格视为零，会话数量不跨桶相加。图表有精确值 Tooltip、明细 Expander 与文本辅助功能名称；日历和表格局部横向滚动，主体纵向滚动，窄窗口 KPI 换行、排行纵向排列。
+
+## 会话与项目分析
+
+两页使用原生虚拟列表、独立详情滚动区和可用鼠标/左右箭头调整的分隔条；窄窗口只显示列表或当前详情，“返回列表”保留位置和选择，再次点同一行也能打开。同一身份的后台更新只更新展示属性；Provider 与 Home/账号上下文隔离，筛选/范围变化清空选择和 cursor，已失效响应不能覆盖新实体。
+
+Session 以最近活动时间筛选，列表和详情显示 Helper 的生命周期 Token/成本、Codex 缓存命中率及活跃输出 milli-TPS。缓存比率与 TPS 只换算单位，不在 C# 重新计算；覆盖、排除/未结束轮次、活跃时长和来源单独解释。完整会话趋势、最近轮次 TPS 与独立轮次 usage/cost 页不被加总成另一份生命周期总量。
+
+Project 列表分别展示服务端 global/matched/page totals，详情仅展示所选区间贡献与已有 daily、模型/Session contribution；已归类和“其他”都使用列表返回的 dimension_key，不从显示名或 project_id 猜测。模型和 Session 贡献各有独立 cursor；索引失效时回到对应代次首页，typed cursor validation 只重置出错的分页。新索引或短暂失败不被伪装为空项目。
+
+查询仅使用现有 Core 的精确项目/模型、活动、置信度、时间和排序；选项明确来自当前页，实际过滤/排序由服务端完成，不提供合同中不存在的标题全文搜索。列表默认每页 20 条，可选 10/50/100；详情默认 20。cursor 仅原样回传且只在当前 App 进程内保存。会话与项目互相下钻保留同一 Provider/精确范围；普通日期范围转为精确 UTC 时仍保留完整半开区间，ProjectDetail 的本地日期与 exact_range 互斥。

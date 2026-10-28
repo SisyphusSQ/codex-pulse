@@ -10,7 +10,7 @@ public abstract class FeaturePage : IDisposable
     protected MainWindow Host { get; }
     protected Localization L => Host.Localization;
     protected StackPanel Body { get; } = new() { Spacing = 20, Padding = new Thickness(0, 8, 0, 24) };
-    public FrameworkElement View { get; }
+    public FrameworkElement View { get; protected set; }
     protected FeaturePage(MainWindow host)
     {
         Host = host;
