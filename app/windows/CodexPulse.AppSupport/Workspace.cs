@@ -3,7 +3,7 @@ using Codexpulse.Core.V1;
 namespace CodexPulse.AppSupport;
 
 public enum Feature { Summary, Overview, Sessions, Projects, Quota, AccountQuotas, ApiSubscriptions, LocalStatus, SourcesJobs, Settings }
-public sealed record QueryContext(string Provider, DateOnly Start, DateOnly EndExclusive, string TimeZone, long Generation);
+public sealed record QueryContext(string Provider, DateOnly Start, DateOnly EndExclusive, string TimeZone, long Generation, string Preset = "seven_days");
 
 public sealed class Workspace
 {
@@ -13,10 +13,13 @@ public sealed class Workspace
     public string? TrayProvider { get; private set; }
     public IReadOnlyList<string> EnabledProviders { get; private set; } = [];
     public long Generation { get; private set; }
+    public string RangePreset { get; private set; } = "seven_days";
+    public string OverviewDefault { get; set; } = "quota_week";
+    private readonly Dictionary<Feature, (DateOnly Start, DateOnly End, string Preset)> ranges = [];
     public DateOnly Start { get; private set; } = DateOnly.FromDateTime(DateTime.Today).AddDays(-6);
     public DateOnly EndExclusive { get; private set; } = DateOnly.FromDateTime(DateTime.Today).AddDays(1);
     public string TimeZone { get; private set; } = LocalTimeZone();
-    public QueryContext Context => new(Provider ?? "", Start, EndExclusive, TimeZone, Generation);
+    public QueryContext Context => new(Provider ?? "", Start, EndExclusive, TimeZone, Generation, RangePreset);
     public event Action? Changed;
 
     public void ApplyProviders(IEnumerable<SettingsProviderSnapshot> providers)
@@ -36,6 +39,7 @@ public sealed class Workspace
         if (tray) { TrayProvider = provider; return; }
         if (Provider == provider) return;
         Provider = provider;
+        if (Feature == Feature.Overview) ApplyPreset(DefaultOverviewPreset());
         if (Feature == Feature.AccountQuotas && provider != "codex") Feature = Feature.Overview;
         Changed?.Invoke();
     }
@@ -44,7 +48,13 @@ public sealed class Workspace
     {
         if (RequiresProvider(feature) && Provider is null) feature = Feature.Summary;
         if (feature == Feature.AccountQuotas && Provider != "codex") feature = Feature.Overview;
-        Feature = feature;
+        if (Feature != feature)
+        {
+            ranges[Feature] = (Start, EndExclusive, RangePreset);
+            Feature = feature;
+            if (ranges.TryGetValue(feature, out var range)) { Start = range.Start; EndExclusive = range.End; RangePreset = range.Preset; }
+            else ApplyPreset(feature == Feature.Overview ? DefaultOverviewPreset() : "seven_days");
+        }
         Changed?.Invoke();
     }
 
@@ -52,8 +62,22 @@ public sealed class Workspace
     {
         if (endExclusive <= start || endExclusive.DayNumber - start.DayNumber > 3660 || string.IsNullOrWhiteSpace(timeZone))
             throw new ArgumentException("invalid_range");
-        Start = start; EndExclusive = endExclusive; TimeZone = timeZone;
+        Start = start; EndExclusive = endExclusive; TimeZone = timeZone; RangePreset = "custom";
         Changed?.Invoke();
+    }
+
+    public void SetPreset(string preset)
+    {
+        if (preset is not ("today" or "seven_days" or "thirty_days" or "quota_week" or "quota_month")) throw new ArgumentException("invalid_preset");
+        ApplyPreset(preset); Changed?.Invoke();
+    }
+    private string DefaultOverviewPreset() => Provider switch { "cursor" => "quota_month", "grok" => "quota_week", "dsh" => "seven_days", _ => OverviewDefault };
+    private void ApplyPreset(string preset)
+    {
+        RangePreset = preset is "today" or "seven_days" or "thirty_days" or "quota_week" or "quota_month" ? preset : "seven_days";
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        EndExclusive = today.AddDays(1);
+        Start = today.AddDays(1 - (RangePreset switch { "today" => 1, "quota_month" or "thirty_days" => 30, _ => 7 }));
     }
 
     public void ResetContext() { Generation++; Changed?.Invoke(); }

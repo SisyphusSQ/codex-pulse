@@ -26,6 +26,7 @@ public sealed partial class MainWindow : Window
     public string BundleVersion { get; } = typeof(MainWindow).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
         .FirstOrDefault(attribute => attribute.Key == "PulseVersion")?.Value ?? "dev";
     public PlatformOptions Options { get; }
+    public PageSelection? Selection { get; private set; }
     private FeaturePage? page;
     private WindowPreferences preferences = new();
     private CancellationTokenSource? watchCancellation;
@@ -40,11 +41,15 @@ public sealed partial class MainWindow : Window
     private Task? startup;
     private readonly HashSet<FeaturePage> loadingPages = [];
     private readonly HashSet<FeaturePage> reloadPending = [];
+    private QueryContext? renderedContext;
+    private Feature renderedFeature;
 
     public MainWindow()
     {
         Options = PlatformOptions.Parse();
         Client = new(() => Session?.Connection.Raw ?? throw new IOException("helper_disconnected"));
+        PageCatalog.Register(Feature.Summary, host => new DashboardPage(host));
+        PageCatalog.Register(Feature.Overview, host => new OverviewPage(host));
         InitializeComponent();
         try { preferences = WindowPreferences.Load(Options.Runtime); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or System.Security.SecurityException)
@@ -56,7 +61,7 @@ public sealed partial class MainWindow : Window
             invalidations.Stop();
             var domains = pendingDomains.ToArray(); pendingDomains.Clear();
             if (domains.Contains("settings")) await ReloadSettingsAsync();
-            if (page is not null && domains.Any(page.DependsOn)) await ReloadPageAsync(true);
+            if (page is not null && domains.Any(page.DependsOn)) { page.Invalidate(domains); await ReloadPageAsync(true); }
         };
         AppWindow.Closing += ClosingWindow;
         Root.Loaded += async (_, _) => { UpdateHeaderInset(); startup = StartAsync(); await startup; };
@@ -65,7 +70,10 @@ public sealed partial class MainWindow : Window
     }
 
     public void Dispatch(Action action) => DispatcherQueue.TryEnqueue(() => { if (!closing) action(); });
-    public void Navigate(Feature feature) => Workspace.Navigate(feature);
+    public void Navigate(Feature feature) { Selection = null; Workspace.Navigate(feature); }
+    public void OpenSession(string id, UTCTimeRange range) { Selection = new(Feature.Sessions, id, range.Clone()); Workspace.Navigate(Feature.Sessions); }
+    public void OpenProject(string dimension, UTCTimeRange range) { Selection = new(Feature.Projects, dimension, range.Clone()); Workspace.Navigate(Feature.Projects); }
+    public void OpenProvider(string provider) { applying=true; Workspace.SelectProvider(provider); applying=false; Navigate(Feature.Overview); }
     public void SetPageState(LoadKind state) => PageStatus.Text = Localization.State(state);
     public void SetPageState(FeaturePage owner, LoadKind state) { if (ReferenceEquals(owner, page)) SetPageState(state); }
     public void ShowNotice(string chinese, string english, InfoBarSeverity severity = InfoBarSeverity.Warning)
@@ -134,6 +142,7 @@ public sealed partial class MainWindow : Window
                 (client, deadline, cancellation) => client.SettingsAsync(request, deadline: deadline, cancellationToken: cancellation), force: true);
             if (version != settingsRequest || closing) return;
             Settings = response;
+            Workspace.OverviewDefault = Settings.Snapshot.Ui.OverviewRange;
             Localization.Set(Settings.Snapshot.Ui.Locale);
             applying = true;
             Workspace.ApplyProviders(Settings.Snapshot.Providers);
@@ -191,7 +200,13 @@ public sealed partial class MainWindow : Window
     private void WorkspaceChanged()
     {
         if (applying || closing) return;
-        page?.Cancel(); ApplyLabels(); RenderPage();
+        if (renderedContext is {} old && (old.Provider!=Workspace.Provider || old.Generation!=Workspace.Generation ||
+            renderedFeature==Workspace.Feature && (old.Start!=Workspace.Start || old.EndExclusive!=Workspace.EndExclusive || old.Preset!=Workspace.RangePreset))) Selection=null;
+        page?.Cancel();
+        if (renderedContext is {} previous && previous.Provider==Workspace.Provider && previous.Generation==Workspace.Generation && renderedFeature==Workspace.Feature)
+        { applying=true; ApplyRangeLabels(false); applying=false; }
+        else ApplyLabels();
+        RenderPage();
         if (!starting) SaveWindowPreferences();
         _ = ReloadPageAsync();
     }
@@ -199,6 +214,7 @@ public sealed partial class MainWindow : Window
     private void RenderPage()
     {
         renderGeneration++;
+        renderedContext=Workspace.Context;renderedFeature=Workspace.Feature;
         page?.Dispose();
         page = Session?.State == CoreConnectionState.Recovery ? new RecoveryPage(this) : PageCatalog.Create(Workspace.Feature, this);
         PageContainer.Content = page.View;
@@ -257,18 +273,7 @@ public sealed partial class MainWindow : Window
         AddNavigation(Feature.Settings, Symbol.Setting);
         RefreshButton.Content = Localization.Text("重新加载", "Reload"); CancelButton.Content = Localization.Text("取消", "Cancel");
         ReconnectButton.Content = Localization.Text("重新连接", "Reconnect");
-        RangePicker.Items.Clear();
-        foreach (var item in new[] { Localization.Text("今天", "Today"), Localization.Text("最近 7 天", "Last 7 days"), Localization.Text("最近 30 天", "Last 30 days"), Localization.Text("自定义", "Custom") }) RangePicker.Items.Add(item);
-        var today = DateOnly.FromDateTime(DateTime.Today);
-        RangePicker.SelectedIndex = Workspace.EndExclusive != today.AddDays(1) ? 3 : (Workspace.EndExclusive.DayNumber - Workspace.Start.DayNumber) switch { 1 => 0, 7 => 1, 30 => 2, _ => 3 };
-        var dateFormat = Localization.Chinese ? "{year.full}/{month.integer(2)}/{day.integer(2)}" : "{month.integer(2)}/{day.integer(2)}/{year.full}";
-        StartDate.DateFormat = dateFormat; EndDate.DateFormat = dateFormat;
-        StartDate.Language = Localization.Culture.Name; EndDate.Language = Localization.Culture.Name;
-        StartDate.Date = new DateTimeOffset(Workspace.Start.ToDateTime(TimeOnly.MinValue));
-        EndDate.Date = new DateTimeOffset(Workspace.EndExclusive.AddDays(-1).ToDateTime(TimeOnly.MinValue));
-        AutomationProperties.SetName(StartDate, Localization.Text("开始日期", "Start date"));
-        AutomationProperties.SetName(EndDate, Localization.Text("结束日期（含）", "End date (inclusive)"));
-        TimeZoneLabel.Text = Workspace.TimeZone;
+        ApplyRangeLabels(true);
         LanguagePicker.Items.Clear();
         foreach (var item in new[] { ("system", Localization.Text("系统语言", "System language")), ("zh-CN", "简体中文"), ("en-US", "English") })
             LanguagePicker.Items.Add(new ComboBoxItem { Tag = item.Item1, Content = item.Item2 });
@@ -284,6 +289,26 @@ public sealed partial class MainWindow : Window
         applying = false;
     }
 
+    private void ApplyRangeLabels(bool rebuild)
+    {
+        if(rebuild) { RangePicker.Items.Clear();
+        foreach (var item in new[] { ("today",Localization.Text("今天", "Today")), ("seven_days",Localization.Text("最近 7 天", "Last 7 days")), ("thirty_days",Localization.Text("最近 30 天", "Last 30 days")), ("custom",Localization.Text("自定义", "Custom")), ("quota_week",Localization.Text("周额度周期", "Weekly quota period")), ("quota_month",Localization.Text("月额度周期", "Monthly quota period")) })
+            if (Workspace.Feature==Feature.Overview || item.Item1 is not ("quota_week" or "quota_month")) RangePicker.Items.Add(new ComboBoxItem { Tag=item.Item1, Content=item.Item2 });
+        }
+        RangePicker.Width=Workspace.Feature==Feature.Overview?200:128;
+        RangePicker.SelectedItem=RangePicker.Items.Cast<ComboBoxItem>().FirstOrDefault(item=>(string)item.Tag==Workspace.RangePreset);
+        var quotaRange=Workspace.Feature==Feature.Overview && Workspace.RangePreset is "quota_week" or "quota_month";
+        StartDate.Visibility=EndDate.Visibility=DateSeparator.Visibility=quotaRange?Visibility.Collapsed:Visibility.Visible;
+        var dateFormat = Localization.Chinese ? "{year.full}/{month.integer(2)}/{day.integer(2)}" : "{month.integer(2)}/{day.integer(2)}/{year.full}";
+        StartDate.DateFormat = dateFormat; EndDate.DateFormat = dateFormat;
+        StartDate.Language = Localization.Culture.Name; EndDate.Language = Localization.Culture.Name;
+        StartDate.Date = new DateTimeOffset(Workspace.Start.ToDateTime(TimeOnly.MinValue));
+        EndDate.Date = new DateTimeOffset(Workspace.EndExclusive.AddDays(-1).ToDateTime(TimeOnly.MinValue));
+        AutomationProperties.SetName(StartDate, Localization.Text("开始日期", "Start date"));
+        AutomationProperties.SetName(EndDate, Localization.Text("结束日期（含）", "End date (inclusive)"));
+        TimeZoneLabel.Text = Workspace.TimeZone;
+    }
+
     public static string ProviderName(string provider) => provider switch { "codex" => "Codex", "cursor" => "Cursor", "grok" => "Grok", "dsh" => "DSH", _ => provider };
     private void AddNavigation(Feature feature, Symbol symbol)
     {
@@ -296,18 +321,15 @@ public sealed partial class MainWindow : Window
     { if (!applying && ProviderPicker.SelectedItem is ComboBoxItem { Tag: string provider }) Workspace.SelectProvider(provider); }
     private void RangeChanged(object sender, SelectionChangedEventArgs args)
     {
-        if (applying || RangePicker.SelectedIndex is < 0 or > 2) return;
-        var today = DateOnly.FromDateTime(DateTime.Today);
-        var days = RangePicker.SelectedIndex switch { 0 => 1, 1 => 7, _ => 30 };
-        applying = true; StartDate.Date = new DateTimeOffset(today.AddDays(1-days).ToDateTime(TimeOnly.MinValue));
-        EndDate.Date = new DateTimeOffset(today.ToDateTime(TimeOnly.MinValue)); applying = false;
-        Workspace.SetRange(today.AddDays(1-days), today.AddDays(1), Workspace.TimeZone);
+        if (applying || RangePicker.SelectedItem is not ComboBoxItem {Tag:string preset}) return;
+        if (preset=="custom") { Workspace.SetRange(Workspace.Start,Workspace.EndExclusive,Workspace.TimeZone); return; }
+        Workspace.SetPreset(preset);
     }
     private void DatesChanged(CalendarDatePicker sender, CalendarDatePickerDateChangedEventArgs args)
     {
         if (applying || StartDate.Date is not { } start || EndDate.Date is not { } end) return;
         var first = DateOnly.FromDateTime(start.Date); var last = DateOnly.FromDateTime(end.Date).AddDays(1);
-        if (last <= first || last.DayNumber-first.DayNumber > 3660) { PageStatus.Text = Localization.Text("请选择有效范围（最多 3660 天）", "Choose a valid range (up to 3660 days)"); return; }
+        if (last <= first || last.DayNumber-first.DayNumber > 366) { PageStatus.Text = Localization.Text("请选择有效范围（最多 366 天）", "Choose a valid range (up to 366 days)"); return; }
         applying = true; RangePicker.SelectedIndex = 3; applying = false;
         Workspace.SetRange(first, last, Workspace.TimeZone);
     }

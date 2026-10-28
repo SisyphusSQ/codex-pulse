@@ -15,11 +15,12 @@ public abstract class FeaturePage : IDisposable
     {
         Host = host;
         View = new ScrollViewer { Content = Body, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalContentAlignment = HorizontalAlignment.Stretch };
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, HorizontalContentAlignment = HorizontalAlignment.Stretch };
     }
     public abstract Task LoadAsync(bool force = false);
     public virtual void Cancel() { }
     public virtual bool DependsOn(string domain) => domain is "index" or "settings" or "account";
+    public virtual void Invalidate(IReadOnlyCollection<string> domains) { }
     public virtual void Dispose() => Cancel();
     protected TextBlock Text(string value, string? style = null)
     {
