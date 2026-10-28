@@ -8,7 +8,8 @@ Codex Pulse 是 local-first 的 Codex 使用量、额度、Session、项目归�
 - `api/codexpulse/reporting/v1/` 定义可选中心上报网络 contract；Server 位于独立 `server/` module，Web 位于 `server/web/`，中心不装配本机 runtime。
 - Go Helper 负责数据、索引、调度、SQLite 和业务口径。
 - Swift App 负责窗口、菜单栏和 UI，通过 generated CoreService client 访问 Helper。
-- Helper 只监听 Unix Domain Socket，不监听 TCP；鉴权 token 只通过继承 pipe 传递。
+- macOS Helper 只监听 Unix Domain Socket，不监听 TCP；鉴权 token 只通过继承 pipe 传递。
+- Windows 客户端在 `app/windows/` 使用 C# / WinUI 3，复用同一 Go Helper 和 `core.proto`；Windows transport 为受保护 Named Pipe，使用用户/登录会话 ACL 私有 runtime，不监听 TCP。一次性 token 同样只通过专用继承 pipe 传递。macOS 保留 UDS；C# 同样不得读取 SQLite/JSONL 或重算业务口径。
 - Swift App 不得直接读取 SQLite、JSONL 或复制 Go 业务真相。
 - 中心 HTTP/HTTPS 共用设备码与分权限凭证；上报仅包含明确允许的结构化事实与元数据，不包含 Agent 凭据、原始 JSONL 或正文。Server 目标数据库为 MySQL，SQLite 仅为本阶段已授权的开发验证数据库。
 - 保留 App 托管 Helper：退出 App 停止采集和上报，下次启动增量补采及续传；不新增独立后台采集进程。

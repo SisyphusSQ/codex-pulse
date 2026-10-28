@@ -12,6 +12,7 @@
 - [API and Subscriptions](api-subscriptions/README.md)
 - [Codex Accounts and Subscriptions](codex-subscriptions/README.md)
 - [Native macOS Client and Go Helper Refactor](native-macos-client/README.md)
+- [Windows 原生客户端](native-windows-client/README.md)
 - [Data Model and Indexing](data-model/README.md)
 - [Quota](quota/README.md)
 - [Scheduling and Bootstrap](scheduling-and-bootstrap/README.md)

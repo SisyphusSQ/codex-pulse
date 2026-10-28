@@ -1,0 +1,11 @@
+<Window x:Class="CodexPulse.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Codex Pulse">
+    <Grid Padding="32">
+        <StackPanel Spacing="12" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <TextBlock Text="Codex Pulse" Style="{ThemeResource TitleTextBlockStyle}" />
+            <TextBlock Text="本机用量与状态" />
+        </StackPanel>
+    </Grid>
+</Window>

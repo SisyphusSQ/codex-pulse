@@ -65,6 +65,10 @@ temp/
 # Machine-local validation evidence
 .artifacts/
 
+# .NET build artifacts (package locks are source inputs)
+**/obj/
+**/TestResults/
+
 # Cursor project rules are commit-safe; other Cursor files stay local by default.
 .cursor/*
 !.cursor/rules/

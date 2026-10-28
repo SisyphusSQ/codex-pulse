@@ -96,6 +96,8 @@ Local Codex data / optional online quota
 
 ## Run from source
 
+Windows native client development uses C# / WinUI 3 and the shared Go Helper. See [Windows architecture and pinned toolchain](docs/design/details/native-windows-client/README.md) and [development evidence](docs/test/windows-client.md). Build the client with `./scripts/windows/build.ps1 -LockedRestore` in PowerShell. Windows support and real Codex acceptance are recorded separately from macOS; the initial engineering baseline is not a complete Windows product.
+
 Requirements:
 
 - macOS 15+
