@@ -2,13 +2,12 @@ package sqlite
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"sync"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
 const schedulerOwnerLockSuffix = ".scheduler-owner.lock"
@@ -45,20 +44,9 @@ func (store *Store) acquireSchedulerOwnerLease(
 		return nil, err
 	}
 	path := store.config.Path + schedulerOwnerLockSuffix
-	descriptor, err := unix.Open(
-		path,
-		unix.O_RDWR|unix.O_CREAT|unix.O_CLOEXEC|unix.O_NOFOLLOW,
-		0o600,
-	)
+	file, err := platformfs.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, newClassifiedError("open scheduler owner lease", ErrPermission, err)
-	}
-	file := os.NewFile(uintptr(descriptor), path)
-	if file == nil {
-		_ = unix.Close(descriptor)
-		return nil, newClassifiedError(
-			"open scheduler owner lease", ErrIO, fmt.Errorf("create os.File from descriptor"),
-		)
 	}
 	closeWithError := func(value error) (SchedulerOwnerLease, error) {
 		_ = file.Close()
@@ -72,8 +60,8 @@ func (store *Store) acquireSchedulerOwnerLease(
 	if err != nil {
 		return closeWithError(newClassifiedError("inspect scheduler owner lease path", ErrPermission, err))
 	}
-	if !opened.Mode().IsRegular() || opened.Mode().Perm() != 0o600 ||
-		!linked.Mode().IsRegular() || linked.Mode().Perm() != 0o600 ||
+	if !opened.Mode().IsRegular() || !platformfs.PrivateMode(path, opened, 0o600) ||
+		!linked.Mode().IsRegular() || !platformfs.PrivateMode(path, linked, 0o600) ||
 		linked.Mode()&os.ModeSymlink != 0 || !os.SameFile(opened, linked) {
 		return closeWithError(newClassifiedError(
 			"validate scheduler owner lease", ErrPermission,
@@ -82,11 +70,11 @@ func (store *Store) acquireSchedulerOwnerLease(
 	}
 
 	for {
-		err = unix.Flock(descriptor, unix.LOCK_EX|unix.LOCK_NB)
-		if err == nil {
+		locked, err := platformfs.TryLock(file)
+		if locked {
 			return &schedulerOwnerLease{file: file}, nil
 		}
-		if !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
+		if err != nil {
 			return closeWithError(newClassifiedError("lock scheduler owner lease", ErrIO, err))
 		}
 		if !wait {
@@ -112,7 +100,7 @@ func (lease *schedulerOwnerLease) Release() {
 		if lease.file == nil {
 			return
 		}
-		_ = unix.Flock(int(lease.file.Fd()), unix.LOCK_UN)
+		_ = platformfs.Unlock(lease.file)
 		_ = lease.file.Close()
 	})
 }

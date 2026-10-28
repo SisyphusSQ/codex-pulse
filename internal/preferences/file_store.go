@@ -16,12 +16,16 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
 const maximumPreferencesBytes = 64 << 10
 
 type publisher func(path string, content []byte) error
+
+type SwitchExecutionLease interface {
+	Release()
+}
 type replacer func(path string, content []byte) error
 
 type publishStage string
@@ -48,7 +52,7 @@ type FileStore struct {
 }
 
 func DefaultPath() (string, error) {
-	configurationDirectory, err := os.UserConfigDir()
+	configurationDirectory, err := platformfs.UserDataDirectory()
 	if err != nil {
 		return "", err
 	}
@@ -286,11 +290,11 @@ func loadPreferencesContent(ctx context.Context, path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 || info.Size() < 0 ||
+	if !info.Mode().IsRegular() || !platformfs.PrivateMode(path, info, 0o600) || info.Size() < 0 ||
 		info.Size() > maximumPreferencesBytes {
 		return nil, ErrUnsafePath
 	}
-	file, err := root.OpenFile(base, os.O_RDONLY, 0)
+	file, err := platformfs.OpenRootFile(root, base, os.O_RDONLY, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +303,7 @@ func loadPreferencesContent(ctx context.Context, path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !os.SameFile(info, openedInfo) || !openedInfo.Mode().IsRegular() || openedInfo.Mode().Perm() != 0o600 {
+	if !os.SameFile(info, openedInfo) || !openedInfo.Mode().IsRegular() || !platformfs.PrivateMode(path, openedInfo, 0o600) {
 		return nil, ErrUnsafePath
 	}
 	content, err := io.ReadAll(io.LimitReader(file, maximumPreferencesBytes+1))
@@ -362,7 +366,7 @@ func publishPrivateFileWithHook(path string, content []byte, hook publishHook) e
 	if err != nil {
 		return err
 	}
-	temporary, err := root.OpenFile(temporaryName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	temporary, err := platformfs.OpenRootFile(root, temporaryName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
@@ -393,7 +397,8 @@ func publishPrivateFileWithHook(path string, content []byte, hook publishHook) e
 	}
 	// hard link 发布不会覆盖其他进程并发创建的快照；随后移除同目录临时链接，
 	// 即可只留下原子可见的确认文件。
-	if err := root.Link(temporaryName, base); err != nil {
+	moved, err := platformfs.PublishInRoot(root, temporaryName, base)
+	if err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return ErrAlreadyConfirmed
 		}
@@ -402,8 +407,10 @@ func publishPrivateFileWithHook(path string, content []byte, hook publishHook) e
 	if err := runPublishHook(hook, publishStageTargetLinked, true); err != nil {
 		return err
 	}
-	if err := root.Remove(temporaryName); err != nil {
-		return fmt.Errorf("%w: remove published temporary link", ErrDurabilityUnknown)
+	if !moved {
+		if err := root.Remove(temporaryName); err != nil {
+			return fmt.Errorf("%w: remove published temporary link", ErrDurabilityUnknown)
+		}
 	}
 	temporaryPresent = false
 	if err := runPublishHook(hook, publishStageTemporaryRemoved, true); err != nil {
@@ -417,7 +424,7 @@ func publishPrivateFileWithHook(path string, content []byte, hook publishHook) e
 	if err := runPublishHook(hook, publishStageBeforeDirectorySync, true); err != nil {
 		return err
 	}
-	if err := directory.Sync(); err != nil {
+	if err := platformfs.SyncDirectory(parent); err != nil {
 		return fmt.Errorf("%w: sync parent directory", ErrDurabilityUnknown)
 	}
 	return nil
@@ -438,7 +445,7 @@ func replacePrivateFileWithHook(path string, content []byte, hook publishHook) e
 	if err != nil {
 		return err
 	}
-	if !current.Mode().IsRegular() || current.Mode().Perm() != 0o600 {
+	if !current.Mode().IsRegular() || !platformfs.PrivateMode(path, current, 0o600) {
 		return ErrUnsafePath
 	}
 
@@ -446,7 +453,7 @@ func replacePrivateFileWithHook(path string, content []byte, hook publishHook) e
 	if err != nil {
 		return err
 	}
-	temporary, err := root.OpenFile(temporaryName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	temporary, err := platformfs.OpenRootFile(root, temporaryName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
@@ -475,7 +482,7 @@ func replacePrivateFileWithHook(path string, content []byte, hook publishHook) e
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	if err := root.Rename(temporaryName, base); err != nil {
+	if err := platformfs.RenameInRoot(root, temporaryName, base); err != nil {
 		return err
 	}
 	temporaryPresent = false
@@ -490,7 +497,7 @@ func replacePrivateFileWithHook(path string, content []byte, hook publishHook) e
 	if err := runPublishHook(hook, publishStageBeforeDirectorySync, true); err != nil {
 		return err
 	}
-	if err := directory.Sync(); err != nil {
+	if err := platformfs.SyncDirectory(parent); err != nil {
 		return fmt.Errorf("%w: sync parent directory", ErrDurabilityUnknown)
 	}
 	return nil
@@ -540,20 +547,21 @@ func acquireNamedPreferencesLock(ctx context.Context, path, lockName string) (*p
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
-	if before != nil && (!before.Mode().IsRegular() || before.Mode().Perm() != 0o600) {
+	lockPath := filepath.Join(filepath.Dir(path), lockName)
+	if before != nil && (!before.Mode().IsRegular() || !platformfs.PrivateMode(lockPath, before, 0o600)) {
 		return nil, ErrUnsafePath
 	}
 	var file *os.File
 	if errors.Is(err, fs.ErrNotExist) {
-		file, err = root.OpenFile(lockName, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		file, err = platformfs.OpenRootFile(root, lockName, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 		if errors.Is(err, fs.ErrExist) {
 			before, err = root.Lstat(lockName)
 			if err == nil {
-				file, err = root.OpenFile(lockName, os.O_RDWR, 0)
+				file, err = platformfs.OpenRootFile(root, lockName, os.O_RDWR, 0o600)
 			}
 		}
 	} else {
-		file, err = root.OpenFile(lockName, os.O_RDWR, 0)
+		file, err = platformfs.OpenRootFile(root, lockName, os.O_RDWR, 0o600)
 	}
 	if err != nil {
 		return nil, err
@@ -570,19 +578,19 @@ func acquireNamedPreferencesLock(ctx context.Context, path, lockName string) (*p
 	if err != nil {
 		return closeWithError(err)
 	}
-	if !after.Mode().IsRegular() || after.Mode().Perm() != 0o600 ||
-		!opened.Mode().IsRegular() || opened.Mode().Perm() != 0o600 || !os.SameFile(after, opened) ||
+	if !after.Mode().IsRegular() || !platformfs.PrivateMode(lockPath, after, 0o600) ||
+		!opened.Mode().IsRegular() || !platformfs.PrivateMode(lockPath, opened, 0o600) || !os.SameFile(after, opened) ||
 		(before != nil && !os.SameFile(before, after)) {
 		return closeWithError(ErrUnsafePath)
 	}
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		err = unix.Flock(int(file.Fd()), unix.LOCK_EX|unix.LOCK_NB)
-		if err == nil {
+		locked, err := platformfs.TryLock(file)
+		if locked {
 			return &preferencesLock{file: file}, nil
 		}
-		if !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
+		if err != nil {
 			return closeWithError(err)
 		}
 		select {
@@ -597,14 +605,14 @@ func (lock *preferencesLock) Release() {
 	if lock == nil || lock.file == nil {
 		return
 	}
-	_ = unix.Flock(int(lock.file.Fd()), unix.LOCK_UN)
+	_ = platformfs.Unlock(lock.file)
 	_ = lock.file.Close()
 }
 
 func openPrivateRoot(path string, create bool) (*os.Root, error) {
 	info, err := os.Lstat(path)
 	if errors.Is(err, fs.ErrNotExist) && create {
-		if err := os.Mkdir(path, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+		if err := platformfs.Mkdir(path, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
 			return nil, err
 		}
 		info, err = os.Lstat(path)
@@ -612,7 +620,7 @@ func openPrivateRoot(path string, create bool) (*os.Root, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !info.IsDir() || info.Mode().Perm() != 0o700 || info.Mode()&os.ModeSymlink != 0 {
+	if !info.IsDir() || !platformfs.PrivateMode(path, info, 0o700) || info.Mode()&os.ModeSymlink != 0 {
 		return nil, ErrUnsafePath
 	}
 	root, err := os.OpenRoot(path)
@@ -624,7 +632,7 @@ func openPrivateRoot(path string, create bool) (*os.Root, error) {
 		_ = root.Close()
 		return nil, err
 	}
-	if !os.SameFile(info, openedInfo) || !openedInfo.IsDir() || openedInfo.Mode().Perm() != 0o700 {
+	if !os.SameFile(info, openedInfo) || !openedInfo.IsDir() || !platformfs.PrivateMode(path, openedInfo, 0o700) {
 		_ = root.Close()
 		return nil, ErrUnsafePath
 	}
@@ -657,7 +665,7 @@ func syncContainingDirectory(path string) error {
 		return err
 	}
 	defer func() { _ = directory.Close() }()
-	return directory.Sync()
+	return platformfs.SyncDirectory(containingPath)
 }
 
 func privateTemporaryName() (string, error) {

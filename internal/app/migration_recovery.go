@@ -16,8 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/sys/unix"
-
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -152,7 +151,7 @@ func (controller *migrationRecoveryController) snapshotLocked() MigrationRecover
 func (controller *migrationRecoveryController) listBackupsLocked() []MigrationBackupInfo {
 	directory := filepath.Join(filepath.Dir(controller.config.Path), "backups")
 	directoryInfo, err := os.Lstat(directory)
-	if err != nil || !directoryInfo.IsDir() || directoryInfo.Mode()&os.ModeSymlink != 0 || directoryInfo.Mode().Perm() != 0o700 {
+	if err != nil || !directoryInfo.IsDir() || directoryInfo.Mode()&os.ModeSymlink != 0 || !platformfs.PrivateMode(directory, directoryInfo, 0o700) {
 		return []MigrationBackupInfo{}
 	}
 	entries, err := os.ReadDir(directory)
@@ -165,7 +164,7 @@ func (controller *migrationRecoveryController) listBackupsLocked() []MigrationBa
 			continue
 		}
 		info, err := entry.Info()
-		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+		if err != nil || !info.Mode().IsRegular() || !platformfs.PrivateMode(filepath.Join(directory, entry.Name()), info, 0o600) {
 			continue
 		}
 		values = append(values, MigrationBackupInfo{Name: entry.Name(), SizeBytes: info.Size(), ModifiedAtMS: info.ModTime().UnixMilli()})
@@ -343,14 +342,13 @@ func (controller *migrationRecoveryController) ConfirmRestore(ctx context.Contex
 
 func hashPrivateBackup(ctx context.Context, path string) ([sha256.Size]byte, MigrationBackupInfo, error) {
 	var empty [sha256.Size]byte
-	descriptor, err := unix.Open(path, unix.O_RDONLY|unix.O_NOFOLLOW, 0)
+	file, err := platformfs.OpenFile(path, os.O_RDONLY, 0o600)
 	if err != nil {
 		return empty, MigrationBackupInfo{}, ErrMigrationRestoreConfirmation
 	}
-	file := os.NewFile(uintptr(descriptor), path)
 	defer file.Close()
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+	if err != nil || !info.Mode().IsRegular() || !platformfs.PrivateMode(path, info, 0o600) {
 		return empty, MigrationBackupInfo{}, ErrMigrationRestoreConfirmation
 	}
 	hasher := sha256.New()
@@ -363,14 +361,13 @@ func hashPrivateBackup(ctx context.Context, path string) ([sha256.Size]byte, Mig
 }
 
 func freezeRestoreSource(ctx context.Context, intent migrationRestoreIntent) (string, error) {
-	descriptor, err := unix.Open(intent.backupPath, unix.O_RDONLY|unix.O_NOFOLLOW, 0)
+	source, err := platformfs.OpenFile(intent.backupPath, os.O_RDONLY, 0o600)
 	if err != nil {
 		return "", ErrMigrationRestoreConfirmation
 	}
-	source := os.NewFile(uintptr(descriptor), intent.backupPath)
 	defer source.Close()
 	info, err := source.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+	if err != nil || !info.Mode().IsRegular() || !platformfs.PrivateMode(intent.backupPath, info, 0o600) {
 		return "", ErrMigrationRestoreConfirmation
 	}
 	frozenPath := filepath.Join(filepath.Dir(filepath.Dir(intent.backupPath)), ".migration-restore-source-"+hex.EncodeToString(intent.tokenHash[:8])+".db")
@@ -490,7 +487,7 @@ func (controller *migrationRecoveryController) restore(ctx context.Context, inte
 
 func (controller *migrationRecoveryController) replaceSQLiteDatabase(canonical, ready string) (bool, error) {
 	if err := controller.swapFiles(canonical, ready); err != nil {
-		return false, err
+		return errors.Is(err, platformfs.ErrReplaceCommitted), err
 	}
 	directory := filepath.Dir(canonical)
 	if err := controller.syncDir(directory); err != nil {
@@ -529,12 +526,7 @@ func removeSQLiteCompanions(path string) error {
 }
 
 func syncDirectory(path string) error {
-	directory, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer directory.Close()
-	return directory.Sync()
+	return platformfs.SyncDirectory(path)
 }
 
 func (controller *migrationRecoveryController) appendAuditLocked(action, result, backupName string) error {
@@ -547,11 +539,11 @@ func (controller *migrationRecoveryController) appendAuditFileLocked(action, res
 		return err
 	}
 	directoryInfo, err := os.Lstat(directory)
-	if err != nil || !directoryInfo.IsDir() || directoryInfo.Mode()&os.ModeSymlink != 0 || directoryInfo.Mode().Perm() != 0o700 {
+	if err != nil || !directoryInfo.IsDir() || directoryInfo.Mode()&os.ModeSymlink != 0 || !platformfs.PrivateMode(filepath.Dir(controller.auditPath), directoryInfo, 0o700) {
 		return ErrMigrationRecoveryUnavailable
 	}
 	if info, err := os.Lstat(controller.auditPath); err == nil {
-		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 {
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || !platformfs.PrivateMode(controller.auditPath, info, 0o600) {
 			return ErrMigrationRecoveryUnavailable
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -573,11 +565,10 @@ func (controller *migrationRecoveryController) appendAuditFileLocked(action, res
 	if err != nil {
 		return err
 	}
-	descriptor, err := unix.Open(controller.auditPath, unix.O_CREAT|unix.O_APPEND|unix.O_WRONLY|unix.O_NOFOLLOW, 0o600)
+	file, err := platformfs.OpenFile(controller.auditPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
-	file := os.NewFile(uintptr(descriptor), controller.auditPath)
 	if _, err := file.Write(append(encoded, '\n')); err != nil {
 		_ = file.Close()
 		return err

@@ -5,11 +5,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sync"
 
 	libtnbsqlite "github.com/libtnb/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
 // WriteFunc performs one atomic transaction owned by the writer queue.
@@ -51,10 +54,11 @@ type Store struct {
 	done             chan struct{}
 	closeOnce        sync.Once
 
-	stateMu  sync.Mutex
-	state    lifecycleState
-	reads    sync.WaitGroup
-	closeErr error
+	stateMu          sync.Mutex
+	state            lifecycleState
+	reads            sync.WaitGroup
+	closeErr         error
+	releasePathGuard func()
 }
 
 // Open initializes and validates a local SQLite store before starting its writer.
@@ -71,6 +75,10 @@ func Open(ctx context.Context, input Config) (_ *Store, returnErr error) {
 	if err != nil {
 		return nil, err
 	}
+	releasePathGuard, err := platformfs.PinDirectory(filepath.Dir(config.Path))
+	if err != nil {
+		return nil, newClassifiedError("pin private database directory", ErrInvalidPath, err)
+	}
 
 	var writerSQL *sql.DB
 	var readerSQL *sql.DB
@@ -84,6 +92,7 @@ func Open(ctx context.Context, input Config) (_ *Store, returnErr error) {
 		if writerSQL != nil {
 			_ = writerSQL.Close()
 		}
+		releasePathGuard()
 	}()
 
 	writerSQL, err = sql.Open(driverName, writerDSN(config))
@@ -144,6 +153,7 @@ func Open(ctx context.Context, input Config) (_ *Store, returnErr error) {
 		shutdown:         make(chan struct{}),
 		done:             make(chan struct{}),
 		state:            stateOpen,
+		releasePathGuard: releasePathGuard,
 	}
 	go store.runWriter()
 
@@ -357,6 +367,7 @@ func (store *Store) drainAndClose(pendingMaintenance *writeJob) {
 			}
 			store.reads.Wait()
 			closeErr := errors.Join(store.readerSQL.Close(), store.writerSQL.Close())
+			store.releasePathGuard()
 			store.stateMu.Lock()
 			store.closeErr = classifyError("close connections", closeErr)
 			store.state = stateClosed

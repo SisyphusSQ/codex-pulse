@@ -10,13 +10,14 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/sys/unix"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
 const logName = "refresh.jsonl"
@@ -78,14 +79,14 @@ func Open(runtimeDirectory, version string) (*Logger, error) {
 	}
 	defer runtimeRoot.Close()
 	info, err := runtimeRoot.Stat(".")
-	if err != nil || info.Mode().Perm()&0o077 != 0 {
+	if err != nil || !platformfs.PrivateMode(runtimeDirectory, info, 0o700) {
 		return nil, ErrPrivateLog
 	}
 	if err := runtimeRoot.Mkdir("logs", 0o700); err != nil && !errors.Is(err, os.ErrExist) {
 		return nil, ErrPrivateLog
 	}
 	info, err = runtimeRoot.Lstat("logs")
-	if err != nil || !info.IsDir() || info.Mode().Perm()&0o077 != 0 {
+	if err != nil || !info.IsDir() || !platformfs.PrivateMode(filepath.Join(runtimeDirectory, "logs"), info, 0o700) {
 		return nil, ErrPrivateLog
 	}
 	root, err := runtimeRoot.OpenRoot("logs")
@@ -123,17 +124,16 @@ func Open(runtimeDirectory, version string) (*Logger, error) {
 }
 
 func (logger *Logger) openFile(name string, flags int) (*os.File, error) {
-	file, err := logger.root.OpenFile(name, flags|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0o600)
+	file, err := platformfs.OpenRootFile(logger.root, name, flags, 0o600)
 	if err != nil {
 		return nil, ErrPrivateLog
 	}
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+	if err != nil || !info.Mode().IsRegular() || !platformfs.PrivateMode(filepath.Join(logger.root.Name(), name), info, 0o600) {
 		file.Close()
 		return nil, ErrPrivateLog
 	}
-	var stat unix.Stat_t
-	if unix.Fstat(int(file.Fd()), &stat) != nil || stat.Nlink != 1 || stat.Uid != uint32(os.Geteuid()) {
+	if !platformfs.SingleOwnedFile(file) {
 		file.Close()
 		return nil, ErrPrivateLog
 	}
@@ -305,7 +305,7 @@ func (logger *Logger) rotate() error {
 	logger.prune()
 	_ = logger.root.Remove(logName + ".3")
 	for _, pair := range [][2]string{{logName + ".2", logName + ".3"}, {logName + ".1", logName + ".2"}, {logName, logName + ".1"}} {
-		if err := logger.root.Rename(pair[0], pair[1]); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := platformfs.RenameInRoot(logger.root, pair[0], pair[1]); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return ErrPrivateLog
 		}
 	}
@@ -330,7 +330,7 @@ func (logger *Logger) saveFaults() error {
 	if err != nil {
 		return ErrPrivateLog
 	}
-	if err := logger.root.Rename(temporary, faultName); err != nil {
+	if err := platformfs.RenameInRoot(logger.root, temporary, faultName); err != nil {
 		return ErrPrivateLog
 	}
 	return nil

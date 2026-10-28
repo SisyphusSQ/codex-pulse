@@ -10,6 +10,8 @@ import (
 
 	"gorm.io/gorm"
 	modernsqlite "modernc.org/sqlite"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
 const defaultBackupPagesPerStep int32 = 128
@@ -213,7 +215,7 @@ func validateBackupDestination(source, destination string) (string, error) {
 func prepareBackupDirectory(path string) error {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		if err := os.MkdirAll(path, 0o700); err != nil {
+		if err := platformfs.MkdirAll(path, 0o700); err != nil {
 			return classifyError("create backup directory", err)
 		}
 		info, err = os.Lstat(path)
@@ -224,7 +226,7 @@ func prepareBackupDirectory(path string) error {
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return newClassifiedError("backup", ErrInvalidPath, fmt.Errorf("backup directory is not a real directory"))
 	}
-	if info.Mode().Perm() != 0o700 {
+	if !platformfs.PrivateMode(path, info, 0o700) {
 		return newClassifiedError(
 			"backup", ErrPermission,
 			fmt.Errorf("backup directory mode is %#o, want 0700", info.Mode().Perm()),
@@ -239,7 +241,7 @@ func secureAndSyncBackup(path string) error {
 		return classifyError("open completed backup", err)
 	}
 	defer file.Close()
-	if err := file.Chmod(0o600); err != nil {
+	if err := platformfs.Secure(path, 0o600); err != nil {
 		return classifyError("secure completed backup", err)
 	}
 	if err := file.Sync(); err != nil {
@@ -261,7 +263,8 @@ func publishPrivateFileWithSync(
 	// 临时文件与目标位于同一私有目录。Link 提供原子 no-clobber 语义，
 	// 避免 Lstat 后 Rename 覆盖同用户并发创建的恢复点。目录在新增目标名和
 	// 删除临时名后分别落盘，确保成功报告对应一个断电后仍可恢复的文件。
-	if err := os.Link(temporaryPath, destination); err != nil {
+	moved, err := platformfs.PublishNoReplace(temporaryPath, destination)
+	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return newClassifiedError(operation, ErrInvalidPath, err)
 		}
@@ -272,9 +275,11 @@ func publishPrivateFileWithSync(
 		cleanupErr := removePublishedPrivateFile(destination, parent, syncParent)
 		return classifyError(operation, errors.Join(err, cleanupErr))
 	}
-	if err := os.Remove(temporaryPath); err != nil {
-		cleanupErr := removePublishedPrivateFile(destination, parent, syncParent)
-		return classifyError(operation, errors.Join(err, cleanupErr))
+	if !moved {
+		if err := os.Remove(temporaryPath); err != nil {
+			cleanupErr := removePublishedPrivateFile(destination, parent, syncParent)
+			return classifyError(operation, errors.Join(err, cleanupErr))
+		}
 	}
 	if err := syncParent(parent); err != nil {
 		cleanupErr := removePublishedPrivateFile(destination, parent, syncParent)
@@ -292,13 +297,7 @@ func removePublishedPrivateFile(destination, parent string, syncParent func(stri
 }
 
 func syncDirectory(path string) error {
-	directory, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("open directory for sync: %w", err)
-	}
-	syncErr := directory.Sync()
-	closeErr := directory.Close()
-	return errors.Join(syncErr, closeErr)
+	return platformfs.SyncDirectory(path)
 }
 
 func cleanupBackupArtifacts(path string) {

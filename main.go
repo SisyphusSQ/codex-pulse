@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	_ "time/tzdata"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/helper"
 )

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -42,7 +43,7 @@ func TestSQLiteCredentialStorePersistsPrivateCredentialsAcrossRestart(t *testing
 	if err != nil {
 		t.Fatalf("Stat() error = %v", err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	if !platformfs.PrivateMode(path, info, 0o600) {
 		t.Fatalf("credentials.db mode = %#o, want 0600", info.Mode().Perm())
 	}
 
@@ -151,7 +152,7 @@ func TestSQLiteCredentialStoreRejectsInvalidServiceAndSecret(t *testing.T) {
 func privateCredentialTestPath(t testing.TB) string {
 	t.Helper()
 	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
+	if err := platformfs.Secure(directory, 0o700); err != nil {
 		t.Fatalf("Chmod() error = %v", err)
 	}
 	return filepath.Join(directory, "credentials.db")
