@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/accountbinding"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -497,7 +497,7 @@ func TestCurrentQuerySurvivesStoreRestartWithCompleteAggregateFacts(t *testing.T
 	t.Parallel()
 
 	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
+	if err := platformfs.Secure(directory, 0o700); err != nil {
 		t.Fatalf("Chmod(temp dir) error = %v", err)
 	}
 	databasePath := filepath.Join(directory, "quota-current-restart.db")
@@ -781,7 +781,7 @@ func newCurrentQueryTestRuntime(
 ) (*storesqlite.Store, *store.Repository, *CurrentQueryService) {
 	t.Helper()
 	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
+	if err := platformfs.Secure(directory, 0o700); err != nil {
 		t.Fatalf("Chmod(temp dir) error = %v", err)
 	}
 	database, repository, service := openCurrentQueryTestRuntime(
