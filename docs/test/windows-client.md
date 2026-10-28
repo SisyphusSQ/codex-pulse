@@ -71,3 +71,17 @@ POSIX FIFO fixture 仅在 Unix 执行；Windows 原生非普通对象边界以 j
 以上均为 synthetic Home/账号/响应开发验证。真实原生 Codex 与 CLI 版本、实际 Home/当前账号/窗口、真实刷新失败恢复和自然跨周期仍由最终 Master 集中验收。缺第二真实账号时 A→B→A 记条件不足，不以本节 synthetic ABA 替代。
 
 安全自查：无登录/切号或凭据解析；所有程序使用绝对可执行文件与独立参数，未执行 npm shim；Windows Home 固定与 Job Object 约束、原有账号 fence 与只读 RPC 保留。
+
+## WinUI 壳层与统一状态
+
+2026-10-29：
+
+- `dotnet run --project app/windows/CodexPulse.Tests` 通过。新增状态验证覆盖主窗/托盘 Provider 独立、全部关闭时系统导航、Codex 专属导航、旧请求不覆盖新上下文、同上下文 stale 与跨账号清空、recovery gate、缓存 clone/隔离/定向失效/in-flight fence，以及 mutation 未知不重放、凭据 mutation 不进入查询缓存、unknown/zero/int64/微小金额与英文呈现。
+- WinUI/Helper locked build 成功，0 warnings / 0 errors。壳层不新增 UI 框架或网络依赖。
+- 实际原生窗口显式绑定真实 Codex Home 和独立 ACL 私有 runtime；`probe-binding` 从 App/Helper 实际环境、Helper 参数和 Preferences 读回全部匹配，Home 物理身份摘要为 `9c883cdeaa79cca0`。目录仅当前用户与 SYSTEM 的显式 allow ACL。原始路径与偏好仍只在本机忽略目录。
+- 实际查看中文浅色、中文/英文深色、系统主题选择器、原生菜单键盘 End/Enter/Space/Escape、英文设置 mutation 与 revision/locale 权威读回，以及 760×540 DIP 恢复后的窄窗口。连接状态/日期语言漏更新、窄窗菜单与标题重叠、无关索引通知重建服务页的问题已修复并查看修复画面。
+- 已通过原生关闭操作结束开发 App，随后读回 App/Helper 均已退出；这不代替最终生命周期和异常退出矩阵。Computer Use 的 WinUI accessibility 快照偶有浮层残留，菜单收起以实际渲染图核实；未把残留树当成 UI 通过或失败证据。
+
+本节只证明基础壳层、权威启动/Provider 状态及展示机制。汇总/分析/管理页面、托盘、完整恢复/故障和安装/中心闭环仍由后续卡与 Master 完成。独立 physical DPI/多屏组合、完整恢复窗口与 Helper 异常的原生矩阵尚未执行，不能据此声称全产品 UI 或 Master 已通过。
+
+安全自查：C# 仅消费 CoreService 与窗口平台偏好，不读取业务 SQLite/JSONL/Agent 凭据；查询缓存有界且隔离，mutation 未知先读回，新增探针不输出完整环境或秘密。提交/合并阶段复用上述开发证据，不重复测试。

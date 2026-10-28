@@ -6,5 +6,6 @@
   <ItemGroup>
     <ProjectReference Include="../CodexPulse.Protocol/CodexPulse.Protocol.csproj" />
     <ProjectReference Include="../CodexPulse.CoreClient/CodexPulse.CoreClient.csproj" />
+    <ProjectReference Include="../CodexPulse.AppSupport/CodexPulse.AppSupport.csproj" />
   </ItemGroup>
 </Project>

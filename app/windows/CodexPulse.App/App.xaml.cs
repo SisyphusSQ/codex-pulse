@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
 namespace CodexPulse.App;
 
@@ -10,7 +11,11 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        window = new MainWindow();
+        try { window = new MainWindow(); }
+        catch (ArgumentException)
+        {
+            window = new Window { Title = "Codex Pulse", Content = new TextBlock { Text = "启动参数无效 / Invalid startup arguments", Margin = new Thickness(32), TextWrapping = TextWrapping.Wrap } };
+        }
         window.Activate();
     }
 }

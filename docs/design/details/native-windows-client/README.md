@@ -60,3 +60,15 @@ Named Pipe 的 protected DACL 只允许当前登录会话 SID，拒绝远端客�
 npm 的 `.cmd` / `.ps1` shim 不被执行或解析为 Shell 命令；只映射到已确认 `@openai/codex` 的固定包路径，优先使用对应 Windows native vendor binary，否则以真实 node.exe 与独立 codex.js 参数启动。无法找到可靠模块或 Node 时返回明确 unavailable 原因。版本输出有时间/字节上限；版本号仅用于展示，实际 initialize/只读 RPC 决定能力，身份缺失不会回退到另一个安装掩盖当前账号失败。
 
 Windows confirmed Home 使用完整卷号/128 位 ID 比对，读取全程持有 Home 与父目录的无 reparse、禁止 delete-sharing 句柄，阻止启动竞态中替换路径。子进程的 CODEX_HOME 与工作目录均绑定到该 Home，环境键与 PATH 按 Windows 大小写不敏感规则处理。所有 App Server/Node 进程以挂起状态创建、加入独立 kill-on-close Job Object 后才恢复；取消、正常查询结束和失败都会回收其后代，不弹控制台。账号夹读、scope/generation fence、Pro typed evidence、真实窗口、Reset Credits 和 LKG 沿用 Go 原逻辑；Pulse 不解析 auth.json、JWT 或 access token。
+
+## 原生工作台与展示状态
+
+WinUI NavigationView 复用 Mac 的信息架构：独立汇总、effective enabled 的客户端选择、客户端分析页，以及 API 与订阅/本机状态/来源与任务/设置。全部客户端关闭时仍可进入汇总和系统设置；账号额度仅属于 Codex。主窗口与托盘 Provider 分开保存。业务页面由各工作包向 PageCatalog 注册，壳层本身显示真实 Bootstrap/Settings 的服务状态，不填充演示用量。
+
+采用 WinUI 原生控件、系统字体与 CJK 回退、ThemeResource 语义色和有限的 8/12/20/24 间距；导航宽 224，主体以 24 的内边距组织。标题、正文和辅助信息使用平台文字层级，浅/深/系统主题集中作用于根元素。窄窗口折叠导航，标题为菜单按钮保留空间，日期工具栏允许横向滚动，正文和导航分别纵向滚动；启动尺寸恢复为 DIP 并限制在当前工作区。语言使用 Go Settings 的权威 locale，日期控件与连接状态一同更新；统计请求使用明确 IANA 时区与半开日期输入，金额只是整数微美元的展示换算，不重新定价。
+
+AppSupport 的 Workspace、QuerySlot 与 FeatureClient 不依赖 WinUI。缓存键包含 Provider、范围、IANA 时区、Home/账号 context 代次和 Protobuf 请求摘要，最多 64 项/32 MiB；返回独立 clone，不缓存 mutation。失效通知定向清理并阻止旧 in-flight 结果回填缓存；页面请求有取消与完成代次栅栏，背景失效合并，过期页面不能写新页面状态。loading/ready/empty/partial/stale/unavailable/cancelled/recovery-blocked 明确区分，unknown 与真实零保持独立，极小非零金额不显示成零。
+
+业务偏好由 Go 独占。C# 只在当前用户 `HKCU\Software\CodexPulse\Windows\Profiles\<runtime 摘要>` 保存窗口主题、导航、Provider 和尺寸；不读 Go SQLite/JSONL/Preferences 或 Agent 凭据。开发 Home 由 CODEX_HOME 或显式 `--codex-home` 传入，runtime 由 CODEX_PULSE_APP_RUNTIME 或 `--runtime-directory` 传入；默认开发 runtime 位于 LocalAppData/CodexPulse/development。关闭窗口的基础实现先取消通知、排空 Helper 后结束，正式托盘/单实例/异常进程策略由生命周期工作包接入。
+
+`scripts/windows/probe-binding` 只读回指定 App/Helper 的 CODEX_HOME、Helper runtime 参数、私有目录 ACL 和 Preferences 物理身份，stdout 仅输出匹配布尔值、PID 与身份摘要；不打印完整环境、路径或凭据。真实 UI 验收结合该读回，不能只凭启动命令判断已使用真实 Home。
