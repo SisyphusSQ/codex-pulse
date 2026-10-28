@@ -44,10 +44,6 @@ type PreferencesStore interface {
 	AcquireSwitchLease(ctx context.Context) (SwitchExecutionLease, error)
 }
 
-type SwitchExecutionLease interface {
-	Release()
-}
-
 type HomeProbe interface {
 	Probe(ctx context.Context, path string) (logsource.HomeMetadata, error)
 }
@@ -744,40 +740,6 @@ func metadataMatchesSource(metadata logsource.HomeMetadata, source ConfirmedSour
 		metadata.DeviceID == source.DeviceID && metadata.Inode == source.Inode
 }
 
-func cloneSnapshot(value Snapshot) Snapshot {
-	value.CodexHome = CloneCodexHome(value.CodexHome)
-	value.Updates = cloneUpdatePreferences(value.Updates)
-	value.DetachedHomes = append([]CodexHomePreferences(nil), value.DetachedHomes...)
-	value.PendingSwitch = cloneHomeSwitchJournal(value.PendingSwitch)
-	value.PendingResume = cloneHomeResumeJournal(value.PendingResume)
-	value.LastSwitch = cloneHomeSwitchAudit(value.LastSwitch)
-	return value
-}
-
-func cloneHomeSwitchJournal(value *HomeSwitchJournal) *HomeSwitchJournal {
-	if value == nil {
-		return nil
-	}
-	copied := *value
-	return &copied
-}
-
-func cloneHomeResumeJournal(value *HomeResumeJournal) *HomeResumeJournal {
-	if value == nil {
-		return nil
-	}
-	copied := *value
-	return &copied
-}
-
-func cloneHomeSwitchAudit(value *HomeSwitchAudit) *HomeSwitchAudit {
-	if value == nil {
-		return nil
-	}
-	copied := *value
-	return &copied
-}
-
 func sameActiveHome(active *CodexHomePreferences, from CodexHomePreferences) bool {
 	if active == nil {
 		return from == (CodexHomePreferences{})
@@ -843,27 +805,4 @@ func (service *Service) confirmInitialHome(
 		return cloneSnapshot(next), errors.Join(startErr)
 	}
 	return cloneSnapshot(next), nil
-}
-
-func cloneUpdatePreferences(value UpdatePreferences) UpdatePreferences {
-	value.SkippedVersion = cloneString(value.SkippedVersion)
-	value.SnoozeUntilMS = cloneInt64(value.SnoozeUntilMS)
-	value.LastCheckAtMS = cloneInt64(value.LastCheckAtMS)
-	return value
-}
-
-func cloneString(value *string) *string {
-	if value == nil {
-		return nil
-	}
-	copy := *value
-	return &copy
-}
-
-func cloneInt64(value *int64) *int64 {
-	if value == nil {
-		return nil
-	}
-	copy := *value
-	return &copy
 }

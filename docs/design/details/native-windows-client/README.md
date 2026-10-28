@@ -24,3 +24,13 @@ Windows 使用 C# / WinUI 3 承担原生 UI 和进程管理，共享 Go Helper �
 - Windows runtime 使用本机 ACL 验证所有权和私有性，不能用 chmod 0700/0600 冒充；开发与安装版 runtime 分离。
 - 每次启动 token 只通过专用继承管道进入 Helper；C# 不读取 SQLite、JSONL 或已保存凭据。
 - 真实验收显式绑定真实 Home 和私有 runtime，读回 canonical path、卷/文件物理身份和最终进程配置。开发测试只使用 synthetic Home。
+
+## 私有存储与恢复
+
+`internal/platformfs` 负责 Windows owner/DACL、reparse/hard-link 检查、LockFileEx、可用磁盘空间及持久发布；Unix 保留 mode/no-follow/flock。Windows 默认数据与 preferences 放在 LocalAppData 下，避免 roaming profile；App 显式传入开发或安装版的私有 runtime。ACL 只允许当前用户与 SYSTEM，子目录/文件继承这组权限；已有自定义目录权限不安全时拒绝，不能用 chmod 读数代替。
+
+Preferences 初始化保留 no-clobber，CAS 和 Home 执行锁保留 OS 跨进程锁及 revision/readback。Windows 文件发布使用 MoveFileEx WRITE_THROUGH，文件内容先 Flush；目录 FlushFileBuffers 不受支持，不冒充 Unix fsync 成功。SQLite URI 规范化为 Windows file URI，业务库、reporting.db 与 credentials.db 继续由 Go 单独持有。Backup/Restore 仍复制已提交的 WAL 一致快照，不能把普通文件复制当在线备份。
+
+迁移恢复先关闭 SQLite、验证恢复副本并持久保留旧库，再以 ReplaceFileW 及同目录私有备份替换。已替换后清理失败显式返回 committed warning 并要求重启；Windows 明确的 1177 部分失败或启动时 canonical 缺失，通过唯一、同名关联的私有替换备份恢复；不安全/多份残留停止启动，不盲目新建空库。已有 canonical 不会被残留备份覆盖。macOS 原子 exchange 路径保留。
+
+Helper 内嵌标准库 IANA tzdata，正式用户不需要安装 Go 获取时区。

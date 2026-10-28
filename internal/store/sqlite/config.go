@@ -7,7 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
 const (
@@ -31,9 +34,9 @@ type Config struct {
 	MaxReadConnections int
 }
 
-// DefaultPath returns the macOS Application Support database path.
+// DefaultPath 返回平台私有数据路径：macOS Application Support 或 Windows LocalAppData。
 func DefaultPath() (string, error) {
-	configDirectory, err := os.UserConfigDir()
+	configDirectory, err := platformfs.UserDataDirectory()
 	if err != nil {
 		return "", newClassifiedError("resolve default path", ErrInvalidPath, err)
 	}
@@ -88,7 +91,7 @@ func prepareDatabasePath(path string, repairExistingPermissions bool) (bool, err
 	directoryInfo, err := os.Lstat(dataDirectory)
 	directoryExisted := err == nil
 	if os.IsNotExist(err) {
-		if err := os.MkdirAll(dataDirectory, 0o700); err != nil {
+		if err := platformfs.MkdirAll(dataDirectory, 0o700); err != nil {
 			return false, newClassifiedError("create data directory", ErrInvalidPath, err)
 		}
 		directoryInfo, err = os.Lstat(dataDirectory)
@@ -104,29 +107,32 @@ func prepareDatabasePath(path string, repairExistingPermissions bool) (bool, err
 	if !directoryInfo.IsDir() {
 		return false, newClassifiedError("inspect data directory", ErrInvalidPath, fmt.Errorf("%s is not a directory", dataDirectory))
 	}
-	if directoryInfo.Mode().Perm() != 0o700 {
+	if !platformfs.PrivateMode(dataDirectory, directoryInfo, 0o700) {
 		if directoryExisted && !repairExistingPermissions {
 			return false, newClassifiedError("validate custom data directory permissions", ErrPermission, fmt.Errorf("mode is %#o, want 0700", directoryInfo.Mode().Perm()))
 		}
-		if err := os.Chmod(dataDirectory, 0o700); err != nil {
+		if err := platformfs.Secure(dataDirectory, 0o700); err != nil {
 			return false, newClassifiedError("secure data directory", ErrPermission, err)
 		}
 		directoryInfo, err = os.Stat(dataDirectory)
 		if err != nil {
 			return false, newClassifiedError("verify data directory permissions", ErrPermission, err)
 		}
-		if directoryInfo.Mode().Perm() != 0o700 {
+		if !platformfs.PrivateMode(dataDirectory, directoryInfo, 0o700) {
 			return false, newClassifiedError("verify data directory permissions", ErrPermission, fmt.Errorf("mode is %#o, want 0700", directoryInfo.Mode().Perm()))
 		}
 	}
 
+	if err := platformfs.RecoverExchange(path); err != nil {
+		return false, newClassifiedError("recover interrupted database replacement", ErrInvalidPath, err)
+	}
 	databaseInfo, err := os.Lstat(path)
 	switch {
 	case err == nil && databaseInfo.Mode()&os.ModeSymlink != 0:
 		return false, newClassifiedError("inspect database path", ErrInvalidPath, fmt.Errorf("%s is a symbolic link", path))
 	case err == nil && !databaseInfo.Mode().IsRegular():
 		return false, newClassifiedError("inspect database path", ErrInvalidPath, fmt.Errorf("%s is not a regular file", path))
-	case err == nil && databaseInfo.Mode().Perm() != 0o600 && !repairExistingPermissions:
+	case err == nil && !platformfs.PrivateMode(path, databaseInfo, 0o600) && !repairExistingPermissions:
 		return false, newClassifiedError("validate custom database permissions", ErrPermission, fmt.Errorf("mode is %#o, want 0600", databaseInfo.Mode().Perm()))
 	case err != nil && !os.IsNotExist(err):
 		return false, newClassifiedError("inspect database path", ErrInvalidPath, err)
@@ -143,11 +149,11 @@ func secureDatabaseFile(path string, repairPermissions bool) error {
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 		return newClassifiedError("inspect database file", ErrInvalidPath, fmt.Errorf("%s is not a regular non-symlink file", path))
 	}
-	if info.Mode().Perm() != 0o600 {
+	if !platformfs.PrivateMode(path, info, 0o600) {
 		if !repairPermissions {
 			return newClassifiedError("validate database file permissions", ErrPermission, fmt.Errorf("mode is %#o, want 0600", info.Mode().Perm()))
 		}
-		if err := os.Chmod(path, 0o600); err != nil {
+		if err := platformfs.Secure(path, 0o600); err != nil {
 			return newClassifiedError("secure database file", ErrPermission, err)
 		}
 	}
@@ -155,7 +161,7 @@ func secureDatabaseFile(path string, repairPermissions bool) error {
 	if err != nil {
 		return newClassifiedError("verify database file permissions", ErrPermission, err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 {
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || !platformfs.PrivateMode(path, info, 0o600) {
 		return newClassifiedError("verify database file permissions", ErrPermission, fmt.Errorf("mode is %v, want regular 0600", info.Mode()))
 	}
 	return nil
@@ -199,6 +205,10 @@ func readerPragmas(config Config) []string {
 }
 
 func databaseURI(path string, values url.Values) string {
-	uri := url.URL{Scheme: "file", Path: path, RawQuery: values.Encode()}
+	uriPath := filepath.ToSlash(path)
+	if filepath.VolumeName(path) != "" && !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
+	uri := url.URL{Scheme: "file", Path: uriPath, RawQuery: values.Encode()}
 	return uri.String()
 }

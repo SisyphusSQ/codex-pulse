@@ -8,8 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"golang.org/x/sys/unix"
-
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
@@ -37,11 +36,10 @@ func ensureMigrationBackupSpace(ctx context.Context, sourcePath string, required
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	var statistics unix.Statfs_t
-	if err := unix.Statfs(filepath.Dir(sourcePath), &statistics); err != nil {
+	availableBytes, err := platformfs.AvailableBytes(filepath.Dir(sourcePath))
+	if err != nil {
 		return fmt.Errorf("inspect migration backup filesystem: %w", err)
 	}
-	availableBytes := int64(statistics.Bavail) * int64(statistics.Bsize)
 	if availableBytes < requiredBytes {
 		return fmt.Errorf(
 			"%w: migration backup requires %d bytes, only %d available",

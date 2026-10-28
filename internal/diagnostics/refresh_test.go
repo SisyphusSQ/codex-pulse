@@ -8,11 +8,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
 func TestRefreshDiagnosticsArePrivateBoundedAndKeepFirstFailure(t *testing.T) {
 	root := t.TempDir()
-	if err := os.Chmod(root, 0o700); err != nil {
+	if err := platformfs.Secure(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	logger, err := Open(root, "0.14.3")
@@ -36,7 +38,7 @@ func TestRefreshDiagnosticsArePrivateBoundedAndKeepFirstFailure(t *testing.T) {
 	for _, entry := range entries {
 		path := filepath.Join(root, "logs", entry.Name())
 		info, err := os.Stat(path)
-		if err != nil || info.Mode().Perm() != 0o600 {
+		if err != nil || !platformfs.PrivateMode(path, info, 0o600) {
 			t.Fatalf("private file: %v %v", info, err)
 		}
 		content, err := os.ReadFile(path)
@@ -80,7 +82,7 @@ func TestRefreshDiagnosticsArePrivateBoundedAndKeepFirstFailure(t *testing.T) {
 
 func TestRefreshDiagnosticsWriteFailureRecoversAndRetainsFirstFault(t *testing.T) {
 	root := t.TempDir()
-	_ = os.Chmod(root, 0o700)
+	_ = platformfs.Secure(root, 0o700)
 	logger, err := Open(root, "dev")
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +103,7 @@ func TestRefreshDiagnosticsWriteFailureRecoversAndRetainsFirstFault(t *testing.T
 
 func TestRefreshDiagnosticsRejectLinksAndDoNotInterruptBusiness(t *testing.T) {
 	root := t.TempDir()
-	if err := os.Chmod(root, 0o700); err != nil {
+	if err := platformfs.Secure(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Mkdir(filepath.Join(root, "logs"), 0o700); err != nil {
@@ -128,7 +130,7 @@ func TestRefreshDiagnosticsRejectLinksAndDoNotInterruptBusiness(t *testing.T) {
 
 func TestRefreshDiagnosticsRetainFaultAcrossOrdinaryLogExpiry(t *testing.T) {
 	root := t.TempDir()
-	if err := os.Chmod(root, 0o700); err != nil {
+	if err := platformfs.Secure(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	logger, err := Open(root, "dev")
