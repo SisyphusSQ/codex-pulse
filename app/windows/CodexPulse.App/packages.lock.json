@@ -196,6 +196,12 @@
         "resolved": "9.0.0",
         "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
       },
+      "codexpulse.appsupport": {
+        "type": "Project",
+        "dependencies": {
+          "CodexPulse.CoreClient": "[1.0.0, )"
+        }
+      },
       "codexpulse.coreclient": {
         "type": "Project",
         "dependencies": {

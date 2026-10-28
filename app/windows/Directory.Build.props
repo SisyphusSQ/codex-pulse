@@ -5,5 +5,6 @@
     <LangVersion>14.0</LangVersion>
     <Deterministic>true</Deterministic>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <PulseVersion Condition="'$(PulseVersion)' == ''">dev</PulseVersion>
   </PropertyGroup>
 </Project>

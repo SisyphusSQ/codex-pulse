@@ -59,6 +59,12 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.1"
         }
       },
+      "codexpulse.appsupport": {
+        "type": "Project",
+        "dependencies": {
+          "CodexPulse.CoreClient": "[1.0.0, )"
+        }
+      },
       "codexpulse.coreclient": {
         "type": "Project",
         "dependencies": {

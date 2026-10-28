@@ -13,6 +13,6 @@ try {
     if ($LockedRestore) { $pulseRestoreArgs += '--locked-mode' }
     & dotnet @pulseRestoreArgs
     if ($LASTEXITCODE -ne 0) { throw 'Windows dependency restore failed' }
-    & dotnet build CodexPulse.App/CodexPulse.App.csproj --no-restore -c $Configuration
+    & dotnet build CodexPulse.App/CodexPulse.App.csproj --no-restore -c $Configuration "-p:PulseVersion=$Version"
     if ($LASTEXITCODE -ne 0) { throw 'Windows app build failed' }
 } finally { Pop-Location }
