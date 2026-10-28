@@ -11,6 +11,7 @@ import (
 
 	logparser "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/parser"
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -903,7 +904,7 @@ func openIndexerRepository(t *testing.T) (*store.Repository, *storesqlite.Store)
 func openIndexerRepositoryAt(t *testing.T) (*store.Repository, *storesqlite.Store, string) {
 	t.Helper()
 	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
+	if err := platformfs.Secure(directory, 0o700); err != nil {
 		t.Fatalf("secure temp directory: %v", err)
 	}
 	path := filepath.Join(directory, "codex-pulse-test.db")

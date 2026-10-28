@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-
-	"golang.org/x/sys/unix"
 )
 
 func TestHomeProbeReadsOnlyAllowlistedMetadata(t *testing.T) {
@@ -42,11 +40,15 @@ func TestHomeProbeReadsOnlyAllowlistedMetadata(t *testing.T) {
 		if path != auth {
 			wantBytes += info.Size()
 		}
-		if err := os.Chmod(path, 0); err != nil {
+		if err := restrictFixtureContentRead(t, path); err != nil {
 			t.Fatalf("os.Chmod(%q) error = %v", path, err)
 		}
 		observation := before[path]
-		observation.mode = 0
+		restricted, statErr := os.Stat(path)
+		if statErr != nil {
+			t.Fatal(statErr)
+		}
+		observation.mode = restricted.Mode()
 		before[path] = observation
 	}
 	t.Cleanup(func() {
@@ -89,11 +91,11 @@ func TestOpenAbsoluteDirectoryNoFollow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("filepath.EvalSymlinks() error = %v", err)
 	}
-	fileDescriptor, err := openAbsoluteDirectoryNoFollow(canonicalHome)
+	root, err := (osFileSystem{}).OpenRoot(canonicalHome, false)
 	if err != nil {
 		t.Fatalf("openAbsoluteDirectoryNoFollow(%q) error = %T %v", canonicalHome, err, err)
 	}
-	if err := unix.Close(fileDescriptor); err != nil {
+	if err := root.Close(); err != nil {
 		t.Fatalf("unix.Close() error = %v", err)
 	}
 }
@@ -172,8 +174,8 @@ func TestHomeProbeRejectsUnsafeAndUnsupportedEntries(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(home, "sessions"), 0o700); err != nil {
 			t.Fatalf("os.MkdirAll(sessions) error = %v", err)
 		}
-		if err := unix.Mkfifo(filepath.Join(home, "sessions", "pipe.jsonl"), 0o600); err != nil {
-			t.Fatalf("unix.Mkfifo() error = %v", err)
+		if err := makeFIFOFixture(t, filepath.Join(home, "sessions", "pipe.jsonl"), 0o600); err != nil {
+			t.Fatalf("makeFIFOFixture(t, ) error = %v", err)
 		}
 		if _, err := NewHomeProbe().Probe(context.Background(), home); !errors.Is(err, ErrUnsupportedFile) {
 			t.Fatalf("Probe(named pipe) error = %v, want ErrUnsupportedFile", err)

@@ -205,3 +205,26 @@ func TestWindowsExchangeRestoresInterruptedReplacementAndRejectsOccupiedFile(t *
 		t.Fatalf("occupied canonical changed = %q, %v", content, err)
 	}
 }
+
+func TestWindowsSourceRootRejectsJunctionAndAlternateStreams(t *testing.T) {
+	home, outside := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "outside.jsonl"), []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	createTestJunction(t, filepath.Join(home, "escape"), outside)
+	root, err := OpenReadRoot(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	for _, path := range []string{"escape/outside.jsonl", "../outside.jsonl", "session.jsonl:stream"} {
+		if file, err := root.OpenFile(filepath.FromSlash(path), os.O_RDONLY); err == nil {
+			file.Close()
+			t.Fatalf("accepted unsafe relative source %q", path)
+		}
+	}
+	if file, err := root.OpenMetadata("escape"); err == nil {
+		file.Close()
+		t.Fatal("accepted reparse point metadata")
+	}
+}
