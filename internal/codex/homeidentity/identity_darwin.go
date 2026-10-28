@@ -6,24 +6,13 @@ package homeidentity
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"math"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
-
-const stableDeviceIDPrefix = "volume:"
-
-var ErrInvalidIdentity = errors.New("invalid Codex Home identity")
-
-type Identity struct {
-	DeviceID string
-	Inode    int64
-}
 
 // FromDescriptor 使用卷 UUID 与目录 inode 构造持久身份。
 //
@@ -47,26 +36,6 @@ func FromDescriptor(fileDescriptor int) (Identity, error) {
 		DeviceID: stableDeviceIDPrefix + hex.EncodeToString(volumeUUID[:]),
 		Inode:    int64(stat.Ino),
 	}, nil
-}
-
-func IsStableDeviceID(value string) bool {
-	if len(value) != len(stableDeviceIDPrefix)+32 ||
-		value[:len(stableDeviceIDPrefix)] != stableDeviceIDPrefix {
-		return false
-	}
-	for _, character := range value[len(stableDeviceIDPrefix):] {
-		if character < '0' || character > '9' {
-			if character < 'a' || character > 'f' {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func IsLegacyDeviceID(value string) bool {
-	parsed, err := strconv.ParseUint(value, 10, 32)
-	return err == nil && parsed > 0 && strconv.FormatUint(parsed, 10) == value
 }
 
 func volumeUUIDFromDescriptor(fileDescriptor int) ([16]byte, error) {

@@ -27,3 +27,15 @@ dotnet run --project app/windows/CodexPulse.Tests
 - `GOOS=darwin GOARCH=arm64 go test -c`：SQLite、Preferences 与 App runtime 测试二进制交叉编译成功；只证明编译，不是 macOS 运行回归。产物留忽略的 `.artifacts/windows/too-659/`。
 
 尚未执行 Windows 完整 Helper/迁移 recovery UI、reporting 队列整包、真实 Codex Home/恢复和 macOS 运行测试，分别继续由 Home、通信、Provider、恢复及同步工作包/最终 Master 验收接通。无 CI 结果；提交/合并收尾不重复测试。安全自查：新权限与替换链路拒绝不安全对象，凭据和诊断边界保留，未新增网络端点或正文采集。
+
+## Windows Codex Home 与索引
+
+2026-10-29，Windows synthetic 来源的开发验证通过：
+
+- `go test ./internal/platformfs ./internal/codex/homeidentity ./internal/codex/logs/source ./internal/codex/index ./internal/preferences -run 'TestWindows|TestHomeProbeReadsOnlyAllowlistedMetadata|TestOpenAbsoluteDirectoryNoFollow|TestDiscovererFindsAllowlistedJSONL|TestIndexFile(BacksUp|RepresentsMissing|AddsSeparator|DetectsConcurrent)|TestValidateAppendSize|TestSnapshotReader(ReadsExact|ReadLimited)' -count=1`。
+- 覆盖完整 128 位身份与重开稳定性、中文/空格/长路径、Home 替换、初始/增量、读取中变化、取消、快照字节与预算、junction/越界/ADS 拒绝、Session Index 备份/追加/新建/并发漂移。Metadata fixture 以 ACL 明确拒绝 FILE_READ_DATA，并断言正文不可读取；HomeProbe 仍成功，证明该阶段不读会话或 auth 正文。
+- `go test ./internal/indexer -run 'TestIngester(RestartsFromCommitted|SupersedesGrowing|RebuildsWhenParser|RestoresCounterEpoch|KeepsOldFacts|ReplacesNewPhysical)' -count=1`：在真实 Windows 临时文件和 SQLite 上验证半行一次提交、重启 checkpoint、building supersede、parser 重建、counter epoch 和物理替换前旧事实保留。
+- Preferences 整包现在可在 Windows 编译，`TestWindowsPreferencesCASAndLease` 通过，补齐上一存储阶段的 package 编译前置；这仍不是完整 App/真实 Home 验收。
+- Home identity、来源、Session Index 与 indexer 的 macOS arm64 测试二进制交叉编译成功，未在 macOS 运行；产物留 `.artifacts/windows/too-660/`。
+
+POSIX FIFO fixture 仅在 Unix 执行；Windows 原生非普通对象边界以 junction、目录与类型校验覆盖，不将 POSIX fixture 标为 Windows 通过。尚未执行真实 Codex Home/原生程序/CLI、完整 Helper、页面或中心对账，继续在对应开发包及最终 Master 验收中执行。安全自查：平台层不读取 Agent 凭据、不增加网络调用，只有已确认白名单读取与原有显式 index repair 写入；Go/Swift/C# IDL 未改变。

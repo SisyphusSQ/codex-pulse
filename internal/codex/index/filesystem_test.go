@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
 var errDirectorySyncInjected = errors.New("directory sync injected failure")
@@ -47,8 +49,8 @@ func TestIndexFileBacksUpAndAppendsWithoutTouchingSessionJSONL(t *testing.T) {
 	if !report.SourceExisted || report.Path != backupPath || string(readFile(t, backupPath)) != string(original) {
 		t.Fatalf("Backup() report = %#v", report)
 	}
-	if got := fileMode(t, backupPath); got != 0o600 {
-		t.Fatalf("backup mode = %#o, want 0600", got)
+	if !isPrivateTestFile(t, backupPath) {
+		t.Fatal("backup file is not private")
 	}
 
 	appended := Entry{
@@ -139,7 +141,7 @@ func TestIndexFileRepresentsMissingBackupAndCreatesPrivateIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Backup(missing) error = %v", err)
 	}
-	if report.SourceExisted || len(readFile(t, markerPath)) != 0 || fileMode(t, markerPath) != 0o600 {
+	if report.SourceExisted || len(readFile(t, markerPath)) != 0 || !isPrivateTestFile(t, markerPath) {
 		t.Fatalf("missing backup report = %#v", report)
 	}
 	entry := Entry{
@@ -150,8 +152,8 @@ func TestIndexFileRepresentsMissingBackupAndCreatesPrivateIndex(t *testing.T) {
 		t.Fatalf("Append(missing) error = %v", err)
 	}
 	indexPath := filepath.Join(home, sessionIndexFilename)
-	if got := fileMode(t, indexPath); got != 0o600 {
-		t.Fatalf("created index mode = %#o, want 0600", got)
+	if !isPrivateTestFile(t, indexPath) {
+		t.Fatal("created index file is not private")
 	}
 }
 
@@ -320,7 +322,7 @@ type testFileState struct {
 func newPrivateDirectory(t *testing.T, name string) string {
 	t.Helper()
 	directory := filepath.Join(t.TempDir(), name)
-	if err := os.MkdirAll(directory, 0o700); err != nil {
+	if err := platformfs.MkdirAll(directory, 0o700); err != nil {
 		t.Fatalf("MkdirAll(%s): %v", name, err)
 	}
 	return directory
@@ -342,13 +344,13 @@ func readFile(t *testing.T, path string) []byte {
 	return content
 }
 
-func fileMode(t *testing.T, path string) os.FileMode {
+func isPrivateTestFile(t *testing.T, path string) bool {
 	t.Helper()
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("Stat(%s): %v", path, err)
 	}
-	return info.Mode().Perm()
+	return platformfs.PrivateMode(path, info, 0o600)
 }
 
 func fileState(t *testing.T, path string) testFileState {

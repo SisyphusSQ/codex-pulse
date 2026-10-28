@@ -121,7 +121,7 @@ func canonicalProbeHome(home string) (string, rootIdentity, error) {
 	case !info.IsDir():
 		return "", rootIdentity{}, ErrInvalidHome
 	}
-	observed, err := identityFromFileInfo(info)
+	observed, err := identityFromPathInfo(home, info)
 	if err != nil {
 		return "", rootIdentity{}, err
 	}

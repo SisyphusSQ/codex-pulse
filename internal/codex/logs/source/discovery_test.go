@@ -10,8 +10,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"golang.org/x/sys/unix"
 )
 
 func TestDiscovererFindsAllowlistedJSONLWithStableFingerprints(t *testing.T) {
@@ -403,8 +401,8 @@ func TestDiscovererRejectsNonRegularJSONLWithoutBlocking(t *testing.T) {
 		t.Fatalf("os.MkdirAll() error = %v", err)
 	}
 	pipePath := filepath.Join(home, "sessions", "named-pipe.jsonl")
-	if err := unix.Mkfifo(pipePath, 0o600); err != nil {
-		t.Fatalf("unix.Mkfifo() error = %v", err)
+	if err := makeFIFOFixture(t, pipePath, 0o600); err != nil {
+		t.Fatalf("makeFIFOFixture(t, ) error = %v", err)
 	}
 	discoverer, err := NewDiscoverer(home)
 	if err != nil {

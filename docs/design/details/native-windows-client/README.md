@@ -34,3 +34,11 @@ Preferences 初始化保留 no-clobber，CAS 和 Home 执行锁保留 OS 跨进�
 迁移恢复先关闭 SQLite、验证恢复副本并持久保留旧库，再以 ReplaceFileW 及同目录私有备份替换。已替换后清理失败显式返回 committed warning 并要求重启；Windows 明确的 1177 部分失败或启动时 canonical 缺失，通过唯一、同名关联的私有替换备份恢复；不安全/多份残留停止启动，不盲目新建空库。已有 canonical 不会被残留备份覆盖。macOS 原子 exchange 路径保留。
 
 Helper 内嵌标准库 IANA tzdata，正式用户不需要安装 Go 获取时区。
+
+## Codex Home 与来源身份
+
+Windows 通过 FILE_ID_INFO 保留完整卷号和 128 位文件 ID，使用不透明 `DeviceID = winfile:<16 位卷号 hex>:<32 位文件 ID hex>`，`Inode = 1` 仅满足既有正值合同。全部身份位均在 DeviceID 中，不把文件 ID 截断为 int64 或散列后假称原始身份。macOS 的 `volume:<UUID>` 与 inode 格式保持原样，现有 Preferences、Fingerprint 与 SQLite 字符串字段可容纳两种格式，不更改业务 schema 或复制数据库。
+
+`platformfs.ReadRoot/BoundFile` 将来源访问绑定到无 reparse 的目录组件和句柄，访问结束释放；支持 Unicode、空格和长路径，拒绝 junction/reparse 穿透、相对越界与 NTFS alternate data stream。来源使用其原有 ACL，不把 Pulse 私有目录权限写到 Codex Home。元数据探测只查类型、身份与大小；`auth.json` 仅确认存在性，不读取正文。确认后才按既有白名单读取会话，保留 prefix proof、4 MiB chunk 上限、取消和读取前后身份/大小/修改及变化时刻校验。
+
+发现、SnapshotReader、parser、projector、持久 checkpoint、generation 和费用口径共享已有逻辑；Windows 仅实现文件系统原语。目录或文件变化返回 typed changed/unsafe/partial，不能用替代 Home 或零值掩盖。Session Index 的解析、版本证明、备份及 append-only repair 同样共用现有逻辑；Windows 新文件 WRITE_THROUGH、正文 FlushFileBuffers，显式修复仍需 dry-run/确认和私有备份，普通索引不修改源文件。
