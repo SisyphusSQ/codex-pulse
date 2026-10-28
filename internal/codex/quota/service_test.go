@@ -3,7 +3,6 @@ package quota
 import (
 	"context"
 	"errors"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/accountbinding"
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -232,7 +232,7 @@ func TestServiceDoesNotRecordAfterSQLiteAccountFenceChanges(t *testing.T) {
 func newQuotaServiceTestRepository(t *testing.T, key [32]byte) *store.Repository {
 	t.Helper()
 	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
+	if err := platformfs.Secure(directory, 0o700); err != nil {
 		t.Fatalf("Chmod(temp dir) error = %v", err)
 	}
 	database, err := storesqlite.Open(context.Background(), storesqlite.Config{

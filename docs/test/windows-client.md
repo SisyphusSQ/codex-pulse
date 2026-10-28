@@ -56,3 +56,18 @@ POSIX FIFO fixture 仅在 Unix 执行；Windows 原生非普通对象边界以 j
 - WinUI 全工程与 Helper 构建、随后 locked restore 构建均成功（0 warnings / 0 errors）。Helper、Grok 和根包的 macOS arm64 测试二进制交叉编译成功；未运行 macOS 测试。中文/空格的可执行文件路径与 runtime 下，跨进程大响应、值语义、sequence gap 和关闭测试通过。
 
 首次创建 runtime 的 DirectoryInfo 缓存误判与 stream 正常结束后的无限循环风险已在开发中修复。尚未执行真实 Home、原生 Codex/CLI、页面、托盘/Job Object、安装更新和中心对账；无 CI checks，macOS 仅交叉编译不作为运行证据。安全自查：Named Pipe 按登录 SID 限制，逐连接验证服务端 PID，启动 token 不进入参数/环境/文件/日志，未新增 TCP、业务合同或 mutation 自动重放。
+
+## Windows Codex 程序、Home 与账户采集
+
+2026-10-29 开发证据：
+
+- `go test ./internal/codex/appserver -count=1 -timeout=90s -v`：Windows 原生假执行程序验证中文/空格路径、实际子进程 Home/工作目录、account/rateLimits/read → account/read → account/rateLimits/read、Reset Credits、版本展示、未登录、账号漂移、缺身份不切换安装、能力回退、npm 固定模块和独立参数、Windows 环境键。通用 RPC/schema/隐私/取消/分页测试一并通过。原 Unix Shell 进程夹具移入仅 Unix 的测试文件，Windows 不依赖 Shell；后续 Windows 子集在清空 PATH 的 fixture 环境中再通过，防止误用真实 CLI。
+- `TestWindowsCodexHomePinPreventsLaunchRace` 验证最后检查与进程启动之间目录无法替换；操作结束后可以移动，旧物理身份再启动被拒绝。
+- `TestWindowsCodexCancellationReapsEntireJob` 启动真实父/后代测试进程，deadline 后确认回收并等待后代退出，不以单纯调用 Kill 当作无残留证据。
+- `go test ./internal/codex/accountbinding ./internal/codex/quota -run 'TestDeriveScope|TestClient|TestCurrentQuery(Unconfirmed|AccountSwitch|StaleHistory)|TestResetCredits|TestRefreshPolicy' -count=1 -timeout=90s` 通过。
+- `go test ./internal/app -run TestAccountBinding -count=1 -timeout=90s` 通过：ABA、历史时间戳、当前 scope/generation、旧请求封锁、崩溃重启/claim、备份/重开和 reporting 身份保留。初次执行发现 fixture 的 Unix 权限与未关闭 DB 问题，改为平台私有目录并注册关闭后通过；未放宽生产权限检查。
+- App Server 的 macOS arm64 测试包交叉编译成功，未在 macOS 运行；本卡不改本机/中心 Proto 或账号/费用业务合同。
+
+以上均为 synthetic Home/账号/响应开发验证。真实原生 Codex 与 CLI 版本、实际 Home/当前账号/窗口、真实刷新失败恢复和自然跨周期仍由最终 Master 集中验收。缺第二真实账号时 A→B→A 记条件不足，不以本节 synthetic ABA 替代。
+
+安全自查：无登录/切号或凭据解析；所有程序使用绝对可执行文件与独立参数，未执行 npm shim；Windows Home 固定与 Job Object 约束、原有账号 fence 与只读 RPC 保留。

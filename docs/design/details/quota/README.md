@@ -1,5 +1,7 @@
 # Quota Trust Model
 
+Windows 复用下述账户、窗口、Reset Credits 和 LKG 合同，通过原生 App/CLI 的 stdio App Server 获取。Windows 的程序发现、confirmed Home 文件 ID 绑定、Job Object 与无 Shell npm 入口见 [Windows 原生客户端](../native-windows-client/README.md)，开发证据和真实验收区别见 [Windows 验收](../../../test/windows-client.md)。公开 RPC 语义以 [OpenAI App Server 文档](https://learn.chatgpt.com/docs/app-server) 为参照，实际安装仍须通过能力与身份检查；不因上游提供登录或 reset 消费接口而新增这些操作。
+
 ## 问题
 
 Codex Runway 实际运行中观察到：网络不佳时，5 小时和周窗口可能显示成剩余 100%，容易把未知状态误认为额度已经重置。Codex Pulse 不允许失败响应、默认值或可疑降级覆盖最后可信配额。

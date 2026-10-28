@@ -15,6 +15,7 @@ import (
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
 	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -1770,7 +1771,7 @@ func (runtime *quotaStartupHomeRuntime) Resume(context.Context, uint64) error {
 func openQuotaRuntimeStore(t testing.TB) (*storesqlite.Store, *store.Repository) {
 	t.Helper()
 	directory := filepath.Join(t.TempDir(), "private")
-	if err := os.Mkdir(directory, 0o700); err != nil {
+	if err := platformfs.Mkdir(directory, 0o700); err != nil {
 		t.Fatalf("os.Mkdir(database directory) error = %v", err)
 	}
 	database, err := storesqlite.Open(context.Background(), storesqlite.Config{
@@ -1779,6 +1780,11 @@ func openQuotaRuntimeStore(t testing.TB) (*storesqlite.Store, *store.Repository)
 	if err != nil {
 		t.Fatalf("sqlite.Open() error = %v", err)
 	}
+	t.Cleanup(func() {
+		if err := database.Close(context.Background()); err != nil {
+			t.Errorf("database.Close() error = %v", err)
+		}
+	})
 	repository := store.NewRepository(database)
 	if err := repository.EnsureApplicationSchema(context.Background()); err != nil {
 		_ = database.Close(context.Background())

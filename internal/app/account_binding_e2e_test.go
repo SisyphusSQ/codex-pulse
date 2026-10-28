@@ -21,6 +21,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/runtimeinfo"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -219,7 +220,7 @@ func TestAccountBindingCrashPendingDoesNotRestoreOldAccount(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "private", "codex-pulse.db")
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := platformfs.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	database, repository := openQuotaRuntimeStoreAt(t, path)
@@ -260,7 +261,7 @@ func TestAccountBindingCrashAfterConfirmedBReplansSameScope(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "private", "codex-pulse.db")
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := platformfs.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	database, repository := openQuotaRuntimeStoreAt(t, path)
@@ -309,7 +310,7 @@ func TestAccountBindingCrashAbandonsActiveClaim(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "private", "codex-pulse.db")
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := platformfs.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	database, repository := openQuotaRuntimeStoreAt(t, path)
@@ -366,7 +367,7 @@ func TestAccountBindingRestartReusesScopeKey(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "private", "codex-pulse.db")
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := platformfs.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	database, repository := openQuotaRuntimeStoreAt(t, path)
@@ -403,7 +404,7 @@ func TestAccountBindingBackupRestoreKeepsV32Snapshot(t *testing.T) {
 	t.Parallel()
 
 	sourcePath := filepath.Join(t.TempDir(), "source", "codex-pulse.db")
-	if err := os.MkdirAll(filepath.Dir(sourcePath), 0o700); err != nil {
+	if err := platformfs.MkdirAll(filepath.Dir(sourcePath), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	database, repository := openQuotaRuntimeStoreAt(t, sourcePath)
@@ -430,7 +431,7 @@ func TestAccountBindingBackupRestoreKeepsV32Snapshot(t *testing.T) {
 	closeQuotaRuntimeStore(t, database)
 
 	backupPath := filepath.Join(t.TempDir(), "backup", "codex-pulse.db")
-	if err := os.MkdirAll(filepath.Dir(backupPath), 0o700); err != nil {
+	if err := platformfs.MkdirAll(filepath.Dir(backupPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(sourcePath)
@@ -692,7 +693,7 @@ func windowHasUsed(response quotaonline.CurrentResponse, used float64) bool {
 
 func openQuotaRuntimeStoreAt(t testing.TB, path string) (*storesqlite.Store, *store.Repository) {
 	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := platformfs.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 	database, err := storesqlite.Open(context.Background(), storesqlite.Config{Path: path})

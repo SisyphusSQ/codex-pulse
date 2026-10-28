@@ -52,3 +52,11 @@ Named Pipe 的 protected DACL 只允许当前登录会话 SID，拒绝远端客�
 `NativeHelper` 直接 CreateProcessW，使用 STARTUPINFOEX 的 HANDLE_LIST 仅继承专用鉴权 reader 与 NUL，默认 stdin/stdout/stderr 均为 NUL。启动 token 每次重新随机生成，唯一传输是该继承管道中的单行；argv 只有数值 HANDLE，环境仅显式绑定 CODEX_HOME。父 writer 保持到关闭，EOF 是失联关闭兜底；正常关闭 RPC 后等待 Helper 完成数据库排空并以 exit 0 退出，超时终止明确标为 uncertain。正式 Job Object/单实例/托盘由生命周期工作包补齐。
 
 `HelperSession` 区分 starting/connected/recovery/disconnected/stopped/uncertain；Bootstrap 的 recovery 不被当成正常业务空数据。事件订阅等待 ready header，每次重订阅清空依赖查询，global sequence 缺口再次触发权威查询；只对断流进行有上限退避重连。mutation 不自动重放，取消/超时/断连可能已提交，调用方必须权威读回。SettingsDraft 仅复制可编辑字段和权威 revision。错误使用生成 ErrorDetail，不向 UI 展示底层诊断或凭据。
+
+## Windows Codex App Server
+
+程序发现优先查询当前用户注册的 OpenAI.Codex MSIX 包，用 GetPackagesByPackageFamily / GetPackagePathByFullName 得到实际安装目录，再检查 `app/resources/codex.exe`；不遍历或猜测 WindowsApps 版本。其他候选包括 Codex 本机下载目录、PATH 的原生 codex.exe、WinGet 链接、npm 安装和用户显式绝对路径。`CODEX_PULSE_CODEX_BINARY` 与 `CODEX_PULSE_NODE_BINARY` 保留既有显式配置入口，UI 的平台启动配置由设置工作包接入。
+
+npm 的 `.cmd` / `.ps1` shim 不被执行或解析为 Shell 命令；只映射到已确认 `@openai/codex` 的固定包路径，优先使用对应 Windows native vendor binary，否则以真实 node.exe 与独立 codex.js 参数启动。无法找到可靠模块或 Node 时返回明确 unavailable 原因。版本输出有时间/字节上限；版本号仅用于展示，实际 initialize/只读 RPC 决定能力，身份缺失不会回退到另一个安装掩盖当前账号失败。
+
+Windows confirmed Home 使用完整卷号/128 位 ID 比对，读取全程持有 Home 与父目录的无 reparse、禁止 delete-sharing 句柄，阻止启动竞态中替换路径。子进程的 CODEX_HOME 与工作目录均绑定到该 Home，环境键与 PATH 按 Windows 大小写不敏感规则处理。所有 App Server/Node 进程以挂起状态创建、加入独立 kill-on-close Job Object 后才恢复；取消、正常查询结束和失败都会回收其后代，不弹控制台。账号夹读、scope/generation fence、Pro typed evidence、真实窗口、Reset Credits 和 LKG 沿用 Go 原逻辑；Pulse 不解析 auth.json、JWT 或 access token。
