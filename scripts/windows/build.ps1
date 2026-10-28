@@ -1,10 +1,12 @@
 [CmdletBinding()]
 param(
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
-    [switch]$LockedRestore
+    [switch]$LockedRestore,
+    [string]$Version = 'dev'
 )
 $ErrorActionPreference = 'Stop'
 $pulseRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+& (Join-Path $PSScriptRoot 'build-helper.ps1') -Version $Version
 Push-Location (Join-Path $pulseRoot 'app/windows')
 try {
     $pulseRestoreArgs = @('restore', 'CodexPulse.App/CodexPulse.App.csproj')

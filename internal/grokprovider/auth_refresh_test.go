@@ -13,6 +13,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
 func TestAuthReaderRejectsCrossOriginTokenRedirect(t *testing.T) {
@@ -78,6 +80,7 @@ func TestAuthReaderRefusesSymlinkBeforeRefreshing(t *testing.T) {
 	})
 	authPath := filepath.Join(directory, "auth.json")
 	if err := os.Symlink(target, authPath); err != nil {
+		skipUnavailableSymlink(t, err)
 		t.Fatalf("os.Symlink() error = %v", err)
 	}
 	reader, err := NewAuthReader(authPath, func() time.Time { return now })
@@ -114,6 +117,7 @@ func TestAuthReaderRefusesSymlinkedRefreshLock(t *testing.T) {
 	}
 	lockPath := filepath.Join(directory, "auth.json.lock")
 	if err := os.Symlink(target, lockPath); err != nil {
+		skipUnavailableSymlink(t, err)
 		t.Fatalf("os.Symlink(lock) error = %v", err)
 	}
 
@@ -491,8 +495,9 @@ func TestAuthReaderRefreshesExpiringOIDCCredential(t *testing.T) {
 	if other["key"] != "unrelated-secret" || other["future_field"] != "unchanged" {
 		t.Fatalf("unrelated account changed = %#v", other)
 	}
-	if mode := fileMode(t, authPath); mode != 0o600 {
-		t.Fatalf("auth.json mode = %04o, want 0600", mode)
+	info, err := os.Stat(authPath)
+	if err != nil || !platformfs.PrivateMode(authPath, info, 0o600) {
+		t.Fatal("auth.json private permissions are invalid")
 	}
 }
 
@@ -505,13 +510,4 @@ func writeGrokAuthFixture(t *testing.T, path string, value any) {
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("os.WriteFile(auth.json) error = %v", err)
 	}
-}
-
-func fileMode(t *testing.T, path string) os.FileMode {
-	t.Helper()
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatalf("os.Stat() error = %v", err)
-	}
-	return info.Mode().Perm()
 }

@@ -4,14 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 var (
@@ -182,28 +178,6 @@ func (reader *AuthReader) loadAccount() (grokAuthAccount, error) {
 		return grokAuthAccount{}, ErrAuthUnavailable
 	}
 	return selected, nil
-}
-
-func readRegularAuthFile(path string) ([]byte, error) {
-	descriptor, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
-	if err != nil {
-		return nil, ErrAuthUnavailable
-	}
-	file := os.NewFile(uintptr(descriptor), path)
-	if file == nil {
-		_ = unix.Close(descriptor)
-		return nil, ErrAuthUnavailable
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, ErrAuthUnavailable
-	}
-	content, err := io.ReadAll(io.LimitReader(file, maxAuthResponseBytes+1))
-	if err != nil || len(content) > maxAuthResponseBytes {
-		return nil, ErrAuthUnavailable
-	}
-	return content, nil
 }
 
 func whitelistString(payload map[string]json.RawMessage, key string) string {

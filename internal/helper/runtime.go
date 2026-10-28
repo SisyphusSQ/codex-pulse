@@ -40,9 +40,10 @@ type RuntimeConfig struct {
 	DatabasePath     string
 	PreferencesPath  string
 	DefaultCodexHome string
+	RuntimeDirectory string
 }
 
-// Run starts the authenticated UDS server and blocks until shutdown RPC,
+// Run starts the authenticated local gRPC server and blocks until shutdown RPC,
 // signal cancellation, or parent-pipe EOF. It never opens a TCP listener.
 func Run(ctx context.Context, config RuntimeConfig) error {
 	if ctx == nil || config.SocketPath == "" || config.AuthFD < 3 || config.HelperVersion == "" ||
@@ -61,7 +62,16 @@ func Run(ctx context.Context, config RuntimeConfig) error {
 	if err != nil {
 		return err
 	}
-	if logger, err := diagnostics.Open(filepath.Dir(config.SocketPath), config.HelperVersion); err == nil {
+	listener, cleanupSocket, err := listenEndpoint(config)
+	if err != nil {
+		return err
+	}
+	defer cleanupSocket()
+	runtimeDirectory := config.RuntimeDirectory
+	if runtimeDirectory == "" {
+		runtimeDirectory = filepath.Dir(config.SocketPath)
+	}
+	if logger, err := diagnostics.Open(runtimeDirectory, config.HelperVersion); err == nil {
 		defer logger.Close()
 		ctx = diagnostics.WithLogger(ctx, logger)
 	} else {
@@ -96,12 +106,6 @@ func Run(ctx context.Context, config RuntimeConfig) error {
 		broker.Close()
 		return errors.Join(ErrRuntime, err)
 	}
-	listener, cleanupSocket, err := ListenUnix(config.SocketPath)
-	if err != nil {
-		_ = application.Close(context.Background())
-		return err
-	}
-	defer cleanupSocket()
 	server, err := NewGRPCServer(ServerConfig{
 		Authenticator: authenticator, HelperVersion: config.HelperVersion,
 		Service: application.Service(), Broker: application.Broker(), Recovery: application.Recovery(),

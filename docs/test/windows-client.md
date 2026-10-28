@@ -39,3 +39,20 @@ dotnet run --project app/windows/CodexPulse.Tests
 - Home identity、来源、Session Index 与 indexer 的 macOS arm64 测试二进制交叉编译成功，未在 macOS 运行；产物留 `.artifacts/windows/too-660/`。
 
 POSIX FIFO fixture 仅在 Unix 执行；Windows 原生非普通对象边界以 junction、目录与类型校验覆盖，不将 POSIX fixture 标为 Windows 通过。尚未执行真实 Codex Home/原生程序/CLI、完整 Helper、页面或中心对账，继续在对应开发包及最终 Master 验收中执行。安全自查：平台层不读取 Agent 凭据、不增加网络调用，只有已确认白名单读取与原有显式 index repair 写入；Go/Swift/C# IDL 未改变。
+
+## Named Pipe 与跨进程 CoreService
+
+开发入口 `scripts/windows/test-transport.ps1` 在 `.artifacts/windows/too-661/fixture-<随机值>/` 初始化 synthetic Home、全部关闭的 Providers/在线请求，以及独立 normal/recovery 数据库。真实 Helper 与 C# 进程经生产 Named Pipe/gRPC 通道互通；专用 wire-peer 由 Helper 测试包编译，只使用假查询结果验证极端消息，不随 App 分发。它们都不能证明真实 Codex 产品验收。
+
+2026-10-29 已执行通过：
+
+- 实际 C#→Go Handshake、Bootstrap、全部合同查询、错误 token 的 unary/stream 拒绝、非预期服务端 PID 拒绝、合同与 bundle version 不匹配拒绝、typed ErrorDetail、deadline。
+- Settings 修改 receipt/revision、权威读回、ready header 后的真实 invalidation、stream 取消、8 MiB 请求、16 MiB 请求上限、父 auth 管道 EOF 排空、Helper 新进程重连、显式 Shutdown exit 0。
+- future schema 的真实 recovery Bootstrap、recovery state RPC、正常服务不可用和 recovery 关闭。
+- wire-peer 跨进程 8 MiB 响应、17 MiB 响应拒绝、partial/zero/unknown 保留、有界 broker sequence gap 触发查询失效。
+- `go test ./internal/helper -count=1 -timeout=60s -v` 全包通过；根包 Windows 参数测试通过。此前一次无 verbose Helper 测试未结束而被中止，随后有界全包复查通过，未将中止记录计为通过。
+- Grok 为完整 Helper 编译而拆出平台文件访问；鉴权刷新/并发轮换/失败不覆盖凭据的聚焦测试通过，文件隐私断言使用 Windows ACL。两个文件 symlink 用例明确 skip：当前用户没有创建符号链接权限；未改变系统权限设置，后续 Provider 验证补充 Windows 原生边界。Cursor/Grok/DSH 真实验收仍按用户豁免。
+- OSV 对固定 go-winio 0.6.4 与 x/sys 0.49.0 查询均未返回已知漏洞；这不是全仓安全保证。
+- WinUI 全工程与 Helper 构建、随后 locked restore 构建均成功（0 warnings / 0 errors）。Helper、Grok 和根包的 macOS arm64 测试二进制交叉编译成功；未运行 macOS 测试。中文/空格的可执行文件路径与 runtime 下，跨进程大响应、值语义、sequence gap 和关闭测试通过。
+
+首次创建 runtime 的 DirectoryInfo 缓存误判与 stream 正常结束后的无限循环风险已在开发中修复。尚未执行真实 Home、原生 Codex/CLI、页面、托盘/Job Object、安装更新和中心对账；无 CI checks，macOS 仅交叉编译不作为运行证据。安全自查：Named Pipe 按登录 SID 限制，逐连接验证服务端 PID，启动 token 不进入参数/环境/文件/日志，未新增 TCP、业务合同或 mutation 自动重放。
