@@ -2,6 +2,8 @@
 
 ## 当前运行时
 
+Windows 扩展使用 [C# / WinUI 3 原生客户端](../native-windows-client/README.md)，与 Swift 共享同一 `core.proto` 和 Go 业务真相。macOS 使用私有 UDS，Windows 使用用户/登录会话 ACL 保护的 Named Pipe，均不开放 TCP。Windows 私有目录、物理 Home 身份和文件锁使用平台实现；不能将 Unix mode/inode 直接套用。客户端窗口、托盘和更新继续不属于 CoreService。
+
 Codex Pulse 当前采用 Swift-native client（后续仓库任务）+ Go Helper 的进程边界。Go Helper 是数据、索引、调度、quota、settings、Home switch、migration recovery 和健康口径的唯一业务真相。
 
 ```mermaid
