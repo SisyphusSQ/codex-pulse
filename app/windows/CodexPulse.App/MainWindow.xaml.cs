@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window
     public Localization Localization { get; } = new();
     public FeatureClient Client { get; }
     public SettingsEditor SettingsEditor{get;}
+    public ReportingController Reporting{get;}
     public HomeSwitchDraft HomeSwitchDraft{get;}=new();
     public bool DataHealthRequested{get;private set;}
     public bool WindowActive{get;private set;}
@@ -78,6 +79,7 @@ public sealed partial class MainWindow : Window
         lifecycle=new(DeliverLifecycleAsync);
         Client = new(() => Session?.Connection.Raw ?? throw new IOException("helper_disconnected"));
         SettingsEditor=new(Client,()=>Workspace.Context);
+        Reporting=new(Client,()=>Workspace.Context);
         PageCatalog.Register(Feature.Summary, host => new DashboardPage(host));
         PageCatalog.Register(Feature.Overview, host => new OverviewPage(host));
         PageCatalog.Register(Feature.Sessions, host => new SessionsPage(host));
@@ -570,7 +572,7 @@ public sealed partial class MainWindow : Window
     public async Task<bool> QuitAsync()
     {
         if(closing)return false;
-        closing = true; invalidations.Stop(); page?.Dispose();subscriptions?.Dispose();SettingsEditor.Dispose();trayPanel?.Hide();lifecycle.Stop();
+        closing = true; invalidations.Stop(); page?.Dispose();subscriptions?.Dispose();SettingsEditor.Dispose();Reporting.Dispose();trayPanel?.Hide();lifecycle.Stop();
         lifetime.Cancel();
         if (startup is not null) await startup;
         await StopWatchAsync();
