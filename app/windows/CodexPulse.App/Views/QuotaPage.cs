@@ -44,7 +44,7 @@ internal sealed class QuotaPage:FeaturePage
         });
         var quotaTask=provider=="dsh"?Task.CompletedTask:quota.LoadAsync((provider,context.Generation),ct=>Host.Client.QueryAsync("QuotaCurrent",qr,context,["account","quota","quota_"+provider],(core,deadline,cancel)=>core.QuotaCurrentAsync(qr,deadline:deadline,cancellationToken:cancel),ct,force),r=>DashboardPresentation.Kind(r.Meta));
         var paceTask=provider=="dsh"?Task.CompletedTask:pace.LoadAsync((provider,context.Generation),ct=>Host.Client.QueryAsync("QuotaPace",pr,context,["account","quota","quota_"+provider],(core,deadline,cancel)=>core.QuotaPaceAsync(pr,deadline:deadline,cancellationToken:cancel),ct,force),r=>DashboardPresentation.Kind(r.Meta));
-        var loadAccount=provider=="codex" && account.State.Value is null;
+        var loadAccount=provider!="dsh" && (force || provider!="codex" || account.State.Value is null);
         var accountTask=loadAccount?LoadAccount():Task.CompletedTask;
         var ur=new UsageCostRequest{Provider=new(){Provider=provider},Range=DashboardPresentation.LocalRange(context),Granularity="day"};
         var usageTask=usage.Slot.LoadAsync(context,ct=>Host.Client.QueryAsync("UsageCost",ur,context,["index","account"],(core,deadline,cancel)=>core.UsageCostAsync(ur,deadline:deadline,cancellationToken:cancel),ct,force),r=>DashboardPresentation.Kind(r.Meta));
@@ -81,6 +81,7 @@ internal sealed class QuotaPage:FeaturePage
         current.Children.Clear();paceView.Children.Clear();
         current.Children.Add(Text(L.Text("当前额度","Current quota"),"SubtitleTextBlockStyle"));
         current.Children.Add(Text(L.State(quota.State.Kind)));
+        if(provider is "cursor" or "grok")current.Children.Add(Text(TrayPresentation.Identity(provider,account.State.Kind==LoadKind.Ready?account.State.Value:null,false,L)));
         if(quota.State.Value is not {} response || response.ProviderContext?.EffectiveProvider!=provider){current.Children.Add(Text(L.Text("当前额度暂不可用。","Current quota is unavailable.")));return;}
         if(provider=="codex")
         {
