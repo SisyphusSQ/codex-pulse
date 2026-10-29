@@ -130,3 +130,20 @@ E11 合同复查发现 E09 共享额度摘要在 unknown 时仍创建 Value=0 �
 未执行与边界：缺少第二真实 Codex 账号，真实 A→B→A、历史卡与跨账号在线隔离按条件不足记录，不能以 fixture 替代；自然跨 reset、真实服务失败恢复、显式关联/清理的全部产品场景和完整中英文/DPI 矩阵留给 Master 集中验收。Cursor/Grok/DSH 真实环境仍由用户豁免，未声称通过。完整设置和平台生命周期由后续卡承接；本卡不改变 Proto、Agent 登录或统计口径。
 
 安全自查：只调用受鉴权的 Core RPC；账号 opaque ID 只在请求/内存中，凭据、正文和原始 JSONL 不进入 UI 数据层；删除/解除/清理有本机产品确认并受服务端 revision 与当前账号边界保护；未新增网络出口或 mutation 重放。提交与合并收尾复用以上证据，不重复测试；无 CI checks 不记 CI 通过。
+
+## Windows 设置、来源、健康与恢复
+
+2026-10-29 开发证据：
+
+- 原生通用设置按 Helper 的 editable fields 展示 Provider intent/discovery/effective、在线来源、周期、界面与更新偏好；保存采用 revision 与权威回读，三方 rebase 保留用户改动并吸收未改字段的新值。Codex 订阅保持独立即时分区，Windows Codex/Node 路径作为独立平台偏好保存并通过正常排空重新连接应用。
+- Home 独立两步探测确认，绑定路径/策略/设置 revision，确认与恢复后独立读取 generation/switch status/last outcome；未知结果不重放。来源、任务与健康事件消费服务端筛选、排序、分页和详情。Data Health 是本机状态下钻，健康评估与资源快照时间分开，资源缺失不补零，后台不运行该页五秒轮询。受控操作仅固定 pause/resume/reconcile 和 Analyze-only repair；没有 repair execute、SQL、命令或日志导出。
+- 迁移恢复页只使用 recovery-only RPC，支持 retry、受保护备份列表、prepare/confirm/cancel、exit 与新 Helper 重启；token 仅在内存。补充同一 DTO 下的按钮状态显式刷新，避免准备后仍残留 disabled。
+- C# 常规可执行断言 98 项通过，本卡新增 18 项，覆盖设置草稿/rebase/CAS/结果未知、页面刷新与 mutation 读回并发、旧 Core unavailable CAS 的权威 revision 冲突识别、Home 计划绑定、命令门禁、状态与小字节数展示。WinUI locked build 成功，0 warnings / 0 errors。
+- `./scripts/windows/test-controls.ps1` 通过：独立 synthetic Home/私有 runtime、四 Provider 关闭，真实 C#→Go Named Pipe 验证 Settings receipt/readback/stale CAS、首次 Home 绑定、中文空格目录的独立库切换与回切、clear-and-rebuild 计划/确认、全关闭时 Sources/Jobs/Data Health 可读；future-schema recovery prepare/cancel/confirm、备份恢复后的 restart_required、旧进程业务门禁和新 Helper 正常连接。原始夹具只在 `.artifacts/windows/too-670/`，不作为真实 Codex 产品结论。
+- Go application controls、Provider 关闭 admission/取消并排空账号读取，以及全部 migration recovery 聚焦测试通过。首轮旧 Unix chmod 夹具在 Windows 私有 ACL 校验失败，并使一个 hash 等待测试超时；改用私有子目录并为等待加界后通过。注入 rollback/companion cleanup failure 的夹具同样改为私有目录。Unix mode 负面用例在 Windows 明确 skip，由新增实际 DACL 文件/目录拒绝用例覆盖；symlink 用例因当前账号无创建权限而 skip，未修改系统权限。
+- 真实 Home/私有 runtime 的 App、Helper 环境参数、preferences 与物理身份读回全部匹配，摘要 `9c883cdeaa79cca0`。中文 1400×960 DIP 原生页实际检查设置、来源详情、本机状态和 Data Health，资源与队列来自真实 Helper；来源对账经过预览确认并返回 `none / available / steady`，随后读回页面。
+- 实际发现并修复：settings invalidation 重建页面曾取消 mutation 的共享读回，造成已提交值仍提示未确认；现采用独立有界权威读回，补充并发断言并重走真实保存，确认“已保存并权威读回”。额度周期测试值已恢复原 300 秒，未保存字段跨 Ctrl+R 保留。另修正本机来源 active/completed 映射、接近零的存储单位显示和操作结束文案。
+
+未执行：真实当前样本无任务/健康事件，未把空态当成任务详情或事件恢复成功；真实来源少于单页容量，未执行真实来源多页。真实 Home UI 切换/故障恢复、原生 migration recovery 备份交互、完整中英文/DPI 和平台路径的双程序正式验收归 Master 集中矩阵；上述跨进程 synthetic 覆盖不冒充这些真实场景。安装更新和系统生命周期分别由后续工作包接入；其他 Provider 的真实验收按用户豁免。
+
+安全自查：C# 不读取业务文件、SQLite 或 Agent 凭据；路径选择由 metadata-only Go Home 协议确认，受控动作有固定 registry 与产品确认；恢复 token 不进入缓存、日志、截图或持久配置。新增公开 ACL 仅施加在测试创建的私有临时目录内；未放宽生产权限或修改系统设置。提交/推送/合并收尾复用本轮证据，不重复测试，不声称无 checks 的 CI 已通过。

@@ -21,6 +21,12 @@ public sealed partial class MainWindow : Window
     public Workspace Workspace { get; } = new();
     public Localization Localization { get; } = new();
     public FeatureClient Client { get; }
+    public SettingsEditor SettingsEditor{get;}
+    public HomeSwitchDraft HomeSwitchDraft{get;}=new();
+    public bool DataHealthRequested{get;private set;}
+    public bool WindowActive{get;private set;}
+    public SemaphoreSlim RuntimeCommandGate{get;}=new(1,1);
+    public (string Kind,string Identity)? RuntimeSelection{get;private set;}
     public AnalysisNavigation Analysis {get;}=new();
     public HelperSession? Session { get; private set; }
     public SettingsResponse? Settings { get; private set; }
@@ -61,17 +67,23 @@ public sealed partial class MainWindow : Window
     {
         Options = PlatformOptions.Parse();
         Client = new(() => Session?.Connection.Raw ?? throw new IOException("helper_disconnected"));
+        SettingsEditor=new(Client,()=>Workspace.Context);
         PageCatalog.Register(Feature.Summary, host => new DashboardPage(host));
         PageCatalog.Register(Feature.Overview, host => new OverviewPage(host));
         PageCatalog.Register(Feature.Sessions, host => new SessionsPage(host));
         PageCatalog.Register(Feature.Projects, host => new ProjectsPage(host));
         PageCatalog.Register(Feature.Quota, host => new QuotaPage(host));
         PageCatalog.Register(Feature.AccountQuotas, host => new AccountQuotasPage(host));
-        PageCatalog.Register(Feature.Settings, host => new AccountSettingsPage(host));
+        PageCatalog.Register(Feature.Settings, host => new SettingsPage(host));
+        PageCatalog.Register(Feature.LocalStatus, host => new LocalStatusPage(host));
+        PageCatalog.Register(Feature.SourcesJobs, host => new SourcesJobsPage(host));
         InitializeComponent();
         try { preferences = WindowPreferences.Load(Options.Runtime); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or System.Security.SecurityException)
         { preferences = new(); ShowNotice("窗口偏好无法读取，使用默认布局。", "Window preferences could not be read. Using the default layout."); }
+        try{LaunchPreferences.Load(Options.Runtime).Apply();}
+        catch(Exception error)when(error is IOException or UnauthorizedAccessException or JsonException or ArgumentException or System.Security.SecurityException)
+        {ShowNotice("平台程序路径无法读取，沿用环境与自动发现。","Platform executable paths could not be read. Using the environment and discovery.");}
         Workspace.Changed += WorkspaceChanged;
         Navigation.DisplayModeChanged += (_, args) => UpdateHeaderInset();
         invalidations.Tick += async (_, _) =>
@@ -82,13 +94,16 @@ public sealed partial class MainWindow : Window
             if (page is not null && domains.Any(page.DependsOn)) { page.Invalidate(domains); await ReloadPageAsync(true); }
         };
         AppWindow.Closing += ClosingWindow;
+        Activated+=(_,args)=>WindowActive=args.WindowActivationState!=WindowActivationState.Deactivated;
         Root.Loaded += async (_, _) => { UpdateHeaderInset(); startup = StartAsync(); await startup; };
         ApplyLabels();
         SetWindowBounds();
     }
 
     public void Dispatch(Action action) => DispatcherQueue.TryEnqueue(() => { if (!closing) action(); });
-    public void Navigate(Feature feature) { Selection = null; Workspace.Navigate(feature); }
+    public void Navigate(Feature feature) { Selection = null;RuntimeSelection=null;DataHealthRequested=false;Workspace.Navigate(feature); }
+    public void OpenDataHealth(){DataHealthRequested=true;Workspace.Navigate(Feature.LocalStatus);}
+    public void OpenRuntimeItem(string kind,string identity){if(kind is not("source" or "job"))return;RuntimeSelection=(kind,identity);Workspace.Navigate(Feature.SourcesJobs);}
     public void OpenSession(string id, UTCTimeRange range) { Selection = new(Feature.Sessions, id, range.Clone()); Workspace.Navigate(Feature.Sessions); }
     public void OpenProject(string dimension, UTCTimeRange range) { Selection = new(Feature.Projects, dimension, range.Clone()); Workspace.Navigate(Feature.Projects); }
     public void OpenProjectList(string project,UTCTimeRange range) {Selection=new(Feature.Projects,"",range.Clone(),project);Workspace.Navigate(Feature.Projects);}
@@ -150,25 +165,27 @@ public sealed partial class MainWindow : Window
         finally { starting = false; ReconnectButton.IsEnabled = true; }
     }
 
-    public async Task ReloadSettingsAsync()
+    public async Task<bool> ReloadSettingsAsync()
     {
-        if (Session?.State != CoreConnectionState.Connected) return;
+        if (Session?.State != CoreConnectionState.Connected) return false;
         var version = ++settingsRequest;
         try
         {
             var request = new SettingsRequest();
             var response = await Client.QueryAsync("Settings", request, Workspace.Context, ["settings"],
                 (client, deadline, cancellation) => client.SettingsAsync(request, deadline: deadline, cancellationToken: cancellation), force: true);
-            if (version != settingsRequest || closing) return;
+            if (version != settingsRequest || closing) return false;
             Settings = response;
+            SettingsEditor.Observe(response);
             Workspace.OverviewDefault = Settings.Snapshot.Ui.OverviewRange;
             Localization.Set(Settings.Snapshot.Ui.Locale);
             applying = true;
             Workspace.ApplyProviders(Settings.Snapshot.Providers);
             applying = false;
             ApplyLabels(); RenderPage();
+            return true;
         }
-        catch (RpcException) { ShowNotice("设置暂时无法读取，可重试。", "Settings are unavailable. You can retry."); }
+        catch (RpcException) { ShowNotice("设置暂时无法读取，可重试。", "Settings are unavailable. You can retry.");return false; }
     }
 
     private async Task ObserveInvalidationsAsync(CancellationToken cancellation)
@@ -182,7 +199,7 @@ public sealed partial class MainWindow : Window
                 {
                     if (change is null || change.Domain is "account" or "settings")
                     {
-                        Analysis.Clear();Selection=null;
+                        Analysis.Clear();Selection=null;RuntimeSelection=null;
                         page?.Cancel(); Client.Invalidate(); Workspace.ResetContext();
                     }
                     pendingDomains.Add(change?.Domain ?? "settings");
@@ -311,6 +328,7 @@ public sealed partial class MainWindow : Window
 
     private void ApplyRangeLabels(bool rebuild)
     {
+        RangeBar.Visibility=Workspace.Feature is Feature.Summary or Feature.Overview or Feature.Sessions or Feature.Projects or Feature.Quota?Visibility.Visible:Visibility.Collapsed;
         if(rebuild) { RangePicker.Items.Clear();
         foreach (var item in new[] { ("today",Localization.Text("今天", "Today")), ("seven_days",Localization.Text("最近 7 天", "Last 7 days")), ("thirty_days",Localization.Text("最近 30 天", "Last 30 days")), ("custom",Localization.Text("自定义", "Custom")), ("quota_week",Localization.Text("周额度周期", "Weekly quota period")), ("quota_month",Localization.Text("月额度周期", "Monthly quota period")) })
             if (Workspace.Feature==Feature.Overview || item.Item1 is not ("quota_week" or "quota_month")) RangePicker.Items.Add(new ComboBoxItem { Tag=item.Item1, Content=item.Item2 });
@@ -406,7 +424,7 @@ public sealed partial class MainWindow : Window
         var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96d;
         preferences = preferences with { Width = (int)(AppWindow.Size.Width/scale), Height = (int)(AppWindow.Size.Height/scale) };
         SaveWindowPreferences();
-        closing = true; invalidations.Stop(); page?.Dispose();subscriptions?.Dispose();
+        closing = true; invalidations.Stop(); page?.Dispose();subscriptions?.Dispose();SettingsEditor.Dispose();
         lifetime.Cancel();
         if (startup is not null) await startup;
         await StopWatchAsync();
