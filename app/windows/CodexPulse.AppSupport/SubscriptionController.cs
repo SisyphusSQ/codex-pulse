@@ -36,6 +36,18 @@ public sealed class SubscriptionController(FeatureClient client,Func<QueryContex
         await List.LoadAsync((HomeGeneration,scope.Generation),token=>client.QueryAsync("ListCodexSubscriptionAccounts",request,scope,["account","settings"],
             (core,deadline,cancellation)=>core.ListCodexSubscriptionAccountsAsync(request,deadline:deadline,cancellationToken:cancellation),token,force),response=>response.Accounts.Count==0?LoadKind.Empty:LoadKind.Ready);
     }
+    private async Task<CodexSubscriptionAccountsResponse> ReadMutationResultAsync()
+    {
+        // A command's authority read must survive replacement of a page query.
+        // Account invalidations may advance the workspace generation in the same
+        // Home. Home replacement disposes this coordinator and fences publication.
+        var scope=context() with{Provider="codex"};
+        var request=new CodexSubscriptionAccountsRequest{EvaluatedAtMs=DateTimeOffset.Now.ToUnixTimeMilliseconds(),TimeZone=scope.TimeZone};
+        var response=await client.QueryAsync("ListCodexSubscriptionAccounts",request,scope,["account","settings"],
+            (core,deadline,cancellation)=>core.ListCodexSubscriptionAccountsAsync(request,deadline:deadline,cancellationToken:cancellation),force:true);
+        if(!disposed)await List.LoadAsync((HomeGeneration,scope.Generation),_=>Task.FromResult(response),value=>value.Accounts.Count==0?LoadKind.Empty:LoadKind.Ready);
+        return response;
+    }
     public async Task SaveAsync()
     {
         var draft=Draft;if(draft is null)return;
@@ -94,13 +106,14 @@ public sealed class SubscriptionController(FeatureClient client,Func<QueryContex
         try
         {
             var result=await client.MutateAsync(invoke);
-            await ReloadAsync(true);
+            CodexSubscriptionAccountsResponse? accounts=null;
+            try{accounts=await ReadMutationResultAsync();}
+            catch(Exception error)when(error is RpcException or IOException){Reason="readback_unavailable";}
             if(disposed)return;
-            var fresh=List.State.Kind is LoadKind.Ready or LoadKind.Empty;
             var receipt=result.Receipt;
             if(receipt?.Result==CodexSubscriptionMutationResult.Conflict){Action=SubscriptionAction.Conflict;Reason=receipt.HasReason?receipt.Reason:"revision_changed";}
             else if(result.Outcome!=MutationOutcome.Unknown && receipt?.Result is not(CodexSubscriptionMutationResult.Applied or CodexSubscriptionMutationResult.Noop)){Action=SubscriptionAction.Unknown;Reason="receipt_unrecognized";}
-            else if(!fresh || List.State.Value is not {} accounts){Action=SubscriptionAction.Unknown;Reason="readback_unavailable";}
+            else if(accounts is null){Action=SubscriptionAction.Unknown;Reason="readback_unavailable";}
             else if(!confirm(accounts)){Action=result.Outcome==MutationOutcome.Unknown?SubscriptionAction.Unknown:SubscriptionAction.ReadbackChanged;Reason="readback_changed";}
             else
             {
