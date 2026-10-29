@@ -3,11 +3,11 @@ package apisubscriptions
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -190,7 +190,7 @@ func TestSQLiteQuotaHistorySurvivesHelperRestartAndKeepsCredentialEpoch(t *testi
 
 func openAPISubscriptionHistoryDatabase(t testing.TB, path string) *storesqlite.Store {
 	t.Helper()
-	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil {
+	if err := platformfs.Secure(filepath.Dir(path), 0o700); err != nil {
 		t.Fatalf("chmod SQLite directory: %v", err)
 	}
 	database, err := storesqlite.Open(context.Background(), storesqlite.Config{Path: path})

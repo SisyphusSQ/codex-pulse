@@ -12,6 +12,7 @@ internal sealed class SettingsPage:FeaturePage
     private readonly HomeSection home;
     private readonly StartupSection startup;
     private readonly ReportingSection reporting;
+    private readonly ApiCredentialsSection apiCredentials;
     private readonly StackPanel form=new(){Spacing=14};
     private readonly TextBlock result;
     private readonly Button save,rebase,discard;
@@ -33,13 +34,14 @@ internal sealed class SettingsPage:FeaturePage
         Body.Children.Add(PresentationControls.Disclosure(L.Text("Windows 程序路径","Windows executable paths"),PlatformPaths()));
         startup=new(host);Body.Children.Add(PresentationControls.Disclosure(L.Text("Windows 登录启动","Windows login startup"),startup.View));
         reporting=new(host);Body.Children.Add(reporting.View);
+        apiCredentials=new(host);var apiPanel=PresentationControls.Disclosure(L.Text("API Key · 独立即时保存","API keys · Independent immediate changes"),apiCredentials.View);if(apiPanel is Expander apiExpander)apiExpander.IsExpanded=host.ApiCredentialsRequested;if(host.ApiCredentialsRequested)apiPanel.Loaded+=(_,_)=>apiPanel.StartBringIntoView(new BringIntoViewOptions{VerticalAlignmentRatio=0});Body.Children.Add(apiPanel);
         var api=new Button{Content=L.Text("管理 API 与订阅","Manage API & subscriptions")};api.Click+=(_,_)=>Host.Navigate(Feature.ApiSubscriptions);Body.Children.Add(api);
         var status=new Button{Content=L.Text("查看本机状态与数据健康","View local status and Data Health")};status.Click+=(_,_)=>Host.Navigate(Feature.LocalStatus);Body.Children.Add(status);
         settings.Changed+=Changed;settings.Current.Changed+=Changed;Publish();
     }
     public override bool DependsOn(string domain)=>domain is "settings" or "account";
     public override async Task LoadAsync(bool force=false)
-    {await Task.WhenAll(settings.ReloadAsync(),accounts.LoadAsync(),reporting.LoadAsync());if(!disposed){Publish();home.Publish();startup.Read();State(settings.Current.State.Kind);}}
+    {await Task.WhenAll(settings.ReloadAsync(),accounts.LoadAsync(),reporting.LoadAsync(),apiCredentials.LoadAsync());if(!disposed){Publish();home.Publish();startup.Read();State(settings.Current.State.Kind);}}
     private void Changed()=>Host.Dispatch(Publish);
     private void Publish()
     {
@@ -123,5 +125,5 @@ internal sealed class SettingsPage:FeaturePage
         };panel.Children.Add(apply);panel.Children.Add(feedback);return panel;
     }
     public override void Cancel()=>settings.Current.Cancel();
-    public override void Dispose(){disposed=true;settings.Changed-=Changed;settings.Current.Changed-=Changed;accounts.Dispose();home.Dispose();reporting.Dispose();}
+    public override void Dispose(){disposed=true;settings.Changed-=Changed;settings.Current.Changed-=Changed;accounts.Dispose();home.Dispose();reporting.Dispose();apiCredentials.Dispose();}
 }

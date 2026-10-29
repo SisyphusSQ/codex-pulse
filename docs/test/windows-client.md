@@ -200,3 +200,13 @@ E13 真实设置保存复验发现页面失效刷新可取消共享查询槽，�
 - Windows Helper 与 WinUI locked build 成功；macOS arm64 Grok、DSH 测试包交叉编译成功。交叉编译没有在 Mac 上执行测试，不作为运行结论。本卡不改 Proto、Schema、价格快照或依赖版本。
 
 安全自查：原始会话保持只读；Grok 仅在既有授权开关下写认证文件，跨进程锁和原子替换保留其他合法更新；凭据不进入日志、RPC、仓库或上报。DSH 不读取凭据、不制造官方账户额度。真实 Grok/DSH 采集、账号/服务、UI 数据和中心联调：用户明确豁免，未执行，不记 Pass。提交/推送/合并收尾复用开发证据，不重复测试，无 CI checks 不记 CI 通过。
+
+### TOO-669：Windows API 与订阅（2026-10-29）
+
+已接线独立 API 页与两个 Settings 凭据分区。DeepSeek 逐币种余额、自然周期变化/充值/消耗采样估算、蓝色余额阶梯趋势、统一 365 日活动图和 OpenCode Go 三窗口均只消费 Go 的既有 Core 结果；不进入 Agent 账本或中心上报。换 Key 前清空旧数据，安全重启、权威读回后展示新代次；未知保存回执不被 configured 标志伪装成成功。
+
+- C# executable tests 144 项断言通过（本卡新增 16 次断言，含重复检查请求字段释放）：来源独立失败、caller buffer 清零、请求秘密字段释放、未知保存/删除、旧响应栅栏、重启失败禁止旧数据、币种隔离、缺样本/真实零、原始十进制和有限错误文案。Go `internal/apisubscriptions`、`internal/core` 全包通过（5.079/3.104 秒），覆盖隔离 HTTP 成功、认证、限流、协议失败、独立 LKG、自然周期、压缩样本、活动图、私有凭据与代次。历史 SQLite fixture 的 Unix chmod 改为真实 platformfs ACL，未放宽生产权限。
+- `scripts/windows/test-api-credentials.ps1` 实际使用 C# generated client→Go Named Pipe 和私有 SQLite，7 项业务断言通过：初始未配置、独立保存、双服务共存、单独删除、四次干净重启后配置持久化及退出排空。固定 loopback 拒绝代理阻断真实 API 请求；所有 Key/Home/runtime 均为合成。没有在 C# 读取凭据库或已保存 Key。
+- Windows Helper/WinUI locked build 成功，0 warnings/errors。真实 development Home 启动后环境/参数/preferences/物理身份及私有 runtime 全部读回一致，Home 摘要 `9c883cdeaa79cca0`。实际打开 API 页、年度空样本图和两张完整的未配置来源卡，再从管理入口进入两个独立 PasswordBox 分区；删除按钮在未配置时禁用，没有录入真实 Key。产品菜单退出后 App/Helper 均消失。
+
+安全自查：固定既有 HTTPS 端点、无新依赖；密钥仅经已鉴权本机 mutation 交给 Go，明文 credentials.db 的 ACL 边界明确，未误称加密。输入不进入偏好、日志、普通响应、启动 pipe 或上报。真实 DeepSeek/OpenCode Go 账户数据、余额图及远端额度验收未执行：本轮没有其可用凭据及明确调用授权，不能用上述 fixture 或未配置页面替代。提交/合并阶段按约定不重复测试，无 CI checks 不记 CI 通过。
