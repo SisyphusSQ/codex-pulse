@@ -228,3 +228,10 @@ C# executable tests 148 项断言通过，新增 4 项验证 Provider 类型隔�
 轻量 runtime 全包通过（10.597 秒）；Store 轻量查询矩阵除首轮 Unix 绝对路径夹具外通过，夹具改为平台适用逻辑路径后剩余 Reconcile/空 Home 聚焦场景通过（2.735 秒）。Windows 测试私有库使用真实 ACL 子目录。sqmc04 独立私有临时源码、synthetic Home 的 macOS arm64 Go 1.27.0 实际执行 App Server（5.813 秒）、轻量 runtime（7.043 秒）和 Store 轻量/空 Home 查询（11.396 秒）通过；不是交叉编译证据，也未操作中心服务。
 
 安全自查：保留文件/物理 Home 校验；不新增外部请求入口、身份权限或秘密输出；空快照不会借 legacy fallback 暴露旧 Home；fixture 的路径/ACL 适配不放宽生产规则。提交、推送与合并收尾复用以上开发证据，不重复测试，无 CI checks 不记 CI 通过。
+### TOO-665：真实验收修复语言切换的原生日历崩溃（2026-10-29）
+
+实际打开日期弹窗后切换语言，原实现发生 CoreMessagingXP 原生异常（0xc000027b），App 和托管 Helper 均退出。移除日期属性更新的对照实验可正常切换；仅替换日期控件仍在反向切换失败，进一步发现 RenderPage 对已挂载 Root 广播 Language 变化。现仅在新页面挂载前设置其 Language；范围日期控件仅在文化变化时创建并完成 Language/DateFormat 初始化，普通刷新保持实例、范围与焦点行为。
+
+WinUI Release/self-contained/no-restore 发布成功。真实 Home、私有 runtime、同一账号和已配对中心下实际验证：打开英文结束日期弹窗并 Escape → 中文 → 打开中文开始日期弹窗并 Escape → 英文，双向完成且范围不变；随后切到概览、用键盘恢复系统语言，深色/浅色/系统外观、Ctrl+R/Escape 后仍已连接。未采用全局 catch 或继续运行已损坏控件。临时诊断代码已移除；正式安装版本的受影响场景将纳入 Master 最终结果。
+
+安全自查：只调整原生展示控件生命周期，不改权限、数据读取、网络或 IPC；无新增秘密日志、后台任务或异常吞噬。提交与合并收尾复用上述开发证据，不重复测试，无 CI checks 不记 CI 通过。

@@ -34,9 +34,9 @@
                 <ScrollViewer x:Name="RangeBar" Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <ComboBox x:Name="RangePicker" Width="128" SelectionChanged="RangeChanged" AutomationProperties.AutomationId="range-picker" />
-                        <CalendarDatePicker x:Name="StartDate" MinWidth="140" DateChanged="DatesChanged" AutomationProperties.AutomationId="start-date" />
+                        <ContentControl x:Name="StartDateHost" />
                         <TextBlock x:Name="DateSeparator" Text="—" VerticalAlignment="Center" />
-                        <CalendarDatePicker x:Name="EndDate" MinWidth="140" DateChanged="DatesChanged" AutomationProperties.AutomationId="end-date" />
+                        <ContentControl x:Name="EndDateHost" />
                         <TextBlock x:Name="TimeZoneLabel" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                 </ScrollViewer>
