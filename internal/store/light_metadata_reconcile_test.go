@@ -11,12 +11,12 @@ func TestReconcileLightMetadataSkipsIdenticalSnapshotAndPublishesTitleChange(t *
 	t.Parallel()
 
 	repository := openLightRuntimeRepository(t)
-	home := storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
+	home := storelight.LightHomeIdentity{Path: lightTestPath("/confirmed-home"), DeviceID: "1", Inode: 2}
 	title := "初始标题"
 	snapshot := storelight.LightMetadataSnapshot{
 		Home: home, Generation: 1, ReadyAtMS: 1_000,
 		Sessions: []storelight.LightSessionMetadata{{
-			SessionID: "one", ThreadName: &title, CWD: "/workspace",
+			SessionID: "one", ThreadName: &title, CWD: lightTestPath("/workspace"),
 			CreatedAtMS: 100, UpdatedAtMS: 200,
 		}},
 	}
@@ -40,7 +40,7 @@ func TestReconcileLightMetadataSkipsIdenticalSnapshotAndPublishesTitleChange(t *
 	updatedTitle := "动态标题"
 	updated := identical
 	updated.Sessions = []storelight.LightSessionMetadata{{
-		SessionID: "one", ThreadName: &updatedTitle, CWD: "/workspace",
+		SessionID: "one", ThreadName: &updatedTitle, CWD: lightTestPath("/workspace"),
 		CreatedAtMS: 100, UpdatedAtMS: 300,
 	}}
 	changed, err = repository.ReconcileLightMetadata(context.Background(), updated)
@@ -60,13 +60,13 @@ func TestReconcileLightMetadataKeepsUnchangedRowsWhileDeletingRemovedSessions(t 
 
 	ctx := context.Background()
 	repository := openLightRuntimeRepository(t)
-	home := storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
+	home := storelight.LightHomeIdentity{Path: lightTestPath("/confirmed-home"), DeviceID: "1", Inode: 2}
 	initial := storelight.LightMetadataSnapshot{
 		Home: home, Generation: 1, ReadyAtMS: 1_000,
 		Sessions: []storelight.LightSessionMetadata{
-			{SessionID: "changed", CWD: "/before", CreatedAtMS: 100, UpdatedAtMS: 200},
-			{SessionID: "unchanged", CWD: "/same", CreatedAtMS: 100, UpdatedAtMS: 200},
-			{SessionID: "removed", CWD: "/gone", CreatedAtMS: 100, UpdatedAtMS: 200},
+			{SessionID: "changed", CWD: lightTestPath("/before"), CreatedAtMS: 100, UpdatedAtMS: 200},
+			{SessionID: "unchanged", CWD: lightTestPath("/same"), CreatedAtMS: 100, UpdatedAtMS: 200},
+			{SessionID: "removed", CWD: lightTestPath("/gone"), CreatedAtMS: 100, UpdatedAtMS: 200},
 		},
 	}
 	if changed, err := repository.ReconcileLightMetadata(ctx, initial); err != nil || !changed {
@@ -75,9 +75,9 @@ func TestReconcileLightMetadataKeepsUnchangedRowsWhileDeletingRemovedSessions(t 
 	next := storelight.LightMetadataSnapshot{
 		Home: home, Generation: 2, ReadyAtMS: 2_000,
 		Sessions: []storelight.LightSessionMetadata{
-			{SessionID: "changed", CWD: "/after", CreatedAtMS: 100, UpdatedAtMS: 300},
-			{SessionID: "unchanged", CWD: "/same", CreatedAtMS: 100, UpdatedAtMS: 200},
-			{SessionID: "added", CWD: "/new", CreatedAtMS: 100, UpdatedAtMS: 300},
+			{SessionID: "changed", CWD: lightTestPath("/after"), CreatedAtMS: 100, UpdatedAtMS: 300},
+			{SessionID: "unchanged", CWD: lightTestPath("/same"), CreatedAtMS: 100, UpdatedAtMS: 200},
+			{SessionID: "added", CWD: lightTestPath("/new"), CreatedAtMS: 100, UpdatedAtMS: 300},
 		},
 	}
 	if changed, err := repository.ReconcileLightMetadata(ctx, next); err != nil || !changed {
@@ -96,7 +96,7 @@ func TestReconcileLightMetadataKeepsUnchangedRowsWhileDeletingRemovedSessions(t 
 		byID[session.SessionID] = session
 	}
 	if byID["unchanged"].MetadataGeneration != 1 || byID["changed"].MetadataGeneration != 2 ||
-		byID["added"].MetadataGeneration != 2 || byID["changed"].CWD != "/after" {
+		byID["added"].MetadataGeneration != 2 || byID["changed"].CWD != lightTestPath("/after") {
 		t.Fatalf("metadata was not published as a row diff: %#v", byID)
 	}
 	if _, found := byID["removed"]; found {

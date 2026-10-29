@@ -48,11 +48,11 @@ func listLightSessionAnalytics(
 	database *gorm.DB,
 	filter SessionAnalyticsFilter,
 ) (SessionAnalyticsPage, bool, error) {
-	var count int64
-	if err := database.Table("light_sessions").Count(&count).Error; err != nil {
+	available, err := hasLightAnalyticsSnapshot(database)
+	if err != nil {
 		return SessionAnalyticsPage{}, false, err
 	}
-	if count == 0 {
+	if !available {
 		return SessionAnalyticsPage{}, false, nil
 	}
 	page := SessionAnalyticsPage{
@@ -159,11 +159,11 @@ func lightSessionAnalytics(
 	database *gorm.DB,
 	filter SessionAnalyticsDetailFilter,
 ) (SessionAnalyticsSnapshot, bool, error) {
-	var count int64
-	if err := database.Table("light_sessions").Count(&count).Error; err != nil {
+	available, err := hasLightAnalyticsSnapshot(database)
+	if err != nil {
 		return SessionAnalyticsSnapshot{}, false, err
 	}
-	if count == 0 {
+	if !available {
 		return SessionAnalyticsSnapshot{}, false, nil
 	}
 	var projection lightSessionAnalyticsProjection

@@ -144,11 +144,11 @@ func loadLightUsageCostRange(
 	location *time.Location,
 	snapshot *UsageCostRangeSnapshot,
 ) (bool, error) {
-	var sessionCount int64
-	if err := database.Table("light_sessions").Count(&sessionCount).Error; err != nil {
+	available, err := hasLightAnalyticsSnapshot(database)
+	if err != nil {
 		return false, err
 	}
-	if sessionCount == 0 {
+	if !available {
 		return false, nil
 	}
 	catalogs := make([]lightPricingCatalog, 0)

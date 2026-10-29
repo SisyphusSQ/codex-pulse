@@ -216,3 +216,15 @@ E13 真实设置保存复验发现页面失效刷新可取消共享查询槽，�
 集成审查发现额度页与托盘只请求 Codex AccountSnapshot。已补齐 Cursor/Grok 的 generated RPC 加载，按 account.type 验证身份；Cursor 保留其 Pro/Pro+/Ultra 等套餐，Grok 原样展示 Go 提供的套餐，不套用 Codex Pro tier、手工订阅或日期。账号读取失败时不继续显示旧胶囊；DSH 不生成账号。托盘复制的隐私分支覆盖三种账号，邮箱与套餐一并隐藏。
 
 C# executable tests 148 项断言通过，新增 4 项验证 Provider 类型隔离、Cursor/Grok 套餐、无凭据不报 Free、非 Codex 脱敏且不挪用 Codex 日期。WinUI locked/no-restore build 成功，0 warnings/errors。本修复不改 Go/Core/上报合同；Cursor/Grok 真实账号/UI 数据验收仍为用户明确豁免，未执行、不记通过。安全自查：仅消费既有无秘密身份 DTO，无新增文件或凭据读取，无隐私复制回退。提交与合并收尾不重复测试，无 CI checks 不记 CI 通过。
+
+### TOO-660：集成真实验收修复 Windows 路径与空 Home 隔离（2026-10-29）
+
+原生 Codex 0.165.0-alpha.1.2 对部分已存在 rollout 返回扩展 DOS 路径，Home 使用普通 DOS 路径。旧比较将三个同 Home 文件误判 outside_home；新 runtime 漏扫、旧 runtime 仅保留旧值。现将两个本地表示统一后再执行真实路径/Home 边界校验，UNC、设备命名空间和 ADS 提前拒绝。新增 Windows 长中文路径、两种 Home/文件表示交叉组合与外部路径拒绝测试；App Server 全包通过（8.163 秒）。
+
+新建私有 runtime 只复制非秘密偏好、复用明确真实 Home，实际冷扫描与修复后的既有 runtime 在 Asia/Shanghai 2026-10-28 得到相同 44,485,026 Token、6,339,440 微美元，模型与项目 global 同样一致；连续重启和受控 clear-and-rebuild 后不变。此前 30,113,274 与 43,198,983 的差异是实际缺陷，不能作为通过证据。仍有一条 App Server metadata 指向不存在的原始文件，当前明确 partial，不制造其缺失内容或费用。
+
+受控 runtime 切到新空 Home 又暴露旧深索引回退：以轻量会话数决定读取模式会在零会话时读旧 Home。现以已发布 metadata snapshot 为权威，覆盖用量、会话/详情、项目/详情；新增含真实旧派生行的回归，空 Home 不返回旧数据。实际取消计划保持原 Home、确认切换 generation 变化且 Token=0、返回真实 Home clear-and-rebuild 后精确恢复上述 totals，repair dry-run 无动作/冲突，Helper 干净退出。仅改受控派生库/偏好，真实 JSONL 不改写。
+
+轻量 runtime 全包通过（10.597 秒）；Store 轻量查询矩阵除首轮 Unix 绝对路径夹具外通过，夹具改为平台适用逻辑路径后剩余 Reconcile/空 Home 聚焦场景通过（2.735 秒）。Windows 测试私有库使用真实 ACL 子目录。sqmc04 独立私有临时源码、synthetic Home 的 macOS arm64 Go 1.27.0 实际执行 App Server（5.813 秒）、轻量 runtime（7.043 秒）和 Store 轻量/空 Home 查询（11.396 秒）通过；不是交叉编译证据，也未操作中心服务。
+
+安全自查：保留文件/物理 Home 校验；不新增外部请求入口、身份权限或秘密输出；空快照不会借 legacy fallback 暴露旧 Home；fixture 的路径/ACL 适配不放宽生产规则。提交、推送与合并收尾复用以上开发证据，不重复测试，无 CI checks 不记 CI 通过。
