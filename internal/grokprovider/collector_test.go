@@ -5,11 +5,74 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
+
+func TestGrokIncrementalCursorRetainsTornTailAndSameSizeChanges(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	directory := filepath.Join(home, "sessions", "project", "session-1")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeJSON(t, filepath.Join(directory, "summary.json"), map[string]any{"info": map[string]string{"id": "session-1"}, "created_at": "2026-10-28T00:00:00Z"})
+	line := `{"method":"_x.ai/session/update","timestamp":1793116800,"params":{"sessionId":"session-1","update":{"sessionUpdate":"turn_completed","prompt_id":"prompt-A","usage":{"inputTokens":10,"outputTokens":1,"totalTokens":11}}}}`
+	second := strings.Replace(line, "prompt-A", "prompt-B", 1)
+	path := filepath.Join(directory, "updates.jsonl")
+	cut := len(second) / 2
+	if err := os.WriteFile(path, []byte(line+"\n"+second[:cut]), 0600); err != nil {
+		t.Fatal(err)
+	}
+	capture := &snapshotCapture{}
+	collector, err := NewCollector(capture, Config{SessionsRoot: filepath.Join(home, "sessions"), Now: func() time.Time { return time.UnixMilli(2000) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := collector.Refresh(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.snapshot.UsageEvents) != 1 || collector.updatesCursors[path].offset != int64(len(line)+1) {
+		t.Fatal("torn tail was counted or the committed cursor skipped it")
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = file.WriteString(second[cut:] + "\n")
+	_ = file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := collector.Refresh(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.snapshot.UsageEvents) != 2 {
+		t.Fatal("completed tail was lost or counted twice")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := strings.ReplaceAll(string(content), `"inputTokens":10`, `"inputTokens":20`)
+	changed = strings.ReplaceAll(changed, `"totalTokens":11`, `"totalTokens":21`)
+	if err := os.WriteFile(path, []byte(changed), 0600); err != nil {
+		t.Fatal(err)
+	}
+	stamp := time.Now().Add(time.Second)
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	if err := collector.Refresh(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.snapshot.UsageEvents) != 2 || capture.snapshot.UsageEvents[0].InputTokens != 20 {
+		t.Fatal("same-sized modified file incorrectly reused its cached projection")
+	}
+}
 
 type snapshotCapture struct {
 	snapshot store.GrokSnapshot

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,6 +17,58 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
+
+func TestAuthReaderPreservesCLIRotationDuringRefresh(t *testing.T) {
+	now := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
+	path := filepath.Join(t.TempDir(), "auth.json")
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var issuer *httptest.Server
+	issuer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/openid-configuration" {
+			_ = json.NewEncoder(w).Encode(map[string]string{"issuer": issuer.URL, "token_endpoint": issuer.URL + "/token"})
+			return
+		}
+		close(started)
+		select {
+		case <-release:
+		case <-r.Context().Done():
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "obsolete-network-result", "refresh_token": "obsolete-network-rotation", "token_type": "Bearer", "expires_in": 3600})
+	}))
+	defer issuer.Close()
+	old := map[string]any{"user_id": "fixture-user", "key": "expired-fixture", "refresh_token": "old-fixture-refresh", "oidc_issuer": issuer.URL, "oidc_client_id": "fixture-client", "expires_at": now.Add(-time.Minute).Format(time.RFC3339Nano)}
+	writeGrokAuthFixture(t, path, map[string]any{"account": old})
+	reader, err := NewAuthReader(path, func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	type result struct {
+		credential AccessToken
+		err        error
+	}
+	done := make(chan result, 1)
+	go func() { value, err := reader.ReadAccessTokenContext(ctx); done <- result{value, err} }()
+	select {
+	case <-started:
+	case <-ctx.Done():
+		t.Fatal("fixture token exchange did not start")
+	}
+	latest := map[string]any{"user_id": "fixture-user", "key": "legitimate-cli-update", "refresh_token": "cli-rotated-refresh", "oidc_issuer": issuer.URL, "oidc_client_id": "fixture-client", "expires_at": now.Add(2 * time.Hour).Format(time.RFC3339Nano), "cli_field": "retained"}
+	writeGrokAuthFixture(t, path, map[string]any{"account": latest})
+	close(release)
+	value := <-done
+	if value.err != nil || value.credential.Token != "legitimate-cli-update" {
+		t.Fatal("reader did not adopt the valid concurrent credential")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(content), "cli_field") || strings.Contains(string(content), "obsolete-network") {
+		t.Fatal("refresh overwrote the CLI credential or metadata")
+	}
+}
 
 func TestAuthReaderRejectsCrossOriginTokenRedirect(t *testing.T) {
 	now := time.Date(2026, time.August, 19, 2, 0, 0, 0, time.UTC)

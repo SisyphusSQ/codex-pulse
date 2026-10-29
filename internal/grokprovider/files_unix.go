@@ -11,6 +11,8 @@ import (
 	"syscall"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
 func readRegularAuthFile(path string) ([]byte, error) {
@@ -101,7 +103,7 @@ func writeAuthFileAtomic(path string, content []byte) error {
 	return directory.Sync()
 }
 
-func fileIdentity(_ string, info os.FileInfo) (string, bool) {
+func fileIdentity(_ platformfs.SourceFile, info os.FileInfo) (string, bool) {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
 		return "", false

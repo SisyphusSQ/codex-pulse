@@ -34,8 +34,10 @@ func NewAccountClient(config AccountClientConfig) (*AccountClient, error) {
 		return nil, ErrAccountProtocol
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	httpClient := *config.HTTPClient
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &AccountClient{
-		baseURL: parsed, httpClient: config.HTTPClient, tokenSource: config.TokenSource,
+		baseURL: parsed, httpClient: &httpClient, tokenSource: config.TokenSource,
 	}, nil
 }
 

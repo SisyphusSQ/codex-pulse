@@ -186,7 +186,7 @@ func (repository *Repository) ReplaceCursorSnapshot(ctx context.Context, snapsho
 	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		database := transaction.WithContext(ctx)
 		var err error
-		retained, err = retainCursorLocalSnapshot(database, snapshot.Sources)
+		retained, err = retainLocalProviderSnapshot(database, "cursor", snapshot.Sources)
 		if err != nil || retained {
 			return err
 		}
@@ -293,14 +293,14 @@ func (repository *Repository) ReplaceCursorSnapshot(ctx context.Context, snapsho
 // A local generation combines transcript, state and tracking lineage. When a
 // previously successful source fails, retain that coherent generation rather
 // than publish an empty replacement. Dashboard and Grok Bot tables are separate.
-func retainCursorLocalSnapshot(database *gorm.DB, sources []CursorSourceStatus) (bool, error) {
+func retainLocalProviderSnapshot(database *gorm.DB, provider string, sources []CursorSourceStatus) (bool, error) {
 	retained := false
 	for _, source := range sources {
 		if source.FailureCode == nil || (source.State != "unavailable" && source.State != "partial") {
 			continue
 		}
 		var previous cursorSourceModel
-		err := database.Where("provider = ? AND source_key = ? AND last_success_at_ms IS NOT NULL", "cursor", source.SourceKey).First(&previous).Error
+		err := database.Where("provider = ? AND source_key = ? AND last_success_at_ms IS NOT NULL", provider, source.SourceKey).First(&previous).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			continue
 		}
@@ -311,7 +311,7 @@ func retainCursorLocalSnapshot(database *gorm.DB, sources []CursorSourceStatus) 
 		if source.LastAttemptAtMS < previous.LastAttemptAtMS {
 			continue
 		}
-		if err := database.Model(&cursorSourceModel{}).Where("provider = ? AND source_key = ?", "cursor", source.SourceKey).Updates(map[string]any{
+		if err := database.Model(&cursorSourceModel{}).Where("provider = ? AND source_key = ?", provider, source.SourceKey).Updates(map[string]any{
 			"state": source.State, "coverage_state": "partial", "failure_code": source.FailureCode,
 			"last_attempt_at_ms": source.LastAttemptAtMS, "updated_at_ms": source.UpdatedAtMS,
 		}).Error; err != nil {

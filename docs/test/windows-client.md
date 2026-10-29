@@ -190,3 +190,13 @@ E13 真实设置保存复验发现页面失效刷新可取消共享查询槽，�
 开发中首轮测试实际暴露 macOS 固定路径、Windows file URI 无法打开、元数据句柄不能阻止替换，以及旧三 Provider 夹具缺少 DSH intent；均已修复并回归。部分本地来源曾成功后失败时，保留整个跨来源 lineage generation，代价是本地其他来源等待下一次一致快照；在线 Dashboard/Grok Bot 不被一起阻塞，避免把混合代次或空替换当新事实。
 
 安全自查：没有新增外部地址、依赖、权限放宽或 Agent 凭据持久化；发现仅元数据，Windows 数据读取拒绝 reparse/ADS，Dashboard 不跟随重定向，错误保持有限分类。真实 Cursor 验收：用户明确豁免，不记 Pass，不以 fixture 或构建代替。提交/推送/合并收尾按约定不重复测试，无 CI checks 不记 CI 通过。
+
+### TOO-664：Windows Grok 与 DSH（2026-10-29）
+
+两 Provider 的本地采集改用只读 SourceRoot：Windows 复用已固定的目录/文件句柄与 no-follow 边界，拒绝 reparse、ADS 和越界路径，不给 Agent 文件施加 Pulse 私有 ACL。Grok 保留 summary/updates 白名单；增量 offset 只提交完整换行，残行完成后续读，文件身份或同尺寸内容变更重建投影。目录/文件失败使用有限分类，已成功的本地 generation 保留，查询明确 partial，billing 单独更新。
+
+- 隔离环境下 `go test ./internal/grokprovider ./internal/dshprovider ./internal/platformfs -count=1 -timeout=90s` 三包通过（3.963/2.044/0.456 秒）；`go test ./internal/store -run 'TestGrok|TestCursorLocal' -count=1 -timeout=90s` 通过（4.500 秒）。新增 Windows 长中文/空格/特殊字符路径的真实文件→SQLite→查询闭环，Grok 已报告费用 150 微美元与 120 Token 分离核对，独占锁失败保留/标记/解锁恢复，DSH plain 与 Zstd 都得到 70 total、47 input、35 cache-read Token，seed 不重复计入，1970 样本仍 unpriced。正文、原始项目路径不进入事实快照。
+- Grok 认证 fixture 验证 OIDC 过程中 CLI 合法轮换凭据后采用最新凭据且不覆盖；跨进程测试实际启动两个 Windows 测试进程，持锁时拒绝重命名和第二进程获取，释放后可获取。续期仍受原有开关、超时、单次认证重试和 scope 约束，未知 JSON 字段及其他账户保留。Billing/Account HTTP 客户端不跟随重定向，原有账期、失败/LKG、用量/额度隔离 fixture 一并通过。
+- Windows Helper 与 WinUI locked build 成功；macOS arm64 Grok、DSH 测试包交叉编译成功。交叉编译没有在 Mac 上执行测试，不作为运行结论。本卡不改 Proto、Schema、价格快照或依赖版本。
+
+安全自查：原始会话保持只读；Grok 仅在既有授权开关下写认证文件，跨进程锁和原子替换保留其他合法更新；凭据不进入日志、RPC、仓库或上报。DSH 不读取凭据、不制造官方账户额度。真实 Grok/DSH 采集、账号/服务、UI 数据和中心联调：用户明确豁免，未执行，不记 Pass。提交/推送/合并收尾复用开发证据，不重复测试，无 CI checks 不记 CI 通过。
