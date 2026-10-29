@@ -95,7 +95,9 @@ func NewDashboardClient(config DashboardClientConfig) (*DashboardClient, error) 
 		return nil, ErrDashboardProtocol
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
-	return &DashboardClient{baseURL: parsed, httpClient: config.HTTPClient, tokenSource: config.TokenSource}, nil
+	httpClient := *config.HTTPClient
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &DashboardClient{baseURL: parsed, httpClient: &httpClient, tokenSource: config.TokenSource}, nil
 }
 
 func (client *DashboardClient) GetCurrentPeriodUsage(ctx context.Context) (CurrentPeriodUsage, error) {

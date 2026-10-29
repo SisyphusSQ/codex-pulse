@@ -486,6 +486,7 @@ func TestCollectorRejectsStaleGenerationWriteAfterDisable(t *testing.T) {
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		DSH:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}

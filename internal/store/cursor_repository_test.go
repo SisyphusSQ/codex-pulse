@@ -229,6 +229,50 @@ func TestCursorGrokBotNotApplicableOmitsPercentAndMonthlySnapshotRejectsGrokBotW
 
 func pointerInt64ForCursorTest(value int64) *int64 { return &value }
 
+func TestCursorLocalReadFailureRetainsFactsAndRecoversToKnownEmpty(t *testing.T) {
+	t.Parallel()
+	repository := openRuntimeRepository(t)
+	ctx := t.Context()
+	good := CursorSnapshot{Generation: 1, CollectedAtMS: 2000, Sources: []CursorSourceStatus{{Provider: "cursor", SourceKey: "cursor.state", SourceType: "sqlite_snapshot", State: "available", CoverageState: "exact", CheckpointKind: "snapshot", RowCount: 1, LastAttemptAtMS: 2000, LastSuccessAtMS: pointerInt64ForCursorTest(2000), UpdatedAtMS: 2000}}, Sessions: []CursorSession{{ExternalSessionID: "session-stable", ProjectKey: strings.Repeat("a", 64), ProjectDisplayName: "Fixture", CreatedAtMS: 1000, LastActivityAtMS: 1500, RequestCount: 1, CoverageState: "exact", UpdatedAtMS: 2000}}, UsageEvents: []CursorUsageEvent{{EventID: "stable-event", ExternalSessionID: "session-stable", OccurredAtMS: 1500, InputTokens: 123, OutputTokens: 7, UpdatedAtMS: 2000}}}
+	if err := repository.ReplaceCursorSnapshot(ctx, good); err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []string{"read_failed", "schema_incompatible", "missing"} {
+		failed := good.Sources[0]
+		failed.State = "unavailable"
+		failed.CoverageState = "unknown"
+		failed.FailureCode = &code
+		failed.LastAttemptAtMS = 3000
+		failed.UpdatedAtMS = 3000
+		failed.LastSuccessAtMS = nil
+		failed.RowCount = 0
+		if err := repository.ReplaceCursorSnapshot(ctx, CursorSnapshot{Generation: 2, CollectedAtMS: 3000, Sources: []CursorSourceStatus{failed}}); !errors.Is(err, ErrCursorSourceUnavailable) {
+			t.Fatalf("read failure lost classification: %v", err)
+		}
+		value, err := repository.CursorSnapshot(ctx)
+		if err != nil || value.Generation != 1 || len(value.UsageEvents) != 1 || value.UsageEvents[0].InputTokens != 123 || len(value.Sessions) != 1 {
+			t.Fatal("read failure replaced the last successful facts")
+		}
+		if len(value.Sources) != 1 || value.Sources[0].LastSuccessAtMS == nil || *value.Sources[0].LastSuccessAtMS != 2000 || value.Sources[0].LastAttemptAtMS != 3000 || value.Sources[0].CoverageState != "partial" || value.Sources[0].FailureCode == nil || *value.Sources[0].FailureCode != code {
+			t.Fatal("failure observation did not retain the last success")
+		}
+	}
+	good.Generation = 3
+	good.CollectedAtMS = 4000
+	good.Sessions = nil
+	good.UsageEvents = nil
+	good.Sources[0].RowCount = 0
+	good.Sources[0].LastAttemptAtMS = 4000
+	good.Sources[0].LastSuccessAtMS = pointerInt64ForCursorTest(4000)
+	if err := repository.ReplaceCursorSnapshot(ctx, good); err != nil {
+		t.Fatal(err)
+	}
+	value, err := repository.CursorSnapshot(ctx)
+	if err != nil || value.Generation != 3 || len(value.Sessions) != 0 || len(value.UsageEvents) != 0 || value.Sources[0].State != "available" {
+		t.Fatal("confirmed empty recovery retained stale facts")
+	}
+}
+
 func TestCursorDashboardQuotaHistoryRetainsZeroAndMultipleSnapshots(t *testing.T) {
 	t.Parallel()
 	repository := openRuntimeRepository(t)

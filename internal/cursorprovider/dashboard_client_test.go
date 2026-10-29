@@ -8,11 +8,32 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protowire"
 )
+
+func TestDashboardClientNeverForwardsCredentialsThroughRedirect(t *testing.T) {
+	t.Parallel()
+	var forwarded atomic.Int64
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { forwarded.Add(1); w.WriteHeader(http.StatusOK) }))
+	t.Cleanup(destination.Close)
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destination.URL, http.StatusTemporaryRedirect)
+	}))
+	t.Cleanup(origin.Close)
+	httpClient := origin.Client()
+	client, err := NewDashboardClient(DashboardClientConfig{BaseURL: origin.URL, HTTPClient: httpClient, TokenSource: fixedAccessTokenSource{credential: DesktopAccessToken{Token: "synthetic-do-not-forward"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.GetCurrentPeriodUsage(t.Context())
+	if !errors.Is(err, ErrDashboardTransport) || forwarded.Load() != 0 || strings.Contains(err.Error(), "synthetic-do-not-forward") || httpClient.CheckRedirect != nil {
+		t.Fatal("redirect followed, caller client changed, or credential leaked")
+	}
+}
 
 type fixedAccessTokenSource struct {
 	credential DesktopAccessToken

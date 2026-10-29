@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
+	"github.com/SisyphusSQ/codex-pulse/internal/cursorpaths"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 )
 
@@ -108,7 +110,7 @@ func probePath(path string, directory bool) ProbeResult {
 	if !safeAbsolutePath(path) {
 		return ProbeResult{State: DiscoveryInvalid, ReasonCode: ReasonUnsafePath}
 	}
-	info, err := os.Lstat(path)
+	info, err := probeMetadata(path)
 	switch {
 	case err == nil:
 		if info.Mode()&os.ModeSymlink != 0 {
@@ -121,6 +123,8 @@ func probePath(path string, directory bool) ProbeResult {
 			return ProbeResult{State: DiscoveryInvalid, ReasonCode: ReasonInvalidType}
 		}
 		return ProbeResult{State: DiscoveryAvailable, ReasonCode: ReasonAvailable}
+	case errors.Is(err, platformfs.ErrUnsafe):
+		return ProbeResult{State: DiscoveryInvalid, ReasonCode: ReasonUnsafePath}
 	case errors.Is(err, fs.ErrNotExist):
 		return ProbeResult{State: DiscoveryMissing, ReasonCode: ReasonNotFound}
 	case errors.Is(err, fs.ErrPermission):
@@ -178,19 +182,11 @@ func worseProbe(left, right ProbeResult) ProbeResult {
 }
 
 func cursorProbePaths() (projectsRoot, stateDatabase string, err error) {
-	home, err := os.UserHomeDir()
+	locations, err := cursorpaths.Resolve()
 	if err != nil {
 		return "", "", err
 	}
-	if override := strings.TrimSpace(os.Getenv("CODEX_PULSE_CURSOR_HOME")); override != "" {
-		if !filepath.IsAbs(override) {
-			return "", "", errors.New("cursor home is invalid")
-		}
-		home = filepath.Clean(override)
-	}
-	return filepath.Join(home, ".cursor", "projects"),
-		filepath.Join(home, "Library", "Application Support", "Cursor", "User", "globalStorage", "state.vscdb"),
-		nil
+	return locations.ProjectsRoot, locations.StateDatabase, nil
 }
 
 func grokProbePaths() (homePath, sessionsRoot string, err error) {

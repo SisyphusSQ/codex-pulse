@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -22,6 +21,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/cursorpaths"
 	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -54,21 +54,15 @@ type Config struct {
 }
 
 func DefaultConfig() (Config, error) {
-	home, err := os.UserHomeDir()
+	locations, err := cursorpaths.Resolve()
 	if err != nil {
 		return Config{}, err
 	}
-	if override := strings.TrimSpace(os.Getenv("CODEX_PULSE_CURSOR_HOME")); override != "" {
-		if !filepath.IsAbs(override) {
-			return Config{}, ErrCollector
-		}
-		home = filepath.Clean(override)
-	}
 	return Config{
-		ProjectsRoot:         filepath.Join(home, ".cursor", "projects"),
-		StateDatabase:        filepath.Join(home, "Library", "Application Support", "Cursor", "User", "globalStorage", "state.vscdb"),
-		ConversationDatabase: filepath.Join(home, "Library", "Application Support", "Cursor", "User", "globalStorage", "conversation-search.db"),
-		AITrackingDatabase:   filepath.Join(home, ".cursor", "ai-tracking", "ai-code-tracking.db"),
+		ProjectsRoot:         locations.ProjectsRoot,
+		StateDatabase:        locations.StateDatabase,
+		ConversationDatabase: locations.ConversationDatabase,
+		AITrackingDatabase:   locations.AITrackingDatabase,
 		MinimumRefresh:       15 * time.Second,
 		Now:                  time.Now,
 	}, nil
@@ -137,6 +131,9 @@ func (collector *Collector) RefreshIfDue(ctx context.Context) (bool, error) {
 	if err := providercontrol.WriteWithCommit(ctx, func() error {
 		return collector.writer.ReplaceCursorSnapshot(ctx, snapshot.CursorSnapshot)
 	}); err != nil {
+		if errors.Is(err, store.ErrCursorSourceUnavailable) {
+			collector.last = now
+		}
 		return true, fmt.Errorf("%w: persist snapshot: %w", ErrCollector, err)
 	}
 	collector.last = now
@@ -345,27 +342,15 @@ type transcriptEnvelope struct {
 func mergeTranscripts(ctx context.Context, root string, snapshot *collectedSnapshot) {
 	attempt := snapshot.CollectedAtMS
 	status := availableSource(SourceTranscripts, "transcript_jsonl", attempt, nil, "filesystem_scan")
-	rootInfo, err := os.Stat(root)
-	if err != nil || !rootInfo.IsDir() {
+	opened, err := walkTranscriptFiles(ctx, root, func(path string, file *os.File) error {
+		status.RowCount++
+		return mergeTranscriptFile(file, path, root, snapshot)
+	})
+	if !opened {
 		status = failedSource(SourceTranscripts, "transcript_jsonl", attempt, filesystemFailure(err), "filesystem_scan")
 		snapshot.Sources = append(snapshot.Sources, status)
 		return
 	}
-	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if walkErr != nil {
-			return nil
-		}
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || filepath.Ext(entry.Name()) != ".jsonl" ||
-			!strings.Contains(filepath.ToSlash(path), "/agent-transcripts/") {
-			return nil
-		}
-		status.RowCount++
-		mergeTranscriptFile(path, root, snapshot)
-		return nil
-	})
 	if err != nil {
 		status.State, status.CoverageState, status.FailureCode = "partial", "partial", pointer("read_failed")
 	}
@@ -374,22 +359,17 @@ func mergeTranscripts(ctx context.Context, root string, snapshot *collectedSnaps
 	snapshot.Sources = append(snapshot.Sources, status)
 }
 
-func mergeTranscriptFile(path, root string, snapshot *collectedSnapshot) {
-	file, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer file.Close()
+func mergeTranscriptFile(file *os.File, path, root string, snapshot *collectedSnapshot) error {
 	info, err := file.Stat()
-	if err != nil || info.Size() > 256<<20 {
-		return
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 256<<20 {
+		return ErrCollector
 	}
 	externalID := normalizeID(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
 	if externalID == "" {
 		externalID = normalizeID(filepath.Base(filepath.Dir(path)))
 	}
 	if externalID == "" {
-		return
+		return nil
 	}
 	relative, _ := filepath.Rel(root, path)
 	parts := strings.Split(filepath.ToSlash(relative), "/")
@@ -399,11 +379,12 @@ func mergeTranscriptFile(path, root string, snapshot *collectedSnapshot) {
 	}
 	session := snapshot.session(externalID, info.ModTime().UnixMilli())
 	if session == nil {
-		return
+		return nil
 	}
 	snapshot.setSessionProject(session, "transcript:"+projectSeed, "未识别项目", 1)
 	hasher := sha256.New()
-	reader := io.TeeReader(file, hasher)
+	limited := &io.LimitedReader{R: file, N: (256 << 20) + 1}
+	reader := io.TeeReader(limited, hasher)
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64<<10), maxTranscriptLineBytes)
 	lineNumber := 0
@@ -425,6 +406,13 @@ func mergeTranscriptFile(path, root string, snapshot *collectedSnapshot) {
 			}
 		}
 	}
+	if scanner.Err() != nil || limited.N == 0 {
+		return ErrCollector
+	}
+	after, err := file.Stat()
+	if err != nil || after.Size() != info.Size() || !after.ModTime().Equal(info.ModTime()) {
+		return ErrCollector
+	}
 	contentDigest := hex.EncodeToString(hasher.Sum(nil))
 	lineageKey := digestString(filepath.ToSlash(relative))
 	snapshot.Lineage = append(snapshot.Lineage, store.CursorSessionLineage{
@@ -435,6 +423,7 @@ func mergeTranscriptFile(path, root string, snapshot *collectedSnapshot) {
 		snapshot.lineage[externalID] = make(map[string]struct{})
 	}
 	snapshot.lineage[externalID][contentDigest] = struct{}{}
+	return nil
 }
 
 type usageAggregate struct {
@@ -778,15 +767,33 @@ func mergeAITrackingDatabase(ctx context.Context, path string, snapshot *collect
 	snapshot.Sources = append(snapshot.Sources, status)
 }
 
-func openReadSnapshot(ctx context.Context, path string) (*sql.DB, *sql.Tx, int64, error) {
-	if _, err := os.Stat(path); err != nil {
-		return nil, nil, 0, err
-	}
-	uri := (&url.URL{Scheme: "file", Path: path}).String() + "?mode=ro&_pragma=query_only(1)&_pragma=busy_timeout(3000)"
-	database, err := sql.Open("sqlite", uri)
+type snapshotDatabase struct {
+	*sql.DB
+	release func()
+}
+
+func (database *snapshotDatabase) Close() error {
+	err := database.DB.Close()
+	database.release()
+	return err
+}
+
+func openReadSnapshot(ctx context.Context, path string) (*snapshotDatabase, *sql.Tx, int64, error) {
+	release, err := pinSourceDatabase(path)
 	if err != nil {
 		return nil, nil, 0, err
 	}
+	uriPath := filepath.ToSlash(path)
+	if filepath.VolumeName(path) != "" && !strings.HasPrefix(uriPath, "/") {
+		uriPath = "/" + uriPath
+	}
+	uri := (&url.URL{Scheme: "file", Path: uriPath}).String() + "?mode=ro&_pragma=query_only(1)&_pragma=busy_timeout(3000)"
+	pool, err := sql.Open("sqlite", uri)
+	if err != nil {
+		release()
+		return nil, nil, 0, err
+	}
+	database := &snapshotDatabase{DB: pool, release: release}
 	database.SetMaxOpenConns(1)
 	if err := database.PingContext(ctx); err != nil {
 		database.Close()
@@ -864,10 +871,13 @@ func sqliteFailure(err error) string {
 }
 
 func filesystemFailure(err error) string {
+	if errors.Is(err, os.ErrNotExist) {
+		return "missing"
+	}
 	if errors.Is(err, os.ErrPermission) {
 		return "permission"
 	}
-	return "missing"
+	return "read_failed"
 }
 
 func normalizeID(value string) string {
