@@ -1,5 +1,7 @@
 # Windows 客户端开发与验收
 
+2026-10-29 的集成版本结果见 [Windows 最终验收记录](windows-final-acceptance.md)，包括真实 Codex、中心对账、缺陷修复、条件缺口与用户豁免。
+
 开发机器为 Windows 11 24H2 build 26100 x64。开发与真实产品验收分别记录；后者必须显式绑定真实 Codex Home 和私有 runtime，不能由构建或 synthetic 数据替代。
 
 ## 工程基线
