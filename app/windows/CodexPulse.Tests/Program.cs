@@ -23,6 +23,9 @@ if (args.Length == 3 && args[0] == "--transport") await TransportTests.Run(Path.
 if (args.Length == 3 && args[0] == "--wire-peer") await TransportTests.WirePeer(Path.GetFullPath(args[1]), Path.GetFullPath(args[2]));
 if (args.Length == 3 && args[0] == "--controls") await ControlsTests.Run(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));
 if (args.Length == 3 && args[0] == "--api-credentials") await ApiCredentialContractTests.Run(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));
+if (args.Length == 2 && args[0] == "--distribution") DistributionTests.Run(Path.GetFullPath(args[1]));
+if (args.Length == 3 && args[0] == "--update-network") await DistributionTests.Network(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));
+if (args.Length == 3 && args[0] == "--update-interrupted") await DistributionTests.Interrupted(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));
 if (args.Length == 3 && args[0] == "--lifecycle") await LifecycleTests.Processes(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));
 if (args.Length == 3 && args[0] == "--lifecycle-parent") await LifecycleTests.Parent(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));
 if (args.Length == 0) { await ShellTests.Run(); DashboardTests.Run(); AnalysisTests.Run(); await QuotaTests.Run(); await SettingsTests.Run();await LifecycleTests.Unit();await ReportingTests.Run();await ApiSubscriptionTests.Run(); }

@@ -134,3 +134,9 @@ WM_POWERBROADCAST 映射现有三种 Lifecycle 事件。客户端只积累最新
 历史起点开始导出后锁定。普通关闭保留不可变批次，清队列需产品确认且只丢弃当前中心的本机待确认批次，不删除中心历史或其他中心分区。全量请求受理、后台 processing、publication_failed、协议拒绝、来源不可用与最终 completed 分别呈现；pending=0 或一次成功确认不能代替整个全量任务完成。仅前台展开分区轮询，进度更新保持同值草稿与原生控件，避免日期漂移和滚动跳动。
 
 打开 Web 只使用已保存且无 userinfo/query/fragment 的根地址；HTTPS 与显式允许的 HTTP 仍由 Go 的既有地址/出口策略校验，客户端不降级、不持有采集凭证。Windows reporting.db 延用平台私有 ACL 和 Go 的分片、最终 receipt、账号 fence 与断点续传。Server module 的 x/sys 约束与共享 module 同步到 0.49.0，使锁定依赖下的中心构建可用；不改变中心业务 schema、计价或上传白名单。
+
+## 安装与更新（WIN-E16）
+
+当前用户自包含 bundle 配对 App、PRI、Helper 与独立 PackageHost；用户不依赖 Go、Visual Studio 或共享 .NET 安装。固定 HTTPS feed 和内置 ECDSA P-256 信任根独立于 macOS Sparkle，自动检查不下载，安装要求用户确认和完整包核验。程序目录、runtime 与 Home 分离，稳定启动器读取经核验的 current 指针；签名清单外文件、reparse/hard-link、占用、uncertain/活 PID 和陈旧退出回执均拒绝。
+
+安装发布使用 current/previous/journal 与跨进程互斥，先排空 App/Helper 后切换，再等待 exact nonce/PID/version 的 connected/recovery 回执。失败结果可读回；切换前失败可安全重开旧版，二进制回退仅在实际 SQLite/偏好/凭据 DDL 兼容声明一致时允许，数据库不自动降级。卸载仅移除本安装程序和自有平台入口，保留 Home、runtime 与凭据。完整操作、信任配置和开发/真实证据见 [Windows 安装更新 runbook](../../../test/windows-install-update.md)；正式 Authenticode、公信任和公开更新源本轮未执行。

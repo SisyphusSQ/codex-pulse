@@ -18,6 +18,13 @@ import (
 var applicationVersion = "dev"
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--build-info" {
+		if err := writeBuildInfo(os.Stdout); err != nil {
+			log.Print("codex-pulse build_info_failed")
+			os.Exit(1)
+		}
+		return
+	}
 	config, err := parseRuntimeConfig(os.Args[1:])
 	if err != nil {
 		log.Print("codex-pulse invalid_startup_configuration")

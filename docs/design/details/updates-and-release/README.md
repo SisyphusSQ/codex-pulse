@@ -124,3 +124,7 @@ notarization、Gatekeeper、远端 feed 和真实 N-1 证据。
   才推进版本。
 - migration failure 不启动普通业务图，只暴露 Bootstrap、recovery 和退出。
 - 二进制回滚不等于 schema 回滚；N-1 矩阵必须显式验证数据兼容与恢复。
+
+## Windows 安装与更新
+
+Windows 使用自包含 WinUI/Helper 配套 bundle 和独立 PackageHost，固定 HTTPS JSON feed 与 ECDSA P-256 包签名，不使用 Sparkle/appcast。当前用户安装、私有程序目录、manifest 全文件核验、clean nonce/PID 回执、文件占用门禁、原子 current/previous/journal、安装后 connected/recovery 回执和显式兼容回退均见 [Windows runbook](../../../test/windows-install-update.md)。正式 Authenticode、公信任和公开发布仍是独立门禁；受控开发签名及本地 HTTPS 不等于正式分发已验收。

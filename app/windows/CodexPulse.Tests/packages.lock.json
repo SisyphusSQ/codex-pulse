@@ -62,7 +62,8 @@
       "codexpulse.appsupport": {
         "type": "Project",
         "dependencies": {
-          "CodexPulse.CoreClient": "[1.0.0, )"
+          "CodexPulse.CoreClient": "[1.0.0, )",
+          "CodexPulse.Distribution": "[1.0.0, )"
         }
       },
       "codexpulse.coreclient": {
@@ -73,6 +74,12 @@
           "Grpc.StatusProto": "[2.84.0, )"
         }
       },
+      "codexpulse.distribution": {
+        "type": "Project",
+        "dependencies": {
+          "CodexPulse.CoreClient": "[1.0.0, )"
+        }
+      },
       "codexpulse.protocol": {
         "type": "Project",
         "dependencies": {
@@ -80,6 +87,7 @@
           "Grpc.Core.Api": "[2.84.0, )"
         }
       }
-    }
+    },
+    "net10.0-windows10.0.19041/win-x64": {}
   }
 }

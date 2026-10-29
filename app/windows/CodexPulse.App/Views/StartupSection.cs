@@ -15,7 +15,7 @@ internal sealed class StartupSection
     public StartupSection(MainWindow host)
     {
         this.host=host;
-        registration=new(new RegistryStartupStore(),"CodexPulse-"+WindowPreferences.Key(host.Options.Runtime).Split('\\')[^1],Environment.ProcessPath!,host.Options.Runtime,host.Options.Home);
+        registration=new(new RegistryStartupStore(),"CodexPulse-"+WindowPreferences.Key(host.Options.Runtime).Split('\\')[^1],host.WindowsUpdates.Installed is {} installed?Path.Combine(installed.Root,"CodexPulse.exe"):Environment.ProcessPath!,host.Options.Runtime,host.Options.Home);
         View.Children.Add(PresentationControls.Text(L.Text("登录启动只影响当前用户，并在后台打开当前安装的应用。系统禁用需在 Windows 启动应用设置中重新允许。","Login startup applies only to the current user and opens this installation in the background. Re-enable system-disabled entries in Windows startup settings.")));
         View.Children.Add(status);
         enable.Content=L.Text("启用登录启动…","Enable login startup…");disable.Content=L.Text("移除登录启动…","Remove login startup…");

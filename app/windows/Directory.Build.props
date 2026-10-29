@@ -6,5 +6,6 @@
     <Deterministic>true</Deterministic>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <PulseVersion Condition="'$(PulseVersion)' == ''">dev</PulseVersion>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 </Project>
