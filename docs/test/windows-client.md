@@ -177,3 +177,16 @@ E13 真实设置保存复验发现页面失效刷新可取消共享查询槽，�
 - 原生“打开中心 Web”实际在默认 Chrome 打开已保存的开发中心根地址，返回正常浏览器授权页面。完整浏览器授权、撤销/重配、真实异常恢复与最终 Windows→Server→Web 对账继续由 Master 集中执行；此处不把登录页当成 Web 业务对账通过。
 
 对抗自审修复了进度轮询重建草稿造成的日期/视口漂移，以及清队列意外保存未提交间隔的问题。安全自查：只复用已鉴权 Core 与既有上报白名单；凭据归 Go 私有存储，一次性码不缓存，未知 mutation 不重放；没有 C# 业务文件读取、TLS 降级或正式中心变更。提交/推送/合并收尾复用以上证据，不重复测试，无 CI checks 不记为 CI 通过。
+
+### TOO-663：Windows Cursor（2026-10-29）
+
+已实现 Windows profile/APPDATA、自定义编辑器 user-data 根、发现与采集共用路径、只读 SQLite/WAL、transcript 访问及 Dashboard 内存凭据链路。没有访问真实 Cursor 文件、账号或服务。
+
+- `go test ./internal/cursorprovider ./internal/cursorpaths ./internal/providercontrol -count=1 -timeout=90s` 三包通过；自审补充稳定遍历顺序与失败刷新间隔后，Cursor 整包再次通过。覆盖原有账期、模型池/unknown、真实零、分页、Grok Bot 独立周额度、网络/认证/协议失败与 query admission；新增隔离的默认路径→WAL 凭据→HTTP fixture、过期凭据不发请求、重定向不转发凭据。
+- 新增 Windows 原生文件夹具通过：中文/空格/`# % &` 与超过 MAX_PATH 的路径；WAL 并发提交下当前事务不变、新事务可见、拒绝写入；句柄持有时禁止替换，释放后可移动；独占锁失败后恢复；实际 junction、SQLite companion reparse 与 ADS 拒绝。元数据发现 fixture 明确拒绝 FILE_READ_DATA，发现成功且正文打开失败，证明不是靠读取凭据探测。
+- 真实临时 SQLite 的 Collector→Repository 验证锁定保留上一代 Session/事实与成功时间、保存有限失败时间/码、受刷新间隔约束，并在解锁后恢复。Store 的 Cursor 聚焦测试通过：缺失/schema/read failure 不清空 last-good，有效空快照恢复可清空旧事实，Dashboard/Grok Bot 继续独立；ApplicationControl 的禁用 admission、取消/排空账号读取聚焦测试通过。
+- C# executable tests 128 项断言通过，新增 Cursor Models / Other Models / Grok Bot 窗口身份和账期、未知池与真实零的展示断言。Windows Helper/WinUI locked build 成功，0 warnings/errors；macOS arm64 Cursor/ProviderControl 测试包交叉编译成功。交叉编译只证明编译，未在 macOS 运行。
+
+开发中首轮测试实际暴露 macOS 固定路径、Windows file URI 无法打开、元数据句柄不能阻止替换，以及旧三 Provider 夹具缺少 DSH intent；均已修复并回归。部分本地来源曾成功后失败时，保留整个跨来源 lineage generation，代价是本地其他来源等待下一次一致快照；在线 Dashboard/Grok Bot 不被一起阻塞，避免把混合代次或空替换当新事实。
+
+安全自查：没有新增外部地址、依赖、权限放宽或 Agent 凭据持久化；发现仅元数据，Windows 数据读取拒绝 reparse/ADS，Dashboard 不跟随重定向，错误保持有限分类。真实 Cursor 验收：用户明确豁免，不记 Pass，不以 fixture 或构建代替。提交/推送/合并收尾按约定不重复测试，无 CI checks 不记 CI 通过。

@@ -1,5 +1,17 @@
 # Agent Provider、Cursor 与 Grok
 
+## Windows Cursor 来源
+
+发现与采集共用 `internal/cursorpaths`，解析路径不读取文件。Windows 默认状态库与 conversation-search.db 位于 `%APPDATA%\Cursor\User\globalStorage\`，transcript 与 AI tracking 保持 `%USERPROFILE%\.cursor\projects\`、`%USERPROFILE%\.cursor\ai-tracking\ai-code-tracking.db`。用户数据根位置依据 [Cursor 官方文档](https://prod.cursor.com/docs/enterprise/endpoint-security)；没有为采集修改安全软件设置。
+
+`CODEX_PULSE_CURSOR_HOME` 继续表示独立的用户 profile 根；Windows 下同时把编辑器数据定位到该根的 `AppData\Roaming\Cursor`，不会回落到真实 APPDATA。使用自定义或 portable 用户数据根时，显式设置绝对路径 `CODEX_PULSE_CURSOR_USER_DATA_DIR`；不猜测其他账号、安装目录或 WSL 来源。macOS 原有默认目录保持。
+
+Windows 发现只读元数据，状态文件无正文读取权限时仍可确认存在；实际读取在 Provider admission 后执行。来源目录、transcript 和 SQLite 采用已有无 reparse 的文件访问；数据库及已有 WAL/SHM/journal 文件在事务期间保留允许写共享、禁止替换的句柄，不改来源 ACL。SQLite 使用规范化、转义的 Windows file URI、mode=ro、query_only、有界 busy timeout 与读事务；不使用会漏掉 WAL 的 immutable 读取或普通文件复制。
+
+本地 generation 包含跨来源 lineage。曾成功的来源锁定、缺失或 schema/read failure 时，持久层保留完整上一代本地事实与成功时间，只更新有限失败观察；失败不变为真实零。恢复后新的有效快照（包括已确认空结果）可以替换。已记录的来源失败仍受刷新间隔限制；Dashboard 与 Grok Bot 的独立表、周期和 last-good 不受该本地失败覆盖。HTTP 客户端拒绝重定向，避免发送凭据到非预期目标；桌面凭据只在 Go 内存中使用，不向 RPC、偏好或业务库暴露。
+
+Windows Cursor 的生产适配不等于本轮真实环境验收。Cursor Models、Other Models、unknown 池和独立 Grok Bot 周额度沿用共享业务合同；相关隔离开发证据见 [Windows 开发验收](../../../test/windows-client.md)。真实 Cursor 采集、账号、Dashboard、页面数据和中心联调均按用户明确豁免，不寻找真实账号或数据。
+
 ## 产品与代码语义
 
 Codex Pulse 以一个明确的客户端上下文查询和展示数据。产品 UI 使用“客户端”；代码使用 `AgentProvider` / `ProviderScope`，避免与 OpenAI、Anthropic、Grok 等模型供应方混淆。当前客户端是 `codex`、`cursor`、`grok` 和 `dsh` 四个 Agent Provider，不引入 `AgentProvider.all`，也不让空 `ProviderScope` 承担汇总语义。另有专用跨客户端汇总 read model（`DashboardSummary`），只聚合可比总量、当前范围趋势、分布、模型 Top、各客户端额度状态和独立 365 天 Token 活动，不合并 Session / Project identity。Grok 在 UI 中的显示名固定为“Grok”，代码身份为 `grok`；它指 Grok Build TUI / CLI，不是 Cursor 或其它客户端里出现的 Grok 模型。

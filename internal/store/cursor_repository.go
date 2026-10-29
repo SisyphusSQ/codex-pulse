@@ -11,6 +11,10 @@ import (
 	"gorm.io/gorm"
 )
 
+// ErrCursorSourceUnavailable means failure observations were saved while the
+// last successful local generation was retained.
+var ErrCursorSourceUnavailable = errors.New("cursor local source snapshot is unavailable")
+
 type cursorSnapshotModel struct {
 	Provider      string `gorm:"column:provider;primaryKey"`
 	Generation    int64  `gorm:"column:generation"`
@@ -178,8 +182,14 @@ func (repository *Repository) ReplaceCursorSnapshot(ctx context.Context, snapsho
 	if err := validateCursorSnapshot(snapshot); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+	retained := false
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		database := transaction.WithContext(ctx)
+		var err error
+		retained, err = retainCursorLocalSnapshot(database, snapshot.Sources)
+		if err != nil || retained {
+			return err
+		}
 		for _, table := range []string{
 			"cursor_session_lineage", "cursor_tool_events", "cursor_usage_events", "cursor_request_events", "cursor_ai_edit_events", "cursor_sessions",
 		} {
@@ -274,6 +284,41 @@ func (repository *Repository) ReplaceCursorSnapshot(ctx context.Context, snapsho
 		}
 		return nil
 	})
+	if err == nil && retained {
+		return ErrCursorSourceUnavailable
+	}
+	return err
+}
+
+// A local generation combines transcript, state and tracking lineage. When a
+// previously successful source fails, retain that coherent generation rather
+// than publish an empty replacement. Dashboard and Grok Bot tables are separate.
+func retainCursorLocalSnapshot(database *gorm.DB, sources []CursorSourceStatus) (bool, error) {
+	retained := false
+	for _, source := range sources {
+		if source.FailureCode == nil || (source.State != "unavailable" && source.State != "partial") {
+			continue
+		}
+		var previous cursorSourceModel
+		err := database.Where("provider = ? AND source_key = ? AND last_success_at_ms IS NOT NULL", "cursor", source.SourceKey).First(&previous).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		retained = true
+		if source.LastAttemptAtMS < previous.LastAttemptAtMS {
+			continue
+		}
+		if err := database.Model(&cursorSourceModel{}).Where("provider = ? AND source_key = ?", "cursor", source.SourceKey).Updates(map[string]any{
+			"state": source.State, "coverage_state": "partial", "failure_code": source.FailureCode,
+			"last_attempt_at_ms": source.LastAttemptAtMS, "updated_at_ms": source.UpdatedAtMS,
+		}).Error; err != nil {
+			return false, err
+		}
+	}
+	return retained, nil
 }
 
 func (repository *Repository) CommitCursorDashboardSnapshot(ctx context.Context, snapshot CursorDashboardSnapshot) error {
