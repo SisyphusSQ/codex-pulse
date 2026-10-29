@@ -10,8 +10,9 @@ internal static class QuotaTests
     {
         public CodexSubscriptionAccountsResponse Accounts=new();
         public Func<CodexSubscriptionMutationReceipt> Mutation=()=>new(){Result=CodexSubscriptionMutationResult.Applied};
+        public Func<Task<CodexSubscriptionAccountsResponse>>? Read;
         public int Writes,Reads;
-        public override AsyncUnaryCall<CodexSubscriptionAccountsResponse> ListCodexSubscriptionAccountsAsync(CodexSubscriptionAccountsRequest request,CallOptions options){Reads++;return Reply(Task.FromResult(Accounts.Clone()));}
+        public override AsyncUnaryCall<CodexSubscriptionAccountsResponse> ListCodexSubscriptionAccountsAsync(CodexSubscriptionAccountsRequest request,CallOptions options){Reads++;return Reply(Read?.Invoke()??Task.FromResult(Accounts.Clone()));}
         public override AsyncUnaryCall<CodexSubscriptionMutationReceipt> UpdateCodexSubscriptionAccountAsync(UpdateCodexSubscriptionAccountRequest request,CallOptions options)
         {Writes++;try{return Reply(Task.FromResult(Mutation()));}catch(RpcException error){return Reply(Task.FromException<CodexSubscriptionMutationReceipt>(error));}}
     }
@@ -49,6 +50,20 @@ internal static class QuotaTests
         var invalid=new Google.Rpc.Status{Code=(int)StatusCode.InvalidArgument,Message="invalid request"};invalid.Details.Add(Google.Protobuf.WellKnownTypes.Any.Pack(new ErrorDetail{Code="validation",Field="manual.email"}));
         peer.Mutation=()=>throw invalid.ToRpcException();await controller.SaveAsync();
         Require(controller.Action==SubscriptionAction.Unavailable && controller.Field=="manual.email" && controller.Draft is not null,"validation preserves the draft and safe responsible field");
+        peer.Mutation=()=>new(){Result=CodexSubscriptionMutationResult.Applied};
+        var writeRead=new TaskCompletionSource<CodexSubscriptionAccountsResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var displayRead=new TaskCompletionSource<CodexSubscriptionAccountsResponse>(TaskCreationOptions.RunContinuationsAsynchronously);var reads=0;
+        peer.Read=()=>Interlocked.Increment(ref reads)==1?writeRead.Task:displayRead.Task;
+        var writes=peer.Writes;var saving=controller.SaveAsync();context=context with{Generation=2};var loading=controller.ReloadAsync();
+        writeRead.SetResult(peer.Accounts.Clone());await saving;
+        Require(controller.Action==SubscriptionAction.Applied && controller.Draft is null && peer.Writes==writes+1,"account invalidation and page refresh cannot cancel a subscription command's authority readback");
+        displayRead.SetResult(new());await loading;
+        Require(controller.List.State.Value?.Accounts.Count==1,"an older page response cannot replace the command's confirmed account list");
+        controller.BeginEdit(peer.Accounts.Accounts[0]);peer.Read=()=>Task.FromException<CodexSubscriptionAccountsResponse>(new RpcException(new(StatusCode.Unavailable,"readback lost")));
+        await controller.SaveAsync();Require(controller.Action==SubscriptionAction.Unknown && controller.Draft is not null,"applied subscription receipt with unavailable authority readback preserves the draft and stays unknown");
+        writeRead=new(TaskCreationOptions.RunContinuationsAsynchronously);peer.Read=()=>writeRead.Task;
+        saving=controller.SaveAsync();controller.Dispose();writeRead.SetResult(peer.Accounts.Clone());await saving;
+        Require(controller.List.State.Kind==LoadKind.Idle && controller.Draft is null,"a disposed Home coordinator cannot publish a late subscription readback");
         CodexAccountBinding withGeneration(ulong generation){var copy=binding.Clone();copy.BindingGeneration=generation;return copy;}
     }
 }
