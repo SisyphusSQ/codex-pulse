@@ -43,10 +43,18 @@
                 <TextBlock x:Name="PageStatus" Grid.Row="3" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                 <ContentControl x:Name="PageContainer" Grid.Row="4" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
                 <Grid Grid.Row="5" Padding="0,8,0,12" ColumnSpacing="12">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                     <TextBlock x:Name="ConnectionLabel" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     <ComboBox x:Name="LanguagePicker" Grid.Column="1" Width="130" SelectionChanged="LanguageChanged" AutomationProperties.AutomationId="language-picker" />
                     <ComboBox x:Name="ThemePicker" Grid.Column="2" Width="110" SelectionChanged="ThemeChanged" AutomationProperties.AutomationId="theme-picker" />
+                    <DropDownButton x:Name="AppMenu" Grid.Column="3" Content="…" AutomationProperties.AutomationId="app-menu">
+                        <DropDownButton.Flyout><MenuFlyout>
+                            <MenuFlyoutItem x:Name="OpenTrayMenu" Text="额度面板 / Quota panel" Click="OpenTrayClicked" />
+                            <MenuFlyoutItem x:Name="HideMenu" Text="收起到托盘 / Hide to tray" Click="HideClicked" />
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem x:Name="QuitMenu" Text="退出 / Quit" Click="QuitClicked" />
+                        </MenuFlyout></DropDownButton.Flyout>
+                    </DropDownButton>
                 </Grid>
             </Grid>
         </NavigationView>

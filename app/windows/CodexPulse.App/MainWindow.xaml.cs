@@ -25,6 +25,8 @@ public sealed partial class MainWindow : Window
     public HomeSwitchDraft HomeSwitchDraft{get;}=new();
     public bool DataHealthRequested{get;private set;}
     public bool WindowActive{get;private set;}
+    public bool WindowVisible{get;private set;}
+    public ElementTheme CurrentTheme=>Root.RequestedTheme;
     public SemaphoreSlim RuntimeCommandGate{get;}=new(1,1);
     public (string Kind,string Identity)? RuntimeSelection{get;private set;}
     public AnalysisNavigation Analysis {get;}=new();
@@ -62,10 +64,18 @@ public sealed partial class MainWindow : Window
     private readonly HashSet<FeaturePage> reloadPending = [];
     private QueryContext? renderedContext;
     private Feature renderedFeature;
+    private NativeTray? nativeTray;
+    private TrayPanel? trayPanel;
+    private readonly RestartBudget restartBudget=new();
+    private readonly LifecycleMailbox lifecycle;
+    private readonly SemaphoreSlim connectionGate=new(1,1);
+    private bool recovering,sleeping;
+    private DateTimeOffset lastWake;
 
-    public MainWindow()
+    public MainWindow(PlatformOptions options)
     {
-        Options = PlatformOptions.Parse();
+        Options = options;
+        lifecycle=new(DeliverLifecycleAsync);
         Client = new(() => Session?.Connection.Raw ?? throw new IOException("helper_disconnected"));
         SettingsEditor=new(Client,()=>Workspace.Context);
         PageCatalog.Register(Feature.Summary, host => new DashboardPage(host));
@@ -78,6 +88,7 @@ public sealed partial class MainWindow : Window
         PageCatalog.Register(Feature.LocalStatus, host => new LocalStatusPage(host));
         PageCatalog.Register(Feature.SourcesJobs, host => new SourcesJobsPage(host));
         InitializeComponent();
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory,"Assets","CodexPulse.ico"));
         try { preferences = WindowPreferences.Load(Options.Runtime); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or System.Security.SecurityException)
         { preferences = new(); ShowNotice("窗口偏好无法读取，使用默认布局。", "Window preferences could not be read. Using the default layout."); }
@@ -91,13 +102,52 @@ public sealed partial class MainWindow : Window
             invalidations.Stop();
             var domains = pendingDomains.ToArray(); pendingDomains.Clear();
             if (domains.Contains("settings")) await ReloadSettingsAsync();
-            if (page is not null && domains.Any(page.DependsOn)) { page.Invalidate(domains); await ReloadPageAsync(true); }
+            if (WindowVisible && page is not null && domains.Any(page.DependsOn)) { page.Invalidate(domains); await ReloadPageAsync(true); }
         };
         AppWindow.Closing += ClosingWindow;
-        Activated+=(_,args)=>WindowActive=args.WindowActivationState!=WindowActivationState.Deactivated;
-        Root.Loaded += async (_, _) => { UpdateHeaderInset(); startup = StartAsync(); await startup; };
+        Activated+=(_,args)=>{WindowActive=args.WindowActivationState!=WindowActivationState.Deactivated;if(WindowActive)QueueLifecycle("application_did_become_active");};
+        Root.Loaded += (_, _) => UpdateHeaderInset();
         ApplyLabels();
         SetWindowBounds();
+        try
+        {
+            trayPanel=new(this);
+            nativeTray=new(WinRT.Interop.WindowNative.GetWindowHandle(this));
+            trayPanel.TooltipChanged+=nativeTray.Tooltip;
+            nativeTray.Toggle+=()=>trayPanel.Toggle(nativeTray.Anchor());
+            nativeTray.ContextMenu+=ShowTrayMenu;
+            nativeTray.Power+=QueueLifecycle;
+            nativeTray.SessionEnding+=()=>{_=QuitAsync();};
+            nativeTray.DisplayChanged+=()=>{trayPanel.Position();EnsureWindowVisible();};
+            nativeTray.TaskbarRestored+=()=>{if(!nativeTray.Available)ShowMain();};
+        }
+        catch(IOException){ShowNotice("托盘无法创建，窗口关闭将退出应用。","Tray is unavailable. Closing the window will quit the app.");}
+    }
+
+    public async Task StartHostedAsync()
+    {
+        if(Options.Show)ShowMain();
+        startup=StartAsync();await startup;
+        if(nativeTray?.Available!=true || Session?.State==CoreConnectionState.Recovery || !Options.Background && (Options.Show || Settings?.Snapshot.Ui.LaunchBehavior!="tray"))ShowMain();
+    }
+    public void ShowMain()
+    {
+        if(closing)return;WindowVisible=true;
+        ShowWindow(WinRT.Interop.WindowNative.GetWindowHandle(this),9);AppWindow.Show();Activate();
+        QueueLifecycle("application_did_become_active");if(!starting)_=ReloadPageAsync(true);
+    }
+    private void HideMain(){WindowVisible=false;WindowActive=false;page?.Cancel();AppWindow.Hide();}
+    public void SelectTrayProvider(string provider){Workspace.SelectProvider(provider,true);SaveWindowPreferences();}
+    private void ShowTrayMenu()
+    {
+        if(trayPanel is null)return;
+        trayPanel.Hide();
+        try
+        {
+            var command=NativeTray.Menu(trayPanel.Handle,[(1,Localization.Text("打开主窗口","Open main window")),(2,Localization.Text("额度面板","Quota panel")),(3,Localization.Text("设置","Settings")),(0,""),(4,Localization.Text("退出 Codex Pulse","Quit Codex Pulse"))]);
+            switch(command){case 1:ShowMain();break;case 2:trayPanel.Show(nativeTray!.Anchor());break;case 3:Navigate(Feature.Settings);ShowMain();break;case 4:_=QuitAsync();break;}
+        }
+        catch(IOException){ShowNotice("托盘菜单无法打开。","The tray menu could not be opened.");ShowMain();}
     }
 
     public void Dispatch(Action action) => DispatcherQueue.TryEnqueue(() => { if (!closing) action(); });
@@ -117,7 +167,22 @@ public sealed partial class MainWindow : Window
         ConnectionNotice.IsOpen = true;
     }
 
-    public async Task StartAsync()
+    public Task StartAsync()
+    {
+        if(closing)return Task.CompletedTask;
+        if(startup is{IsCompleted:false})return startup;
+        startup=StartSerializedAsync();return startup;
+    }
+    private async Task StartSerializedAsync()
+    {
+        try
+        {
+            await connectionGate.WaitAsync(lifetime.Token);
+            try{await StartCoreAsync();}finally{connectionGate.Release();}
+        }
+        catch(OperationCanceledException)when(closing){}
+    }
+    private async Task StartCoreAsync()
     {
         if (starting || closing) return;
         starting = true; ReconnectButton.IsEnabled = false;
@@ -127,12 +192,14 @@ public sealed partial class MainWindow : Window
             if (Session is not null)
             {
                 await StopWatchAsync();
-                if (!await Session.StopAsync()) { ShowNotice("上次退出状态不确定，请退出应用后重新打开。", "The last shutdown is uncertain. Quit and reopen the app."); return; }
+                if (!Session.Exit.IsCompleted && !await Session.StopAsync()) { RecordShutdown("uncertain");ShowNotice("上次退出状态不确定，请退出应用后重新打开。", "The last shutdown is uncertain. Quit and reopen the app."); return; }
                 await Session.DisposeAsync(); Session = null;
             }
             Client.Invalidate(); Workspace.ResetContext();
             Session = await HelperSession.StartAsync(Options.Helper, Options.Runtime, Options.Home, BundleVersion, lifetime.Token);
-            Session.StateChanged += _ => Dispatch(ConnectionChanged);
+            var connected=Session;
+            connected.StateChanged += _ => Dispatch(()=>{if(ReferenceEquals(Session,connected))ConnectionChanged();});
+            RecordShutdown("running");
             if (Session.State == CoreConnectionState.Recovery)
             {
                 ShowNotice("数据库需要恢复，请打开恢复页面或退出应用。", "Database recovery is required. Open recovery or quit the app.");
@@ -152,7 +219,8 @@ public sealed partial class MainWindow : Window
             ConnectionChanged();
             watchCancellation = new();
             watch = ObserveInvalidationsAsync(watchCancellation.Token);
-            await ReloadPageAsync();
+            if(WindowVisible)await ReloadPageAsync();
+            trayPanel?.Invalidate(null);
         }
         catch (OperationCanceledException) when (closing) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or RpcException or ArgumentException)
@@ -162,7 +230,7 @@ public sealed partial class MainWindow : Window
                 incompatible ? "The app and helper versions differ. Use the same installation bundle." : "Cannot connect to the local service. Reconnect or quit.", InfoBarSeverity.Error);
             SetPageState(LoadKind.Unavailable);
         }
-        finally { starting = false; ReconnectButton.IsEnabled = true; }
+        finally { starting = false; ReconnectButton.IsEnabled = true;if(Session?.State==CoreConnectionState.Disconnected)_=RecoverConnectionAsync(); }
     }
 
     public async Task<bool> ReloadSettingsAsync()
@@ -202,6 +270,7 @@ public sealed partial class MainWindow : Window
                         Analysis.Clear();Selection=null;RuntimeSelection=null;
                         page?.Cancel(); Client.Invalidate(); Workspace.ResetContext();
                     }
+                    trayPanel?.Invalidate(change?.Domain);
                     pendingDomains.Add(change?.Domain ?? "settings");
                     if (change is null) pendingDomains.UnionWith(["index", "quota", "health", "account"]);
                     invalidations.Start();
@@ -211,7 +280,7 @@ public sealed partial class MainWindow : Window
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception error) when (error is RpcException or IOException)
-        { Dispatch(() => { page?.Cancel(); Client.Invalidate(); Workspace.ResetContext(); ShowNotice("本机数据通知已断开，请重新连接。", "Local data updates disconnected. Reconnect to continue."); }); }
+        { Dispatch(() => { page?.Cancel(); Client.Invalidate(); Workspace.ResetContext();trayPanel?.Invalidate(null); ShowNotice("本机数据通知已断开，正在有限重连。", "Local data updates disconnected. Attempting bounded recovery.");_=RecoverConnectionAsync(); }); }
     }
 
     private void UpdateConnectionLabel()
@@ -231,7 +300,71 @@ public sealed partial class MainWindow : Window
         {
             page?.Cancel(); Client.Invalidate(); Workspace.ResetContext();
             ShowNotice("本机服务已停止，请重新连接。", "The local service stopped. Reconnect to continue.");
+            trayPanel?.Invalidate(null);
+            if(Session.State==CoreConnectionState.Disconnected)_=RecoverConnectionAsync();
         }
+    }
+
+    private async Task RecoverConnectionAsync()
+    {
+        if(recovering || starting || closing || sleeping)return;
+        recovering=true;
+        try
+        {
+            while(!closing && !sleeping)
+            {
+                var delay=restartBudget.Claim(DateTimeOffset.UtcNow);
+                if(delay is null){ShowNotice("自动恢复已达上限，请检查本机状态后手动重连。","Automatic recovery reached its limit. Check Local status and reconnect manually.",InfoBarSeverity.Error);return;}
+                await Task.Delay(delay.Value,lifetime.Token);if(closing || sleeping)return;
+                await StartAsync();
+                if(Session?.State is CoreConnectionState.Connected or CoreConnectionState.Recovery or CoreConnectionState.Uncertain)return;
+            }
+        }
+        catch(OperationCanceledException)when(closing){}
+        finally{recovering=false;}
+    }
+    public void QueueLifecycle(string name)
+    {
+        if(closing)return;
+        if(name=="system_did_wake")
+        {
+            if(DateTimeOffset.UtcNow-lastWake<TimeSpan.FromSeconds(3))return;
+            lastWake=DateTimeOffset.UtcNow;
+        }
+        lifecycle.Post(name);
+    }
+    private async Task DeliverLifecycleAsync(string name)
+    {
+        if(closing)return;
+        try
+        {
+            await connectionGate.WaitAsync(lifetime.Token);
+            try
+            {
+            if(name=="system_will_sleep"){sleeping=true;page?.Cancel();trayPanel?.Hide();await StopWatchAsync();}
+            if(name=="system_did_wake")
+            {
+                sleeping=false;await StopWatchAsync();Client.Invalidate();Workspace.ResetContext();
+                if(Session is null || Session.Exit.IsCompleted){await StartCoreAsync();return;}
+                await Session.Connection.HandshakeAsync(BundleVersion,lifetime.Token);await Session.RefreshBootstrapAsync(lifetime.Token);
+            }
+            if(Session?.State==CoreConnectionState.Connected)
+            {
+                var receipt=await Session.Connection.Raw.NotifyLifecycleAsync(new LifecycleNotificationRequest{Event=name},deadline:DateTime.UtcNow.AddSeconds(3),cancellationToken:lifetime.Token);
+                if(!receipt.Accepted || receipt.Event!=name)ShowNotice("系统状态通知未被确认。","System lifecycle notification was not acknowledged.");
+            }
+            if(name=="system_did_wake" && Session is not null)
+            {
+                if(Session.State==CoreConnectionState.Connected)await ReloadSettingsAsync();else RenderPage();
+                watchCancellation=new();watch=ObserveInvalidationsAsync(watchCancellation.Token);
+                trayPanel?.Invalidate(null);if(WindowVisible)await ReloadPageAsync(true);
+            }
+            }
+            finally{connectionGate.Release();}
+        }
+        catch(OperationCanceledException)when(closing){}
+        catch(Exception e)when(e is RpcException or IOException)
+        {if(!closing){ShowNotice("系统状态同步未完成，将尝试恢复连接。","Lifecycle synchronization incomplete. Attempting connection recovery.");if(name!="system_will_sleep")_=RecoverConnectionAsync();}}
     }
 
     private void WorkspaceChanged()
@@ -245,7 +378,7 @@ public sealed partial class MainWindow : Window
         else ApplyLabels();
         RenderPage();
         if (!starting) SaveWindowPreferences();
-        _ = ReloadPageAsync();
+        if(WindowVisible)_ = ReloadPageAsync();
     }
 
     private void RenderPage()
@@ -309,6 +442,8 @@ public sealed partial class MainWindow : Window
         AddNavigation(Feature.LocalStatus, Symbol.Important); AddNavigation(Feature.SourcesJobs, Symbol.Library);
         AddNavigation(Feature.Settings, Symbol.Setting);
         RefreshButton.Content = Localization.Text("重新加载", "Reload"); CancelButton.Content = Localization.Text("取消", "Cancel");
+        OpenTrayMenu.Text=Localization.Text("额度面板","Quota panel");HideMenu.Text=Localization.Text("收起到托盘","Hide to tray");QuitMenu.Text=Localization.Text("退出","Quit");
+        AutomationProperties.SetName(AppMenu,Localization.Text("应用菜单","App menu"));
         ReconnectButton.Content = Localization.Text("重新连接", "Reconnect");
         ApplyRangeLabels(true);
         LanguagePicker.Items.Clear();
@@ -321,6 +456,7 @@ public sealed partial class MainWindow : Window
             ThemePicker.Items.Add(new ComboBoxItem { Tag = item.Item1, Content = item.Item2 });
         ThemePicker.SelectedItem = ThemePicker.Items.Cast<ComboBoxItem>().FirstOrDefault(item => (string)item.Tag == preferences.Theme) ?? ThemePicker.Items[0];
         Root.RequestedTheme = preferences.Theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
+        trayPanel?.UpdatePresentation();
         AutomationProperties.SetName(ThemePicker, Localization.Text("外观", "Theme"));
         UpdateConnectionLabel();
         applying = false;
@@ -392,11 +528,15 @@ public sealed partial class MainWindow : Window
         if (applying || ThemePicker.SelectedItem is not ComboBoxItem { Tag: string theme }) return;
         preferences = preferences with { Theme = theme };
         Root.RequestedTheme = theme switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
+        trayPanel?.UpdatePresentation();
         SaveWindowPreferences();
     }
     private async void RefreshClicked(object sender, RoutedEventArgs args) => await ReloadPageAsync(true);
     private void CancelClicked(object sender, RoutedEventArgs args) => page?.Cancel();
     private async void ReconnectClicked(object sender, RoutedEventArgs args) { startup = StartAsync(); await startup; }
+    private void OpenTrayClicked(object sender,RoutedEventArgs args)=>trayPanel?.Show(nativeTray?.Anchor()??new RectInt32(AppWindow.Position.X,AppWindow.Position.Y,1,1));
+    private void HideClicked(object sender,RoutedEventArgs args){if(nativeTray?.Available==true)HideMain();}
+    private async void QuitClicked(object sender,RoutedEventArgs args)=>await QuitAsync();
     private async void RefreshAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args) { args.Handled = true; await ReloadPageAsync(true); }
     private void CancelAccelerator(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
@@ -424,12 +564,37 @@ public sealed partial class MainWindow : Window
         var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96d;
         preferences = preferences with { Width = (int)(AppWindow.Size.Width/scale), Height = (int)(AppWindow.Size.Height/scale) };
         SaveWindowPreferences();
-        closing = true; invalidations.Stop(); page?.Dispose();subscriptions?.Dispose();SettingsEditor.Dispose();
+        if(nativeTray?.Available==true){HideMain();return;}
+        await QuitAsync();
+    }
+    public async Task<bool> QuitAsync()
+    {
+        if(closing)return false;
+        closing = true; invalidations.Stop(); page?.Dispose();subscriptions?.Dispose();SettingsEditor.Dispose();trayPanel?.Hide();lifecycle.Stop();
         lifetime.Cancel();
         if (startup is not null) await startup;
         await StopWatchAsync();
-        if (Session is not null) { await Session.StopAsync(); await Session.DisposeAsync(); Session = null; }
+        await lifecycle.Completion;
+        var clean=true;
+        if (Session is not null)
+        {
+            clean=await Session.StopAsync();
+            try{using var key=Microsoft.Win32.Registry.CurrentUser.CreateSubKey(WindowPreferences.Key(Options.Runtime));key.SetValue("ShutdownDetail",JsonSerializer.Serialize(new{ExitCode=Session.ShutdownExitCode,Reason=Session.ShutdownReason}));}
+            catch(Exception e)when(e is IOException or UnauthorizedAccessException or System.Security.SecurityException){clean=false;}
+            try{await Session.DisposeAsync();}catch(IOException){clean=false;}
+            Session=null;
+        }
+        RecordShutdown(clean?"clean":"uncertain");nativeTray?.Dispose();trayPanel?.Dispose();
         allowClose = true; Close();
+        Application.Current.Exit();return clean;
+    }
+    private void RecordShutdown(string state)
+    {try{using var key=Microsoft.Win32.Registry.CurrentUser.CreateSubKey(WindowPreferences.Key(Options.Runtime));key.SetValue("Shutdown",state);}catch(Exception e)when(e is IOException or UnauthorizedAccessException or System.Security.SecurityException){ShowNotice("退出状态无法持久化；更新须另行确认进程退出。","Shutdown status could not be saved; updates must independently confirm process exit.");}}
+    private void EnsureWindowVisible()
+    {
+        if(!WindowVisible)return;var area=DisplayArea.GetFromWindowId(AppWindow.Id,DisplayAreaFallback.Nearest).WorkArea;var size=AppWindow.Size;var position=AppWindow.Position;
+        var width=Math.Min(size.Width,area.Width);var height=Math.Min(size.Height,area.Height);
+        AppWindow.MoveAndResize(new RectInt32(Math.Clamp(position.X,area.X,area.X+area.Width-width),Math.Clamp(position.Y,area.Y,area.Y+area.Height-height),width,height));
     }
     private void SetWindowBounds()
     {
@@ -441,4 +606,5 @@ public sealed partial class MainWindow : Window
     }
     private void UpdateHeaderInset() => PageHeading.Margin = Navigation.DisplayMode == NavigationViewDisplayMode.Minimal ? new Thickness(48,0,0,0) : new Thickness(0);
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
+    [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)]private static extern bool ShowWindow(IntPtr window,int command);
 }

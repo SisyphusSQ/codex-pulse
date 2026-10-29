@@ -17,6 +17,8 @@ public sealed class HelperSession : IAsyncDisposable
     public CoreConnectionState State { get; private set; } = CoreConnectionState.Starting;
     public BootstrapResponse Bootstrap { get; private set; } = new();
     public Task<int> Exit => process.Exit;
+    public int? ShutdownExitCode{get;private set;}
+    public string ShutdownReason{get;private set;}="not_observed";
     public event Action<CoreConnectionState>? StateChanged;
 
     private HelperSession(NativeHelper process, string pipeName, string token)
@@ -120,25 +122,32 @@ public sealed class HelperSession : IAsyncDisposable
         try
         {
             var code = await process.Exit.WaitAsync(TimeSpan.FromSeconds(35)).ConfigureAwait(false);
-            SetState(code == 0 ? CoreConnectionState.Stopped : CoreConnectionState.Uncertain);
-            return code == 0;
+            ShutdownExitCode=code;
+            var empty=await process.DrainJobAsync().ConfigureAwait(false);
+            ShutdownReason=code!=0?"helper_exit_failed":!empty?"descendants_forced":"clean";
+            SetState(code == 0 && empty ? CoreConnectionState.Stopped : CoreConnectionState.Uncertain);
+            return code == 0 && empty;
         }
         catch (TimeoutException)
         {
             process.Terminate();
             await process.Exit.ConfigureAwait(false);
             SetState(CoreConnectionState.Uncertain);
+            ShutdownReason="helper_exit_timeout";
             return false;
         }
+        catch(IOException){ShutdownReason="job_drain_uncertain";SetState(CoreConnectionState.Uncertain);return false;}
     }
 
     public void CloseParentPipe() => process.CloseParentPipe();
     private void SetState(CoreConnectionState state) { State = state; StateChanged?.Invoke(state); }
     public async ValueTask DisposeAsync()
     {
-        if (!process.Exit.IsCompleted) await StopAsync().ConfigureAwait(false);
-        lifetime.Dispose();
-        Connection.Dispose();
-        process.Dispose();
+        try
+        {
+            if (!process.Exit.IsCompleted) await StopAsync().ConfigureAwait(false);
+            await process.DrainJobAsync().ConfigureAwait(false);
+        }
+        finally{lifetime.Dispose();Connection.Dispose();process.Dispose();}
     }
 }

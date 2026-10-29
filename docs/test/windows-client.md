@@ -153,3 +153,15 @@ E13 真实设置保存复验发现页面失效刷新可取消共享查询槽，�
 
 开发阶段 C# executable tests 共 102 项断言通过（新增并发刷新、旧响应、读回不可用、Home 销毁 4 项）。对抗自审确认权威数据不依赖页面取消令牌，Home 销毁后无晚到发布，冲突/未知回执仍不乐观成功。本修复不改变 Go/Core/上报合同，不新增敏感存储或网络入口；真实集成页面回归归 Master。提交与合并收尾不重复执行测试，无 CI checks 不记为通过。
 
+
+### TOO-671：托盘、受控进程与生命周期（2026-10-29）
+
+开发环境为 Windows 11 24H2 x64。C# executable tests 113 项断言通过，其中新增有限重启/通知合并、登录项替身、Provider/账号隔离和脱敏文本 11 项。scripts/windows/test-lifecycle.ps1 使用 synthetic Home、全部 Provider 关闭，实际 C#→Go Named Pipe 验证 sleep/wake/foreground 3 种回执、正常 drain、强杀父进程后无 Helper 孤儿及同库新 owner 恢复，共 6 项；最终进程实现上的该脚本通过。WinUI locked build 为 0 warnings/0 errors。
+
+真实 development Home 绑定均经进程环境/Helper 参数/preferences/物理身份读回一致。观察到独立额度面板、实际额度/节奏/Home 用量；主窗口关闭后 Helper 继续，第二次启动唤回原 App，PID/Helper PID 保持。强制结束已核对归属的 Helper 后，App 自动新建 Helper、重新连接并读回相同 Home 身份。真实登录项为未配置，仅做读取。
+
+真实退出暴露 Job 过早检查：Helper exit=0，但嵌套 Job 的异步回收尚未结算就强制终止，导致 uncertain。已修正为先有界等候成员归零，仍有成员才强制回收；复验通过产品菜单退出后读回 ExitCode=0/Reason=clean，App/Helper 均消失。未知退出仍保留 uncertain，不以强制回收冒充干净退出。
+
+托盘 tool window 未作为独立目标暴露给当前自动化工具：已有面板画面和外部点击关闭观察，尚无托盘内复制、Escape、右键/单击切换的完整原生输入证据。复制隐私目前为代码/开发断言，未声称实际 PNG 已验收。物理睡眠/唤醒、Explorer 重建、多屏/各 DPI 及真实登录启动未执行；系统支持 S3，但未进行物理睡眠；真实登录项变更按本卡范围不作为自动测试。最终安装版本的集中验收和这些缺口归 Master，不把 RPC 通知测试冒充 OS 睡眠。
+
+安全自查：无新增 TCP/任意命令入口；一次性 token 仍只经专用继承 pipe；Job 句柄不继承，退出和连接变更有界；剪贴板两种表示均脱敏；无 C# 业务文件读取或 Agent 凭据处理。合并收尾复用既有证据，无 CI checks 不记通过。

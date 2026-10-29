@@ -5,7 +5,7 @@ using Microsoft.Win32;
 
 namespace CodexPulse.App;
 
-public sealed record PlatformOptions(string Runtime, string Home, string Helper)
+public sealed record PlatformOptions(string Runtime, string Home, string Helper, bool Background=false, bool Show=false)
 {
     public static PlatformOptions Parse()
     {
@@ -14,18 +14,20 @@ public sealed record PlatformOptions(string Runtime, string Home, string Helper)
         var home = Environment.GetEnvironmentVariable("CODEX_HOME");
         if (string.IsNullOrWhiteSpace(home)) home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
         var arguments = Environment.GetCommandLineArgs();
+        var background=false;var show=false;
         for (var index = 1; index < arguments.Length; index++)
         {
-            if (index + 1 >= arguments.Length) throw new ArgumentException("startup_argument_missing");
             switch (arguments[index])
             {
-                case "--runtime-directory": runtime = arguments[++index]; break;
-                case "--codex-home": home = arguments[++index]; break;
+                case "--runtime-directory" when index+1<arguments.Length: runtime = arguments[++index]; break;
+                case "--codex-home" when index+1<arguments.Length: home = arguments[++index]; break;
+                case "--background":background=true;break;
+                case "--show":show=true;break;
                 default: throw new ArgumentException("startup_argument_unknown");
             }
         }
         if (!Path.IsPathFullyQualified(runtime) || !Path.IsPathFullyQualified(home)) throw new ArgumentException("startup_path_not_absolute");
-        return new(Path.GetFullPath(runtime), Path.GetFullPath(home), Path.Combine(AppContext.BaseDirectory, "codex-pulse.exe"));
+        return new(Path.GetFullPath(runtime), Path.GetFullPath(home), Path.Combine(AppContext.BaseDirectory, "codex-pulse.exe"),background,show);
     }
 }
 
