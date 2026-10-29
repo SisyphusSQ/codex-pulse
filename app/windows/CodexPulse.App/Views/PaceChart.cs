@@ -31,7 +31,7 @@ internal static class PaceChart
             }
             void Line(IEnumerable<(double Elapsed,double Remaining)> values,Brush color,double thickness,bool dashed=false)
             {
-                var line=new Polyline{Stroke=color,StrokeThickness=thickness};if(dashed)line.StrokeDashArray=new DoubleCollection{3,3};
+                var line=new Polyline{Stroke=color,StrokeThickness=thickness,StrokeLineJoin=PenLineJoin.Round,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round};if(dashed)line.StrokeDashArray=new DoubleCollection{3,3};
                 foreach(var point in values.Where(point=>Valid(point.Elapsed,point.Remaining)).OrderBy(point=>point.Elapsed))line.Points.Add(new Point(X(point.Elapsed),Y(point.Remaining)));
                 if(line.Points.Count>1)canvas.Children.Add(line);
             }
@@ -45,10 +45,17 @@ internal static class PaceChart
             if(window.PreviousCycle is {} previous)Line(previous.Points.Select(point=>(point.ElapsedPercent,point.RemainingPercent)),amber,2,true);
             Line(new[]{(0d,100d),(100d,0d)},gray,1,true);
             Line(window.CurrentPoints.Select(point=>(point.ElapsedPercent,point.RemainingPercent)),blue,2.5);
-            foreach(var point in window.CurrentPoints.Where(point=>Valid(point.ElapsedPercent,point.RemainingPercent)))
+            var currentPoints=window.CurrentPoints.Where(point=>Valid(point.ElapsedPercent,point.RemainingPercent)).ToArray();
+            if(currentPoints.Length==1)
             {
-                var dot=new Ellipse{Width=7,Height=7,Fill=blue};Canvas.SetLeft(dot,X(point.ElapsedPercent)-3.5);Canvas.SetTop(dot,Y(point.RemainingPercent)-3.5);
-                var text=l.Timestamp(point.ObservedAtMs)+" · "+QuotaPresentation.PercentText(point.RemainingPercent,l);ToolTipService.SetToolTip(dot,text);AutomationProperties.SetName(dot,text);canvas.Children.Add(dot);
+                // A lone observation cannot form a line; retain a stroke-sized mark.
+                var point=currentPoints[0];var mark=new Ellipse{Width=2.5,Height=2.5,Fill=blue};Canvas.SetLeft(mark,X(point.ElapsedPercent)-1.25);Canvas.SetTop(mark,Y(point.RemainingPercent)-1.25);canvas.Children.Add(mark);
+            }
+            foreach(var point in currentPoints)
+            {
+                // Keep the precise observation tooltip without painting a dot over the line.
+                var target=new Ellipse{Width=14,Height=14,Fill=new SolidColorBrush(Colors.Transparent)};Canvas.SetLeft(target,X(point.ElapsedPercent)-7);Canvas.SetTop(target,Y(point.RemainingPercent)-7);
+                var text=l.Timestamp(point.ObservedAtMs)+" · "+QuotaPresentation.PercentText(point.RemainingPercent,l);ToolTipService.SetToolTip(target,text);AutomationProperties.SetName(target,text);canvas.Children.Add(target);
             }
         }
         canvas.SizeChanged+=(_,args)=>Draw(args.NewSize.Width);

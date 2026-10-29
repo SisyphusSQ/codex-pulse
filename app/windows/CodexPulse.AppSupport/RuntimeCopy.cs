@@ -7,7 +7,15 @@ public static class RuntimeCopy
     public static string Discovery(ProviderDiscoveryState value,Localization l)=>value switch{ProviderDiscoveryState.Available=>l.Text("已发现","Discovered"),ProviderDiscoveryState.Missing=>l.Text("未找到来源","Source not found"),ProviderDiscoveryState.Inaccessible=>l.Text("来源不可访问","Source inaccessible"),ProviderDiscoveryState.Invalid=>l.Text("来源无效","Invalid source"),_=>l.Text("尚未检测","Not checked yet")};
     public static string Effective(ProviderEffectiveState value,Localization l)=>value switch{ProviderEffectiveState.Enabled=>l.Text("采集已启用","Collection enabled"),ProviderEffectiveState.Disabled=>l.Text("采集已关闭","Collection disabled"),ProviderEffectiveState.Disabling=>l.Text("正在停止采集","Stopping collection"),_=>l.Text("暂不可采集","Collection unavailable")};
     public static string Availability(string value,Localization l)=>value switch{"available"=>l.Text("来源可用","Source available"),"not_found"=>l.Text("当前设备没有找到来源","No source found on this device"),"disabled"=>l.Text("已按设置关闭","Disabled by settings"),"permission"=>l.Text("需要访问权限","Access permission required"),_=>l.Text("请检查来源与设置","Check the source and settings")};
-    public static string Bytes(NumericValue? value,Localization l)=>value is not{HasValue:true}?"—":value.Value<1024?value.Value.ToString("N0",l.Culture)+" B":value.Value<1024*1024?((decimal)value.Value/1024).ToString("N2",l.Culture)+" KiB":value.Value<1024L*1024*1024?((decimal)value.Value/(1024*1024)).ToString("N2",l.Culture)+" MiB":((decimal)value.Value/(1024L*1024*1024)).ToString("N2",l.Culture)+" GiB";
+    public static string Bytes(NumericValue? value,Localization l)
+    {
+        if(value is not {HasValue:true})return "—";
+        // Match macOS bytesText: binary scaling, decimal labels, one fractional digit.
+        string[] units=["B","KB","MB","GB","TB"];
+        var amount=(decimal)value.Value;var unit=0;
+        while(amount>=1024 && unit<units.Length-1){amount/=1024;unit++;}
+        return amount.ToString("F1",l.Culture)+" "+units[unit];
+    }
     public static string State(string value,Localization l)=>value switch
     {"healthy"=>l.Text("正常","Healthy"),"busy" or "running"=>l.Text("处理中","Running"),"active"=>l.Text("活动来源","Active source"),"discovered"=>l.Text("已发现，等待索引","Discovered; awaiting indexing"),"paused"=>l.Text("已暂停","Paused"),"degraded"=>l.Text("部分能力受影响","Degraded"),"blocked"=>l.Text("需要处理","Blocked"),"queued"=>l.Text("等待中","Queued"),"succeeded" or "completed"=>l.Text("已完成","Succeeded"),"failed"=>l.Text("失败","Failed"),"interrupted"=>l.Text("已中断，可恢复","Interrupted; resumable"),"cancelled"=>l.Text("已取消","Cancelled"),"current" or "available"=>l.Text("可用","Available"),"stale"=>l.Text("上次可信值","Last known value"),"unavailable"=>l.Text("暂不可用","Unavailable"),"disabled"=>l.Text("已关闭","Disabled"),"enabled"=>l.Text("已启用","Enabled"),"resolved"=>l.Text("已解决","Resolved"),_=>l.Text("尚未确定","Unknown")};
     public static string Component(string value,Localization l)=>value switch

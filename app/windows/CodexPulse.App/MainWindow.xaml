@@ -2,36 +2,37 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Codex Pulse">
-    <Grid x:Name="Root" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    <Window.SystemBackdrop><MicaBackdrop /></Window.SystemBackdrop>
+    <Grid x:Name="Root" Background="Transparent">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
         <Grid.KeyboardAccelerators>
             <KeyboardAccelerator Key="R" Modifiers="Control" Invoked="RefreshAccelerator" />
             <KeyboardAccelerator Key="Escape" Invoked="CancelAccelerator" />
         </Grid.KeyboardAccelerators>
-        <NavigationView x:Name="Navigation" IsSettingsVisible="False" PaneDisplayMode="Auto"
+        <TitleBar x:Name="WindowTitleBar" Title="Codex Pulse" IsPaneToggleButtonVisible="True" PaneToggleRequested="PaneToggleRequested">
+            <TitleBar.IconSource><FontIconSource Glyph="&#xE9D9;" /></TitleBar.IconSource>
+        </TitleBar>
+        <NavigationView x:Name="Navigation" Grid.Row="1" IsSettingsVisible="False" PaneDisplayMode="Auto" IsPaneToggleButtonVisible="False"
             OpenPaneLength="224" CompactModeThresholdWidth="760" ExpandedModeThresholdWidth="1100"
             IsBackButtonVisible="Collapsed" SelectionChanged="NavigationChanged">
             <NavigationView.PaneHeader>
-                <StackPanel Padding="16,20,16,12" Spacing="16">
-                    <TextBlock Text="Codex Pulse" FontWeight="SemiBold" FontSize="20" />
+                <StackPanel Padding="16,12,16,20">
                     <ComboBox x:Name="ProviderPicker" HorizontalAlignment="Stretch" SelectionChanged="ProviderChanged"
                         AutomationProperties.AutomationId="provider-picker" />
                 </StackPanel>
             </NavigationView.PaneHeader>
-            <Grid Padding="24,8,24,0" RowSpacing="12">
+            <Grid Padding="28,20,28,0" RowSpacing="8">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*" MaxWidth="1440" /></Grid.ColumnDefinitions>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" /><RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <Grid x:Name="PageHeading" ColumnSpacing="12">
+                <Grid x:Name="PageHeading" ColumnSpacing="12" RowSpacing="8" SizeChanged="HeaderSizeChanged">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <TextBlock x:Name="PageTitle" Style="{ThemeResource TitleTextBlockStyle}" TextWrapping="Wrap" />
-                    <Button x:Name="RefreshButton" Grid.Column="1" Click="RefreshClicked" VerticalAlignment="Center" />
-                    <Button x:Name="CancelButton" Grid.Column="2" Click="CancelClicked" VerticalAlignment="Center" />
-                </Grid>
-                <InfoBar x:Name="ConnectionNotice" Grid.Row="1" IsOpen="True" IsClosable="False" Severity="Informational">
-                    <InfoBar.ActionButton><Button x:Name="ReconnectButton" Click="ReconnectClicked" /></InfoBar.ActionButton>
-                </InfoBar>
-                <ScrollViewer x:Name="RangeBar" Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                    <TextBlock x:Name="PageTitle" FontSize="28" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <Button x:Name="RefreshButton" Grid.Column="2" Click="RefreshClicked" VerticalAlignment="Center" Width="88" />
+                <ScrollViewer x:Name="RangeBar" Grid.Column="1" VerticalAlignment="Center" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <ComboBox x:Name="RangePicker" Width="128" SelectionChanged="RangeChanged" AutomationProperties.AutomationId="range-picker" />
                         <ContentControl x:Name="StartDateHost" />
@@ -40,14 +41,17 @@
                         <TextBlock x:Name="TimeZoneLabel" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                 </ScrollViewer>
-                <TextBlock x:Name="PageStatus" Grid.Row="3" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <ContentControl x:Name="PageContainer" Grid.Row="4" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
-                <Grid Grid.Row="5" Padding="0,8,0,12" ColumnSpacing="12">
-                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                    <TextBlock x:Name="ConnectionLabel" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                    <ComboBox x:Name="LanguagePicker" Grid.Column="1" Width="130" SelectionChanged="LanguageChanged" AutomationProperties.AutomationId="language-picker" />
-                    <ComboBox x:Name="ThemePicker" Grid.Column="2" Width="110" SelectionChanged="ThemeChanged" AutomationProperties.AutomationId="theme-picker" />
-                    <DropDownButton x:Name="AppMenu" Grid.Column="3" Content="…" AutomationProperties.AutomationId="app-menu">
+                </Grid>
+                <InfoBar x:Name="ConnectionNotice" Grid.Row="1" IsOpen="True" IsClosable="False" Severity="Informational">
+                    <InfoBar.ActionButton><Button x:Name="ReconnectButton" Click="ReconnectClicked" /></InfoBar.ActionButton>
+                </InfoBar>
+                <TextBlock x:Name="PageStatus" Grid.Row="2" Style="{StaticResource PulseCaptionStyle}" AutomationProperties.LiveSetting="Polite" />
+                <ContentControl x:Name="PageContainer" Grid.Row="3" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+                <Grid Grid.Row="4" Padding="0,8,0,12" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ConnectionLabel" VerticalAlignment="Center" Style="{StaticResource PulseCaptionStyle}" />
+                    <ProgressRing x:Name="LoadingIndicator" Grid.Column="1" Width="16" Height="16" IsActive="False" Opacity="0" VerticalAlignment="Center" />
+                    <DropDownButton x:Name="AppMenu" Grid.Column="2" Content="…" AutomationProperties.AutomationId="app-menu">
                         <DropDownButton.Flyout><MenuFlyout>
                             <MenuFlyoutItem x:Name="OpenTrayMenu" Text="额度面板 / Quota panel" Click="OpenTrayClicked" />
                             <MenuFlyoutItem x:Name="HideMenu" Text="收起到托盘 / Hide to tray" Click="HideClicked" />

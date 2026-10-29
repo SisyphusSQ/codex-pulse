@@ -12,8 +12,8 @@ internal sealed class ReportingSection:IDisposable
     private readonly MainWindow host;
     private readonly ReportingController controller;
     private readonly StackPanel body=new(){Spacing=14},facts=new(){Spacing=8};
-    private readonly Dictionary<string,TextBlock> factRows=[];
-    private readonly TextBlock result=PresentationControls.Text("");
+    private readonly Dictionary<string,(Grid Row,TextBlock Value)> factRows=[];
+    private readonly TextBlock result=PresentationControls.Feedback();
     private readonly TextBox endpoint=new();
     private readonly PasswordBox code=new(){MaxLength=64,PasswordRevealMode=PasswordRevealMode.Hidden};
     private readonly ToggleSwitch allowHttp=new(),enabled=new(),allHistory=new();
@@ -49,7 +49,7 @@ internal sealed class ReportingSection:IDisposable
         enabled.Toggled+=(_,_)=>{if(!applying && !controller.Busy){controller.Draft.Enabled=enabled.IsOn;controller.Edited();}};
         interval.ValueChanged+=(_,_)=>{if(!applying && !controller.Busy){if(double.IsFinite(interval.Value) && interval.Value==Math.Truncate(interval.Value))controller.Draft.IntervalSeconds=(long)interval.Value;controller.Edited();}};
         allHistory.Toggled+=(_,_)=>DateEdited();date.DateChanged+=(_,_)=>DateEdited();time.TimeChanged+=(_,_)=>DateEdited();
-        body.Children.Add(enabled);body.Children.Add(interval);body.Children.Add(allHistory);body.Children.Add(date);body.Children.Add(time);
+        body.Children.Add(enabled);body.Children.Add(interval);body.Children.Add(allHistory);body.Children.Add(PresentationControls.Columns([date,time],240));
         body.Children.Add(PresentationControls.Text(L.Text("开始导出后起点固定；改变范围需重新配对。关闭上报保留队列，退出 App 停止发送，下次启动续传。未观测的额度历史不能补造。","History start locks after export begins; pair again to change it. Disabling retains queues. Quitting stops sending; the next launch resumes. Unobserved quota history cannot be reconstructed."),12));
         save.Content=L.Text("保存同步设置","Save sync settings");sync.Content=L.Text("立即增量补传","Sync incrementally now");full.Content=L.Text("全量补传当前范围…","Full sync current range…");clear.Content=L.Text("关闭上报并清理当前中心队列…","Disable and clear this center's queue…");reset.Content=L.Text("放弃同步草稿并读回","Discard sync draft and reload");open.Content=L.Text("打开中心 Web","Open center Web");
         save.Click+=async(_,_)=>await Execute(save,()=>controller.ConfigureAsync());sync.Click+=async(_,_)=>await Execute(sync,()=>controller.SyncAsync(false));
@@ -57,8 +57,15 @@ internal sealed class ReportingSection:IDisposable
         clear.Click+=async(_,_)=>await Execute(clear,async()=>{if(await ProductDialog.Confirm(host,L.Text("丢弃当前中心待发送队列","Discard this center's pending queue"),L.Text("将关闭上报并丢弃尚未确认的本机批次；不删除中心历史，不影响其他中心保留队列，也不改变已固定的历史起点。","Disable reporting and discard unconfirmed local batches. Center history and other centers' retained queues remain. The locked history start is unchanged."),L.Text("关闭并清理","Disable and discard")))await controller.ConfigureAsync(true);});
         reset.Click+=async(_,_)=>{code.Password="";await controller.ReloadAsync();controller.Reset();Publish();};
         open.Click+=async(_,_)=>{if(controller.Current.State.Value is {} value && ReportingController.WebAddress(value) is {} uri && !await Windows.System.Launcher.LaunchUriAsync(uri))result.Text=L.Text("无法打开中心浏览器。","Could not open the center browser.");};
-        foreach(var button in new[]{save,sync,full,clear,reset,open})body.Children.Add(button);
-        var reload=new Button{Content=L.Text("刷新同步状态","Refresh sync status")};reload.Click+=async(_,_)=>await LoadAsync();body.Children.Add(reload);body.Children.Add(facts);
+        FrameworkElement Actions(params Button[] buttons)
+        {
+            var row=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};foreach(var button in buttons)row.Children.Add(button);
+            return new ScrollViewer{Content=row,HorizontalScrollBarVisibility=ScrollBarVisibility.Auto,VerticalScrollBarVisibility=ScrollBarVisibility.Disabled};
+        }
+        body.Children.Add(Actions(save,reset));body.Children.Add(Actions(sync,full,open));
+        var reload=new Button{Content=L.Text("刷新同步状态","Refresh sync status")};reload.Click+=async(_,_)=>await LoadAsync();
+        body.Children.Add(PresentationControls.SectionHeader(L.Text("同步状态","Synchronization status"),reload));body.Children.Add(facts);
+        body.Children.Add(PresentationControls.Heading(L.Text("队列维护","Queue maintenance")));body.Children.Add(clear);
         body.Children.Add(PresentationControls.Text(L.Text("设备撤销在中心 Web 管理。重新配对不会删除旧设备历史；当前 Windows 设备不复制其他机器的同步凭证或数据库。","Revoke devices in center Web. Pairing again keeps prior device history. This Windows device does not copy another machine's sync credentials or database."),12));
         View.Expanding+=async(_,_)=>{await LoadAsync();poll.Start();};View.Collapsed+=(_,_)=>poll.Stop();
         poll.Tick+=async(_,_)=>{if(View.IsExpanded && host.WindowVisible && host.WindowActive && !controller.Busy)await controller.ReloadAsync();};
@@ -87,8 +94,9 @@ internal sealed class ReportingSection:IDisposable
         try
         {
             var draft=controller.Draft;var status=controller.Current.State.Value;var paired=!string.IsNullOrEmpty(status?.ClientId);var busy=controller.Busy || actionRunning;
-            result.Text=L.State(controller.Current.State.Kind)+" · "+(controller.Action switch
-            {ReportingAction.Running=>L.Text("正在操作并权威读回","Working and reading back"),ReportingAction.Applied=>L.Text("操作已确认并读回；上报结果见下方状态","Action confirmed and read back; delivery status follows"),ReportingAction.ReadbackConfirmed=>L.Text("回执未知，最新状态已确认目标值","Receipt unknown; authoritative status confirms the requested values"),ReportingAction.ReadbackChanged=>L.Text("最新状态与提交不同，请核对后再操作","Readback differs; review before another action"),ReportingAction.CommandAccepted=>L.Text("补传请求已受理，尚不代表全部发布完成","Sync request accepted; full publication is not implied"),ReportingAction.Unknown=>L.Text("结果未知；已尝试读回，不会自动重放","Outcome unknown; readback attempted, no automatic replay"),ReportingAction.Unavailable=>L.Text("操作未完成，请检查地址、许可、码或同步范围","Action incomplete; check address, consent, code or range"),_=>controller.PairDirty || controller.ConfigurationDirty?L.Text("有未保存的同步草稿","Unsaved sync draft"):""});
+            var actionText=controller.Action switch
+            {ReportingAction.Running=>L.Text("正在操作并权威读回","Working and reading back"),ReportingAction.Applied=>L.Text("操作已确认并读回；上报结果见下方状态","Action confirmed and read back; delivery status follows"),ReportingAction.ReadbackConfirmed=>L.Text("回执未知，最新状态已确认目标值","Receipt unknown; authoritative status confirms the requested values"),ReportingAction.ReadbackChanged=>L.Text("最新状态与提交不同，请核对后再操作","Readback differs; review before another action"),ReportingAction.CommandAccepted=>L.Text("补传请求已受理，尚不代表全部发布完成","Sync request accepted; full publication is not implied"),ReportingAction.Unknown=>L.Text("结果未知；已尝试读回，不会自动重放","Outcome unknown; readback attempted, no automatic replay"),ReportingAction.Unavailable=>L.Text("操作未完成，请检查地址、许可、码或同步范围","Action incomplete; check address, consent, code or range"),_=>controller.PairDirty || controller.ConfigurationDirty?L.Text("有未保存的同步草稿","Unsaved sync draft"):""};
+            result.Text=string.Join(" · ",new[]{controller.Current.State.Kind is LoadKind.Ready or LoadKind.Idle?"":L.State(controller.Current.State.Kind),actionText}.Where(value=>value.Length>0));
             if(!ReferenceEquals(rendered,draft))
             {
                 rendered=draft;endpoint.Text=draft.Endpoint;allowHttp.IsOn=draft.AllowHttp;enabled.IsOn=draft.Enabled;interval.Value=draft.IntervalSeconds;allHistory.IsOn=draft.HistoryStartAtMs==0;
@@ -98,13 +106,18 @@ internal sealed class ReportingSection:IDisposable
             enabled.IsEnabled=interval.IsEnabled=paired && !busy;allHistory.IsEnabled=paired && !busy && !controller.HistoryLocked;date.IsEnabled=time.IsEnabled=allHistory.IsEnabled && !allHistory.IsOn;
             save.IsEnabled=paired && !busy && controller.ConfigurationDirty && double.IsFinite(interval.Value) && interval.Value==Math.Truncate(interval.Value) && interval.Value is >=15 and <=3600;
             sync.IsEnabled=paired && !busy && status?.Enabled==true;full.IsEnabled=sync.IsEnabled && status?.FullSyncState!="running";clear.IsEnabled=paired && !busy && status?.PendingBatches>0;reset.IsEnabled=!busy;open.IsEnabled=status is not null && ReportingController.WebAddress(status) is not null;
-            if(status is null){foreach(var row in factRows.Values)row.Visibility=Visibility.Collapsed;return;}
+            if(status is null){foreach(var row in factRows.Values)row.Row.Visibility=Visibility.Collapsed;return;}
             var present=new HashSet<string>();
             void Fact(string zh,string en,string value)
             {
                 present.Add(en);
-                if(!factRows.TryGetValue(en,out var row)){row=PresentationControls.Text("");factRows.Add(en,row);facts.Children.Add(row);}
-                var text=L.Text(zh,en)+" · "+value;if(row.Text!=text)row.Text=text;row.Visibility=Visibility.Visible;
+                if(!factRows.TryGetValue(en,out var row))
+                {
+                    var grid=new Grid{ColumnSpacing=16};grid.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});grid.ColumnDefinitions.Add(new(){Width=new GridLength(2,GridUnitType.Star)});
+                    grid.Children.Add(PresentationControls.Caption(L.Text(zh,en)));var text=PresentationControls.Text("",13);text.TextAlignment=TextAlignment.Right;Grid.SetColumn(text,1);grid.Children.Add(text);
+                    row=(grid,text);factRows.Add(en,row);facts.Children.Add(grid);
+                }
+                if(row.Value.Text!=value)row.Value.Text=value;row.Row.Visibility=Visibility.Visible;
             }
             string Number(long value)=>value>=0?value.ToString("N0",L.Culture):"—";
             Fact("当前中心","Saved center",string.IsNullOrEmpty(status.Endpoint)?L.Text("尚未配对","Not paired"):status.Endpoint);Fact("设备 ID","Device ID",paired?status.ClientId:L.Text("尚未配对","Not paired"));
@@ -117,7 +130,7 @@ internal sealed class ReportingSection:IDisposable
                 Fact("全量任务","Full sync",status.FullSyncState switch{"completed"=>L.Text("已完成（全部有效确认）","Completed (all valid acknowledgments)"),"running"=>status.Enabled?L.Text("进行中","Running"):L.Text("已暂停，启用后续传","Paused; resumes when enabled"),_=>L.Text("未知任务状态","Unknown task state")});
                 Fact("排入快照数","Enqueued snapshots",Number(status.FullSyncExportedSessions));Fact("已确认批次数","Acknowledged batches",Number(status.FullSyncAcknowledgedBatches));Fact("任务开始","Task started",L.Timestamp(status.HasFullSyncStartedAtMs?status.FullSyncStartedAtMs:null));
             }
-            foreach(var row in factRows.Where(row=>!present.Contains(row.Key)))row.Value.Visibility=Visibility.Collapsed;
+            foreach(var row in factRows.Where(row=>!present.Contains(row.Key)))row.Value.Row.Visibility=Visibility.Collapsed;
         }
         finally{applying=false;}
     }

@@ -2,9 +2,9 @@
 
 English | [简体中文](README_CN.md)
 
-**Understand how Codex and Cursor are being used on your Mac, how much quota or exact usage is available, and whether the underlying data is reliable.**
+**Understand how Codex and Cursor are being used on your computer, how much quota or exact usage is available, and whether the underlying data is reliable.**
 
-Codex Pulse is a local-first, native macOS app. It turns Codex and Cursor sessions, usage records, and source health scattered across your machine into a menu bar status view and a drill-down analytics interface, while making data freshness, completeness, and health explicit.
+Codex Pulse is a local-first native app for macOS and Windows. It turns Codex and Cursor sessions, usage records, and source health scattered across your machine into a status view and a drill-down analytics interface, while making data freshness, completeness, and health explicit.
 
 ![Quota, annual activity heatmap, and project usage in the Codex Pulse overview; dynamic data has been redacted](docs/assets/codex-pulse-overview-redacted.png)
 
@@ -71,8 +71,8 @@ The most misleading failure mode for quota and usage tools is not missing data�
 All indexing and analytics run locally. Cursor usage and spending can additionally be refreshed from Cursor's authenticated Dashboard service by reusing the current Cursor Desktop session:
 
 - Local Codex and Cursor sessions are discovered read-only. Structured results stay in local SQLite; conversation bodies, prompts, responses, thoughts, tool payloads, tracked file content, raw paths, credentials, and RPC tokens are not persisted.
-- Online quota, reset-credit, and Cursor Dashboard requests use credentials only in memory for the duration of a request. Dashboard access tokens are read from Cursor's WAL-aware state database and are never copied to preferences, logs, RPC responses, or Codex Pulse SQLite. There is no Codex Pulse cloud sync or public network endpoint.
-- The Swift app and Go Helper communicate only over a private Unix Domain Socket. Logs, errors, and UI responses exclude raw payloads, full paths, and underlying error details.
+- Online quota, reset-credit, and Cursor Dashboard requests use credentials only in memory for the duration of a request. Dashboard access tokens are read from Cursor's WAL-aware state database and are never copied to preferences, logs, RPC responses, or Codex Pulse SQLite. Optional center reporting sends only approved structured facts and metadata, not agent credentials or raw conversation content.
+- The macOS Swift app uses a private Unix Domain Socket to communicate with the Go Helper; the Windows app uses a protected Named Pipe. Logs, errors, and UI responses exclude raw payloads, full paths, and underlying error details.
 
 The original Codex and Cursor files remain managed by their applications. Codex Pulse stores only the allowlisted indexes, aggregates, lineage digests, and runtime state required by the product, and never modifies original session content.
 
@@ -87,16 +87,22 @@ Local Codex data / optional online quota
              │
              ▼
    Go Helper: discovery, indexing, aggregation, scheduling, SQLite
-             │  Protobuf / gRPC over UDS
+             │  Protobuf / gRPC over UDS or protected Named Pipe
              ▼
-   Swift app: menu bar, windows, interactions, and Helper lifecycle
+   Native app: status, windows, interactions, and Helper lifecycle
 ```
 
-[`api/codexpulse/core/v1/core.proto`](api/codexpulse/core/v1/core.proto) defines the cross-process contract. The Go Helper reads, indexes, and aggregates data. The Swift app calls it through the generated CoreService client and neither reads SQLite or JSONL directly nor reimplements aggregation in the UI layer.
+[`api/codexpulse/core/v1/core.proto`](api/codexpulse/core/v1/core.proto) defines the cross-process contract. The Go Helper reads, indexes, and aggregates data. Both native apps use generated CoreService clients; neither reads SQLite or JSONL directly nor reimplements aggregation in the UI layer.
+
+## Windows installation
+
+For Windows 11 24H2 or newer on x64, download `Setup.exe`, `release.json`, and the matching `codex-pulse-<build>-win-x64.zip` from the same GitHub Release into one folder. Run `Setup.exe` and confirm the installation. The package is self-contained and does not require Go, Visual Studio, or a separate .NET installation.
+
+The current Windows package uses a development signing key and does not have an Authenticode public-trust signature. Its update feed is a local development feed, so public users must manually download later versions. See the [installation and update runbook](docs/test/windows-install-update.md) and the Release Notes for details.
 
 ## Run from source
 
-Windows native client uses C# / WinUI 3 and the shared Go Helper. See [Windows architecture and pinned toolchain](docs/design/details/native-windows-client/README.md), [development evidence](docs/test/windows-client.md), and [installation/update runbook](docs/test/windows-install-update.md). Build with `./scripts/windows/build.ps1 -LockedRestore` in PowerShell. The self-contained Windows 11 24H2 x64 bundle includes the paired App, Helper, .NET and Windows App SDK runtime; end users do not need Go or Visual Studio. Windows acceptance and development package signatures are recorded separately from macOS, formal Authenticode trust and public distribution.
+Windows native client uses C# / WinUI 3 and the shared Go Helper. See [Windows architecture and pinned toolchain](docs/design/details/native-windows-client/README.md), [development evidence](docs/test/windows-client.md), and [installation/update runbook](docs/test/windows-install-update.md). Build with `./scripts/windows/build.ps1 -LockedRestore` in PowerShell. The self-contained Windows 11 24H2 x64 bundle includes the paired App, Helper, .NET and Windows App SDK runtime; end users do not need Go or Visual Studio. Windows acceptance and development package signatures are recorded separately from macOS and Authenticode public trust.
 
 Requirements:
 

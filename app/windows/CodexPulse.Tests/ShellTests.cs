@@ -72,7 +72,7 @@ internal static class ShellTests
         Require(l.Number(new NumericValue()) == "—" && l.Number(new NumericValue { Value = 0 }) == "0", "display distinguishes unknown from real zero");
         Require(long.Parse(l.Number(new NumericValue { Value = long.MaxValue }), NumberStyles.AllowThousands, l.Culture) == long.MaxValue, "large token values retain exact display precision");
         l.Set("en-US"); Require(l.FeatureTitle(Feature.Settings) == "Settings", "English navigation labels resolve");
-        Require(l.Money(new NumericValue { Value = 1 }) == "US$ 0.000001" && l.Money(new NumericValue { Value = 0 }) == "US$ 0.00", "small positive cost is not formatted as real zero");
+        Require(l.Money(new NumericValue { Value = 1 }) == "$0.000001" && l.Money(new NumericValue { Value = 0 }) == "$0.00", "small positive cost is not formatted as real zero");
         var rejectedMutationCache = false;
         try { await client.QueryAsync("UpdateAPICredential", new UpdateAPICredentialRequest(), context, ["settings"], Fetch); }
         catch (ArgumentException) { rejectedMutationCache = true; }

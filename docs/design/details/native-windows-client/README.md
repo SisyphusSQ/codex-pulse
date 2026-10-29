@@ -2,6 +2,8 @@
 
 Windows 使用 C# / WinUI 3 承担原生 UI 和进程管理，共享 Go Helper 承担业务事实。完整产品范围见 Linear TOO-657；本目录记录版本化实现合同。
 
+界面的信息层级、公共样式和验收目标见 [Windows 界面设计目标](visual-design.md)。
+
 ## 工具链与构建
 
 固定 .NET SDK 10.0.403、Windows App SDK 2.6.4、Windows SDK BuildTools 10.0.28000.2705、Google.Protobuf 3.36.2、Grpc.Core.Api / Grpc.Net.Client / Grpc.StatusProto 2.84.0 和 Grpc.Tools 2.85.0。NuGet 官方源及包锁随工程提交；根 Go module 保持 Go 1.26.2 最低版本，本机使用已安装的 Go 1.27.1。Named Pipe 固定使用 Microsoft/go-winio 0.6.4，其依赖要求 x/sys 从 0.44.0 更新到 0.49.0，并在 go.sum 同步 x/mod、x/sync、x/tools 的工具依赖图。工具与 SDK 只用于构建，产品不依赖用户安装 Go、Swift 或 Visual Studio。

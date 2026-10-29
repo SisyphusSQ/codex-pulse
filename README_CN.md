@@ -4,7 +4,7 @@
 
 **看清 Codex 与 Cursor 在本机如何消耗、额度还剩多少，以及当前数据是否可用。**
 
-Codex Pulse 是一款 local-first 的原生 macOS 应用：把 Codex 与 Cursor 分散在本机会话、用量记录和数据来源健康中的信息，整理成菜单栏状态与可下钻的分析界面，同时说明数据的新鲜度、完整性与健康状态。
+Codex Pulse 是一款 local-first 的 macOS 和 Windows 原生应用：把 Codex 与 Cursor 分散在本机会话、用量记录和数据来源健康中的信息，整理成状态视图与可下钻的分析界面，同时说明数据的新鲜度、完整性与健康状态。
 
 ![Codex Pulse 概览中的额度、年度活动热力图与项目消耗，动态数据已脱敏](docs/assets/codex-pulse-overview-redacted.png)
 
@@ -68,8 +68,8 @@ Codex Pulse 是一款 local-first 的原生 macOS 应用：把 Codex 与 Cursor 
 所有分析都在本机完成：
 
 - 只读发现和增量索引本地 Session，结构化结果只保存在本机 SQLite；不复制完整对话正文，也不持久化 token、Authorization header 或 RPC token。
-- 在线 quota 与 Reset credits 可以关闭，凭证仅在请求期间进入内存；不提供云同步或公网访问。
-- Swift App 与 Go Helper 只通过私有 Unix Domain Socket 通信；日志、错误和 UI 返回值不包含原始 payload、完整路径或底层错误。
+- 在线 quota 与 Reset credits 可以关闭，凭证仅在请求期间进入内存；可选中心上报只发送明确允许的结构化事实与元数据，不包含 Agent 凭据或原始对话正文。
+- macOS Swift App 与 Go Helper 通过私有 Unix Domain Socket 通信，Windows App 使用受保护的 Named Pipe；日志、错误和 UI 返回值不包含原始 payload、完整路径或底层错误。
 
 Codex 原始文件仍由 Codex 自己管理。Codex Pulse 只保存产品功能所需的索引、统计和运行状态，不修改原始 Session 内容。
 
@@ -84,12 +84,18 @@ Codex 本地数据 / 可选在线额度
              │
              ▼
    Go Helper：发现、索引、聚合、调度、SQLite
-             │  Protobuf / gRPC over UDS
+             │  Protobuf / gRPC，经 UDS 或受保护的 Named Pipe
              ▼
-   Swift App：菜单栏、窗口、交互与 Helper 生命周期
+   原生 App：状态、窗口、交互与 Helper 生命周期
 ```
 
-[`api/codexpulse/core/v1/core.proto`](api/codexpulse/core/v1/core.proto) 定义了跨进程接口。Go Helper 负责读取、索引和汇总数据；Swift App 通过 generated CoreService 调用 Helper，不直接读取 SQLite 或 JSONL，也不在 UI 层重新汇总数据。
+[`api/codexpulse/core/v1/core.proto`](api/codexpulse/core/v1/core.proto) 定义了跨进程接口。Go Helper 负责读取、索引和汇总数据；两端原生 App 通过 generated CoreService 调用 Helper，不直接读取 SQLite 或 JSONL，也不在 UI 层重新汇总数据。
+
+## Windows 安装
+
+Windows 11 24H2 及更高版本的 x64 用户，从同一个 GitHub Release 下载 `Setup.exe`、`release.json` 和对应的 `codex-pulse-<build>-win-x64.zip` 到同一目录，运行 `Setup.exe` 并确认安装。安装包自包含，无需安装 Go、Visual Studio 或独立的 .NET。
+
+当前 Windows 包使用开发密钥签名，未进行 Authenticode 公信任签名；内置更新源仅用于本地开发，公开用户需手动下载后续版本。详见 [Windows 安装更新说明](docs/test/windows-install-update.md)和 Release Notes。
 
 ## 从源码运行
 

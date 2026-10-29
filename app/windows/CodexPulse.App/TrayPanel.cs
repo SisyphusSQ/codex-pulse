@@ -35,12 +35,15 @@ internal sealed class TrayPanel:Window,IDisposable
     private readonly MainWindow host;
     private readonly QuerySlot<Snapshot> slot=new();
     private readonly StackPanel document=new(){Spacing=14,Padding=new Thickness(18)};
+    private readonly Grid header=new(){ColumnSpacing=12,Padding=new Thickness(18,16,18,0)};
+    private readonly Grid footer=new(){ColumnSpacing=8,Padding=new Thickness(18,12,18,16)};
     private readonly TextBlock feedback=PresentationControls.Text("");
     private readonly ComboBox picker=new(){HorizontalAlignment=HorizontalAlignment.Stretch};
     private readonly Border root;
     private readonly DispatcherTimer refresh=new(){Interval=TimeSpan.FromSeconds(30)};
     private TrayPreferences preferences;
     private bool visible,disposed,rendering,capturing,refreshing;
+    private LoadKind presentedKind=LoadKind.Idle;
     private DateTimeOffset dismissed;
     private RectInt32 anchor;
     private string? activeProvider;
@@ -53,7 +56,12 @@ internal sealed class TrayPanel:Window,IDisposable
         this.host=host;Title="Codex Pulse · "+L.Text("托盘","Tray");Handle=WinRT.Interop.WindowNative.GetWindowHandle(this);
         try{preferences=TrayPreferences.Load(host.Options.Runtime);}catch(Exception e)when(e is IOException or UnauthorizedAccessException or JsonException or System.Security.SecurityException){preferences=new();}
         root=(Border)Microsoft.UI.Xaml.Markup.XamlReader.Load("<Border xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Background='{ThemeResource ApplicationPageBackgroundThemeBrush}'/>");
-        root.Child=new ScrollViewer{Content=document,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
+        var layout=new Grid();layout.RowDefinitions.Add(new(){Height=GridLength.Auto});layout.RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});layout.RowDefinitions.Add(new(){Height=GridLength.Auto});
+        header.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});header.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
+        footer.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});footer.ColumnDefinitions.Add(new(){Width=GridLength.Auto});footer.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
+        layout.Children.Add(header);
+        var scroll=new ScrollViewer{Content=document,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,HorizontalContentAlignment=HorizontalAlignment.Stretch};Grid.SetRow(scroll,1);layout.Children.Add(scroll);
+        Grid.SetRow(footer,2);layout.Children.Add(footer);root.Child=layout;
         Content=root;
         var escape=new KeyboardAccelerator{Key=Windows.System.VirtualKey.Escape};escape.Invoked+=(_,e)=>{Hide();e.Handled=true;};root.KeyboardAccelerators.Add(escape);
         Activated+=(_,e)=>{if(e.WindowActivationState==WindowActivationState.Deactivated && visible && !capturing)Hide();else if(e.WindowActivationState!=WindowActivationState.Deactivated)host.QueueLifecycle("application_did_become_active");};
@@ -151,15 +159,18 @@ internal sealed class TrayPanel:Window,IDisposable
     private void Render()=>Render(capturing);
     private void Render(bool privacy)
     {
-        if(disposed)return;rendering=true;
+        if(disposed)return;rendering=true;root.Language=L.Culture.Name;
         try
         {
-            document.Children.Clear();document.Children.Add(PresentationControls.Text("Codex Pulse",24));
-            picker.Header=L.Text("托盘客户端","Tray client");AutomationProperties.SetName(picker,L.Text("托盘客户端","Tray client"));
+            document.Children.Clear();header.Children.Clear();footer.Children.Clear();
+            picker.Header=null;AutomationProperties.SetName(picker,L.Text("托盘客户端","Tray client"));
             picker.Items.Clear();foreach(var provider in host.Workspace.EnabledProviders)picker.Items.Add(new ComboBoxItem{Content=MainWindow.ProviderName(provider),Tag=provider});
-            picker.SelectedItem=picker.Items.Cast<ComboBoxItem>().FirstOrDefault(item=>(string)item.Tag==host.Workspace.TrayProvider);document.Children.Add(picker);
-            document.Children.Add(PresentationControls.Text(L.State(slot.State.Kind)));
-            document.Children.Add(feedback);
+            picker.SelectedItem=picker.Items.Cast<ComboBoxItem>().FirstOrDefault(item=>(string)item.Tag==host.Workspace.TrayProvider);
+            var title=PresentationControls.Heading("Codex Pulse");title.FontSize=16;title.VerticalAlignment=VerticalAlignment.Center;header.Children.Add(title);
+            picker.MinWidth=120;picker.MaxWidth=160;Grid.SetColumn(picker,1);header.Children.Add(picker);
+            if(slot.State.Kind!=LoadKind.Loading || slot.State.Value is null)presentedKind=slot.State.Kind;
+            if(presentedKind!=LoadKind.Ready)document.Children.Add(PresentationControls.Caption(L.State(presentedKind)));
+            if(!string.IsNullOrEmpty(feedback.Text))document.Children.Add(feedback);
             if(slot.State.Value is {} value && value.Provider==host.Workspace.TrayProvider)
             {
                 var trusted=TrayPresentation.CanShowQuota(value.Provider,value.Quota,value.Account);
@@ -171,7 +182,9 @@ internal sealed class TrayPanel:Window,IDisposable
                         var card=new StackPanel{Spacing=6};var name=QuotaPresentation.WindowName(window.LimitId,window.HasLimitName?window.LimitName:null,window.HasWindowMinutes?window.WindowMinutes:null,L);
                         var expired=window.HasResetsAtMs && DateTimeOffset.Now.ToUnixTimeMilliseconds()>=window.ResetsAtMs;
                         var remaining=expired?null:QuotaPresentation.Percent(window.HasRemainingPercent,window.RemainingPercent);
-                        card.Children.Add(PresentationControls.Text(name+" · "+L.Text("剩余 ","Remaining ")+QuotaPresentation.PercentText(remaining,L),16));QuotaPage.AddProgress(card,name,remaining);
+                        var quotaHeading=new Grid {ColumnSpacing=12};quotaHeading.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});quotaHeading.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
+                        var label=PresentationControls.Text(name,14);label.VerticalAlignment=VerticalAlignment.Center;quotaHeading.Children.Add(label);
+                        var number=PresentationControls.Text(QuotaPresentation.PercentText(remaining,L),24);number.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;Grid.SetColumn(number,1);quotaHeading.Children.Add(number);card.Children.Add(quotaHeading);QuotaPage.AddProgress(card,name,remaining);
                         card.Children.Add(PresentationControls.Text((expired?L.Text("等待新周期","Awaiting new cycle"):QuotaPresentation.Freshness(window.Freshness,L))+" · "+L.Text("重置 ","Resets ")+L.Timestamp(window.HasResetsAtMs?window.ResetsAtMs:null),12));document.Children.Add(PresentationControls.Card(card));
                     }
                     if(quota.ResetCredits is {} credits)document.Children.Add(PresentationControls.Text(L.Text("可用重置库存：","Available reset inventory: ")+(credits.HasAvailableCount?credits.AvailableCount.ToString(L.Culture):"—")+" · "+QuotaPresentation.Freshness(credits.Freshness,L)));
@@ -181,26 +194,36 @@ internal sealed class TrayPanel:Window,IDisposable
                 else if(value.Provider=="dsh")document.Children.Add(PresentationControls.Text(L.Text("DSH 不提供官方额度。","DSH does not provide an official quota.")));
                 else document.Children.Add(PresentationControls.Text(L.Text("在线额度暂不可用；Home 用量仍可独立查看。","Online quota is unavailable; Home usage remains independent.")));
                 var rangeLabel=value.Provider=="dsh"?L.Text("最近 7 天的 Home 用量","Home usage in the last 7 days"):value.Fallback?value.Provider=="cursor"?L.Text("额度范围不可用，显示最近 30 天。","Quota period unavailable; showing the last 30 days."):L.Text("额度范围不可用，显示最近 7 天。","Quota period unavailable; showing the last 7 days."):L.Text("当前额度周期的 Home 用量","Home usage in the current quota period");
-                document.Children.Add(PresentationControls.Text(rangeLabel+"\n"+L.Timestamp(value.Range.StartAtMs)+" — "+L.Timestamp(value.Range.EndAtMs),12));
-                document.Children.Add(PresentationControls.Text("Token · "+L.Number(value.Usage.Totals?.TotalTokens),24));
+                document.Children.Add(PresentationControls.Text(rangeLabel+"\n"+L.Timestamp(value.Range.StartAtMs,value.Range.TimeZone)+" — "+L.Timestamp(value.Range.EndAtMs,value.Range.TimeZone),12));
+                document.Children.Add(PresentationControls.Text("Token · "+L.Tokens(value.Usage.Totals?.TotalTokens),24));
                 if(preferences.ShowCost)document.Children.Add(PresentationControls.Text(L.Text("API 等价估算 · ","API-equivalent estimate · ")+L.Money(value.Usage.Totals?.EstimatedUsdMicros)+L.Text("（非订阅账单）"," (not a subscription bill)")));
-                document.Children.Add(Charts.Bars(DashboardPresentation.UsageTrend(value.Usage),L,"Token",true));
+                document.Children.Add(Charts.Bars(DashboardPresentation.UsageTrend(value.Usage),L,"Token",true,compact:true));
                 if(preferences.ShowProjects && value.Projects is {} projects)
                 {
-                    document.Children.Add(PresentationControls.Text(L.Text("项目摘要 · 前 5","Project summary · Top 5"),18));
+                    document.Children.Add(PresentationControls.Heading(L.Text("项目摘要 · 前 5","Project summary · Top 5")));
+                    var ranking=new StackPanel {Spacing=2};var rank=0;
                     foreach(var item in projects.Items)
-                    {var button=new Button{Content=DashboardPresentation.Name(item.Project,L.Text("未归类","Unattributed"))+" · "+L.Number(item.Totals?.TotalTokens),HorizontalAlignment=HorizontalAlignment.Stretch};button.Click+=(_,_)=>{Hide();host.OpenProvider(value.Provider);host.OpenProject(item.DimensionKey,value.Range);host.ShowMain();};document.Children.Add(button);}
+                    {
+                        ranking.Children.Add(PresentationControls.RankingLink(++rank,DashboardPresentation.Name(item.Project,L.Text("未归类","Unattributed")),
+                            L.Number(item.SessionCount)+L.Text(" 个会话",item.SessionCount is {HasValue:true,Value:1}?" session":" sessions"),L.Tokens(item.Totals?.TotalTokens)+" Token","",
+                            ()=>{Hide();host.OpenProvider(value.Provider);host.OpenProject(item.DimensionKey,value.Range);host.ShowMain();}));
+                    }
+                    document.Children.Add(ranking);
                 }
                 else if(preferences.ShowProjects)document.Children.Add(PresentationControls.Text(L.Text("项目摘要暂不可用。","Project summary is unavailable.")));
                 document.Children.Add(PresentationControls.Text(L.Text("快照读取时间 ","Snapshot read ")+L.Timestamp(value.ReadAtMs)+" · "+L.Text("Home 用量不归属当前账号","Home usage is independent of account identity"),12));
-                var tooltip="Codex Pulse · "+MainWindow.ProviderName(value.Provider)+" · "+L.State(slot.State.Kind)+" · Token "+L.Number(value.Usage.Totals?.TotalTokens);
+                var tooltip="Codex Pulse · "+MainWindow.ProviderName(value.Provider)+" · "+L.State(slot.State.Kind)+" · Token "+L.Tokens(value.Usage.Totals?.TotalTokens,compact:true);
                 if(trusted && value.Quota is {} q)tooltip+=" · "+string.Join(" / ",QuotaPresentation.Windows(q.Current).Take(2).Select(w=>QuotaPresentation.PercentText(QuotaPresentation.Percent(w.HasRemainingPercent,w.RemainingPercent),L)));
                 TooltipChanged?.Invoke(tooltip+" · "+L.Timestamp(value.ReadAtMs));
             }
-            else document.Children.Add(PresentationControls.Text(host.Session?.State==CoreConnectionState.Recovery?L.Text("恢复模式：请打开主窗口。","Recovery mode: open the main window."):L.Text("尚无可信快照。可启用客户端或重新连接。","No trusted snapshot. Enable a client or reconnect.")));
-            var actions=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};actions.Children.Add(Action("打开主窗口","Open main",()=>{Hide();host.ShowMain();}));
-            var reload=Action("刷新额度","Refresh quota",()=>{_=RefreshQuotaAsync();});reload.IsEnabled=!refreshing && host.Workspace.TrayProvider is not(null or "dsh");actions.Children.Add(reload);document.Children.Add(actions);
-            var more=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};var copy=Action("复制脱敏截图","Copy private screenshot",()=>{_=CopyAsync();});copy.IsEnabled=!capturing;more.Children.Add(copy);more.Children.Add(Action("设置","Settings",()=>{Hide();host.Navigate(Feature.Settings);host.ShowMain();}));more.Children.Add(Action("退出","Quit",()=>{_=host.QuitAsync();}));document.Children.Add(more);
+            else if(slot.State.Kind!=LoadKind.Loading)document.Children.Add(PresentationControls.Text(host.Session?.State==CoreConnectionState.Recovery?L.Text("恢复模式：请打开主窗口。","Recovery mode: open the main window."):L.Text("尚无可信快照。可启用客户端或重新连接。","No trusted snapshot. Enable a client or reconnect.")));
+            var open=Action("打开主窗口","Open main",()=>{Hide();host.ShowMain();});open.HorizontalAlignment=HorizontalAlignment.Stretch;footer.Children.Add(open);
+            var reload=Action("刷新额度","Refresh quota",()=>{_=RefreshQuotaAsync();});reload.Content=new SymbolIcon(Symbol.Refresh);AutomationProperties.SetName(reload,L.Text("刷新额度","Refresh quota"));ToolTipService.SetToolTip(reload,L.Text("刷新额度","Refresh quota"));reload.IsEnabled=!refreshing && host.Workspace.TrayProvider is not(null or "dsh");Grid.SetColumn(reload,1);footer.Children.Add(reload);
+            var menu=new MenuFlyout();
+            var copy=new MenuFlyoutItem {Text=L.Text("复制脱敏截图","Copy private screenshot"),IsEnabled=!capturing};copy.Click+=(_,_)=>{_=CopyAsync();};menu.Items.Add(copy);
+            var settings=new MenuFlyoutItem {Text=L.Text("设置","Settings")};settings.Click+=(_,_)=>{Hide();host.Navigate(Feature.Settings);host.ShowMain();};menu.Items.Add(settings);
+            menu.Items.Add(new MenuFlyoutSeparator());var quit=new MenuFlyoutItem {Text=L.Text("退出","Quit")};quit.Click+=(_,_)=>{_=host.QuitAsync();};menu.Items.Add(quit);
+            var more=new DropDownButton {Content=new SymbolIcon(Symbol.More),Flyout=menu};AutomationProperties.SetName(more,L.Text("更多操作","More actions"));Grid.SetColumn(more,2);footer.Children.Add(more);
             var options=new StackPanel{Spacing=8};var cost=new ToggleSwitch{Header=L.Text("显示成本摘要","Show cost summary"),IsOn=preferences.ShowCost};cost.Toggled+=async(_,_)=>{preferences=preferences with{ShowCost=cost.IsOn};SavePreferences();if(!capturing)await LoadAsync();};options.Children.Add(cost);
             var ranks=new ToggleSwitch{Header=L.Text("显示项目摘要","Show project summary"),IsOn=preferences.ShowProjects};ranks.Toggled+=async(_,_)=>{preferences=preferences with{ShowProjects=ranks.IsOn};SavePreferences();await LoadAsync();};options.Children.Add(ranks);document.Children.Add(PresentationControls.Disclosure(L.Text("显示设置","Display settings"),options));
         }

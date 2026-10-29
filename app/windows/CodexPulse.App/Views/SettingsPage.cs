@@ -16,6 +16,7 @@ internal sealed class SettingsPage:FeaturePage
     private readonly WindowsUpdatesSection windowsUpdates;
     private readonly StackPanel form=new(){Spacing=14};
     private readonly TextBlock result;
+    private readonly Border saveBar;
     private readonly Button save,rebase,discard;
     private UpdateSettingsRequest? rendered;
     private bool disposed;
@@ -23,12 +24,18 @@ internal sealed class SettingsPage:FeaturePage
     private readonly Dictionary<Control,bool> editable=[];
     public SettingsPage(MainWindow host):base(host)
     {
-        settings=host.SettingsEditor;result=Text("");Body.Children.Add(result);
+        Body.HorizontalAlignment=HorizontalAlignment.Stretch;Body.MaxWidth=1040;
+        var scroll=View;
+        settings=host.SettingsEditor;result=PresentationControls.Caption("");
+        Body.Children.Add(host.CreateAppearanceSettings());
         var actions=new StackPanel{Spacing=8,Orientation=Orientation.Horizontal};
-        save=new(){Content=L.Text("保存更改","Save changes")};save.Click+=async(_,_)=>{await settings.SaveAsync();await Host.ReloadSettingsAsync();};
+        save=new(){Content=L.Text("保存更改","Save changes"),Style=(Style)Application.Current.Resources["AccentButtonStyle"]};save.Click+=async(_,_)=>{await settings.SaveAsync();await Host.ReloadSettingsAsync();};
         rebase=new(){Content=L.Text("保留改动并载入新版本","Rebase edited fields")};rebase.Click+=(_,_)=>settings.Rebase();
         discard=new(){Content=L.Text("放弃草稿","Discard draft")};discard.Click+=(_,_)=>settings.Reset();
-        actions.Children.Add(save);actions.Children.Add(rebase);actions.Children.Add(discard);Body.Children.Add(new ScrollViewer{Content=actions,HorizontalScrollBarVisibility=ScrollBarVisibility.Auto,VerticalScrollBarVisibility=ScrollBarVisibility.Disabled});
+        actions.Children.Add(save);actions.Children.Add(rebase);actions.Children.Add(discard);
+        var footer=new StackPanel{Spacing=8};footer.Children.Add(result);footer.Children.Add(new ScrollViewer{Content=actions,HorizontalScrollBarVisibility=ScrollBarVisibility.Auto,VerticalScrollBarVisibility=ScrollBarVisibility.Disabled});
+        saveBar=PresentationControls.Card(footer);saveBar.MaxWidth=1040;saveBar.Margin=new Thickness(0,8,0,12);saveBar.Visibility=Visibility.Collapsed;
+        var layout=new Grid();layout.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star),MaxWidth=1040});layout.RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});layout.RowDefinitions.Add(new(){Height=GridLength.Auto});layout.Children.Add(scroll);Grid.SetRow(saveBar,1);layout.Children.Add(saveBar);View=layout;
         Body.Children.Add(form);
         accounts=new(host);Body.Children.Add(PresentationControls.Disclosure(L.Text("Codex 账号与订阅 · 独立即时保存","Codex accounts & subscriptions · Independent immediate changes"),accounts.View));
         home=new(host);Body.Children.Add(PresentationControls.Disclosure(L.Text("Codex Home 与切换恢复","Codex Home and switch recovery"),home.View));
@@ -48,12 +55,18 @@ internal sealed class SettingsPage:FeaturePage
     private void Publish()
     {
         if(disposed)return;
-        result.Text=(settings.Dirty?L.Text("有未保存的更改。 ","Unsaved changes. "):"")+L.State(settings.Current.State.Kind)+" · "+(settings.Action switch
-        {SettingsAction.Saving=>L.Text("正在保存并读回","Saving and reading back"),SettingsAction.Applied=>L.Text("已保存并权威读回","Saved and read back"),SettingsAction.ReconcileRequired=>L.Text("设置已保存，运行状态需要对账","Settings saved; runtime reconciliation required"),SettingsAction.Conflict=>L.Text("版本冲突；草稿已保留，请重查后合并新版本","Revision conflict; draft retained. Reload and rebase"),SettingsAction.ReadbackConfirmed=>L.Text("回执未知，最新设置已确认目标值","Receipt unknown; latest settings confirm the requested values"),SettingsAction.ReadbackChanged=>L.Text("最新设置与提交值不同，草稿已保留","Latest settings differ; draft retained"),SettingsAction.Unknown=>L.Text("结果未确认，请重查，勿重复提交","Result unconfirmed. Reload before submitting again"),SettingsAction.Unavailable=>L.Text("保存未完成，请核对填写内容","Save incomplete. Check the entered values"),_=>""});
+        if(settings.Draft is {} currentDraft && !ReferenceEquals(rendered,currentDraft))invalid.Clear();
+        var actionText=settings.Action switch
+        {SettingsAction.Saving=>L.Text("正在保存并读回","Saving and reading back"),SettingsAction.Applied=>L.Text("已保存并权威读回","Saved and read back"),SettingsAction.ReconcileRequired=>L.Text("设置已保存，运行状态需要对账","Settings saved; runtime reconciliation required"),SettingsAction.Conflict=>L.Text("版本冲突；草稿已保留，请重查后合并新版本","Revision conflict; draft retained. Reload and rebase"),SettingsAction.ReadbackConfirmed=>L.Text("回执未知，最新设置已确认目标值","Receipt unknown; latest settings confirm the requested values"),SettingsAction.ReadbackChanged=>L.Text("最新设置与提交值不同，草稿已保留","Latest settings differ; draft retained"),SettingsAction.Unknown=>L.Text("结果未确认，请重查，勿重复提交","Result unconfirmed. Reload before submitting again"),SettingsAction.Unavailable=>L.Text("保存未完成，请核对填写内容","Save incomplete. Check the entered values"),_=>""};
+        result.Text=string.Join(" · ",new[]{settings.Dirty?L.Text("有未保存的更改","Unsaved changes"):"",settings.Current.State.Kind is LoadKind.Ready or LoadKind.Idle?"":L.State(settings.Current.State.Kind),actionText}.Where(value=>value.Length>0));
         var response=settings.Current.State.Value??Host.Settings;
-        if(invalid.Count>0)result.Text+=" · "+L.Text("请为周期填写范围内的整数。","Enter whole-number intervals within their allowed ranges.");
+        if(invalid.Count>0)result.Text+=(result.Text.Length>0?" · ":"")+L.Text("请为周期填写范围内的整数。","Enter whole-number intervals within their allowed ranges.");
+        result.Visibility=!settings.Dirty && settings.Action==SettingsAction.Idle && settings.Current.State.Kind is LoadKind.Ready or LoadKind.Idle && invalid.Count==0?Visibility.Collapsed:Visibility.Visible;
+        saveBar.Visibility=settings.Dirty || result.Visibility==Visibility.Visible?Visibility.Visible:Visibility.Collapsed;
         save.IsEnabled=!settings.Busy && settings.Dirty && invalid.Count==0 && response?.Snapshot.Home.SwitchStatus=="stable";
         rebase.IsEnabled=discard.IsEnabled=!settings.Busy && settings.Current.State.Kind==LoadKind.Ready;
+        rebase.Visibility=settings.Action==SettingsAction.Conflict?Visibility.Visible:Visibility.Collapsed;
+        discard.Visibility=settings.Dirty?Visibility.Visible:Visibility.Collapsed;
         if(settings.Draft is not {} draft || response is null)return;
         if(ReferenceEquals(rendered,draft)){Enable(form,!settings.Busy);return;}
         rendered=draft;form.Children.Clear();invalid.Clear();editable.Clear();
@@ -62,13 +75,13 @@ internal sealed class SettingsPage:FeaturePage
         foreach(var state in response.Snapshot.Providers)
         {
             var providerDraft=draft.Providers.FirstOrDefault(item=>item.Provider==state.Provider);if(providerDraft is null)continue;
-            var choice=new ComboBox{Header=MainWindow.ProviderName(state.Provider)+" · "+RuntimeCopy.Discovery(state.DiscoveryState,L)+" / "+RuntimeCopy.Effective(state.EffectiveState,L),HorizontalAlignment=HorizontalAlignment.Stretch,IsEnabled=Field("providers."+state.Provider+".intent")?.Editable==true};
+            var choice=new ComboBox{HorizontalAlignment=HorizontalAlignment.Stretch,IsEnabled=Field("providers."+state.Provider+".intent")?.Editable==true};
             editable[choice]=choice.IsEnabled;
             if(providerDraft.Intent==ProviderIntent.Auto)choice.Items.Add(new ComboBoxItem{Content=L.Text("自动（保留当前设置）","Auto (keep current setting)"),Tag=ProviderIntent.Auto});
             choice.Items.Add(new ComboBoxItem{Content=L.Text("启用","Enabled"),Tag=ProviderIntent.Enabled});choice.Items.Add(new ComboBoxItem{Content=L.Text("关闭","Disabled"),Tag=ProviderIntent.Disabled});
             choice.SelectedItem=choice.Items.Cast<ComboBoxItem>().FirstOrDefault(item=>(ProviderIntent)item.Tag==providerDraft.Intent);
-            choice.SelectionChanged+=(_,_)=>{if(choice.SelectedItem is ComboBoxItem{Tag:ProviderIntent value}){providerDraft.Intent=value;settings.Edited();}};providers.Children.Add(choice);
-            if(!string.IsNullOrEmpty(state.ReasonCode))providers.Children.Add(Text(RuntimeCopy.Availability(state.ReasonCode,L)));
+            choice.SelectionChanged+=(_,_)=>{if(choice.SelectedItem is ComboBoxItem{Tag:ProviderIntent value}){providerDraft.Intent=value;settings.Edited();}};
+            providers.Children.Add(PresentationControls.SettingRow(MainWindow.ProviderName(state.Provider),choice,RuntimeCopy.Discovery(state.DiscoveryState,L)+" · "+RuntimeCopy.Effective(state.EffectiveState,L)+(string.IsNullOrEmpty(state.ReasonCode)?"":"\n"+RuntimeCopy.Availability(state.ReasonCode,L))));
         }
         form.Children.Add(PresentationControls.Card(providers));
         var online=new StackPanel{Spacing=12};
@@ -85,7 +98,6 @@ internal sealed class SettingsPage:FeaturePage
         Number(intervals,"refresh.jsonlDebounceMilliseconds",L.Text("JSONL 防抖（毫秒）","JSONL debounce (milliseconds)"),draft.Refresh.JsonlDebounceMilliseconds,value=>draft.Refresh.JsonlDebounceMilliseconds=value);
         form.Children.Add(PresentationControls.Disclosure(L.Text("刷新周期","Refresh intervals"),intervals));
         var ui=new StackPanel{Spacing=12};
-        Choice(ui,"ui.locale",L.Text("语言","Language"),draft.Ui.Locale,value=>draft.Ui.Locale=value);
         Choice(ui,"ui.launchBehavior",L.Text("启动行为","Launch behavior"),draft.Ui.LaunchBehavior,value=>draft.Ui.LaunchBehavior=value);
         Choice(ui,"ui.overviewRange",L.Text("概览默认范围","Default overview range"),draft.Ui.OverviewRange,value=>draft.Ui.OverviewRange=value);
         Toggle(ui,"updates.autoCheckEnabled",L.Text("自动检查更新","Check for updates automatically"),draft.Updates.AutoCheckEnabled,value=>draft.Updates.AutoCheckEnabled=value);
@@ -94,19 +106,19 @@ internal sealed class SettingsPage:FeaturePage
         ui.Children.Add(Text(L.Text("自动下载关闭；Windows 安装更新状态由客户端单独管理。","Automatic download is disabled; Windows installation updates are managed by the client.")));form.Children.Add(PresentationControls.Disclosure(L.Text("界面与更新偏好","Interface and update preferences"),ui));
         Enable(form,!settings.Busy);
         void Toggle(StackPanel panel,string key,string label,bool value,Action<bool> change)
-        {var control=new ToggleSwitch{Header=label,IsOn=value,IsEnabled=Field(key)?.Editable==true};editable[control]=control.IsEnabled;control.Toggled+=(_,_)=>{change(control.IsOn);settings.Edited();};panel.Children.Add(control);}
+        {var control=new ToggleSwitch{IsOn=value,IsEnabled=Field(key)?.Editable==true};editable[control]=control.IsEnabled;control.Toggled+=(_,_)=>{change(control.IsOn);settings.Edited();};panel.Children.Add(PresentationControls.SettingRow(label,control));}
         void Number(StackPanel panel,string key,string label,long value,Action<long> change)
         {
-            var field=Field(key);var control=new NumberBox{Header=label,Value=value,IsEnabled=field?.Editable==true,Minimum=field?.HasMinimum==true?field.Minimum:double.NegativeInfinity,Maximum=field?.HasMaximum==true?field.Maximum:double.PositiveInfinity,SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact};
+            var field=Field(key);var control=new NumberBox{Value=value,IsEnabled=field?.Editable==true,Minimum=field?.HasMinimum==true?field.Minimum:double.NegativeInfinity,Maximum=field?.HasMaximum==true?field.Maximum:double.PositiveInfinity,SpinButtonPlacementMode=NumberBoxSpinButtonPlacementMode.Compact};
             editable[control]=control.IsEnabled;
-            control.ValueChanged+=(_,_)=>{if(double.IsFinite(control.Value) && control.Value==Math.Truncate(control.Value) && control.Value>=control.Minimum && control.Value<=control.Maximum){invalid.Remove(control);change((long)control.Value);}else invalid.Add(control);settings.Edited();};panel.Children.Add(control);
+            control.ValueChanged+=(_,_)=>{if(double.IsFinite(control.Value) && control.Value==Math.Truncate(control.Value) && control.Value>=control.Minimum && control.Value<=control.Maximum){invalid.Remove(control);change((long)control.Value);}else invalid.Add(control);settings.Edited();};panel.Children.Add(PresentationControls.SettingRow(label,control));
         }
         void Choice(StackPanel panel,string key,string label,string value,Action<string> change)
         {
-            var field=Field(key);var control=new ComboBox{Header=label,IsEnabled=field?.Editable==true,HorizontalAlignment=HorizontalAlignment.Stretch};
+            var field=Field(key);var control=new ComboBox{IsEnabled=field?.Editable==true,HorizontalAlignment=HorizontalAlignment.Stretch};
             editable[control]=control.IsEnabled;
             foreach(var option in field?.Options??[])control.Items.Add(new ComboBoxItem{Tag=option,Content=Option(option)});
-            control.SelectedItem=control.Items.Cast<ComboBoxItem>().FirstOrDefault(item=>(string)item.Tag==value);control.SelectionChanged+=(_,_)=>{if(control.SelectedItem is ComboBoxItem{Tag:string selected}){change(selected);settings.Edited();}};panel.Children.Add(control);
+            control.SelectedItem=control.Items.Cast<ComboBoxItem>().FirstOrDefault(item=>(string)item.Tag==value);control.SelectionChanged+=(_,_)=>{if(control.SelectedItem is ComboBoxItem{Tag:string selected}){change(selected);settings.Edited();}};panel.Children.Add(PresentationControls.SettingRow(label,control));
         }
     }
     private string Option(string value)=>value switch{"system"=>L.Text("系统语言","System language"),"zh-CN"=>"简体中文","en-US"=>"English","main_window"=>L.Text("主窗口","Main window"),"tray"=>L.Text("托盘","Tray"),"quota_week"=>L.Text("周额度周期","Weekly quota period"),"today"=>L.Text("今天","Today"),"seven_days"=>L.Text("最近 7 天","Last 7 days"),"thirty_days"=>L.Text("最近 30 天","Last 30 days"),"stable"=>L.Text("稳定版","Stable"),"prerelease"=>L.Text("预发布","Prerelease"),_=>value};

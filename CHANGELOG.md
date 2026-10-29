@@ -1,5 +1,23 @@
 ## Unreleased
 
+## v0.17.0 - 2026-10-29
+
+#### feature:
+1. [TOO-657～TOO-673] 新增 Windows 11 24H2 x64 原生客户端，复用 Go Helper 和 CoreService，支持汇总、概览、会话、项目、额度、账号、设置与本机健康状态。
+2. Windows 支持 Codex、Cursor、Grok 与 DSH 来源、API 订阅及可选多机中心配对与同步；运行数据、权限和采集生命周期继续由本机 Helper 管理。
+3. Windows 提供当前用户自包含安装、托盘、登录启动与受控更新，App 和 Helper 成对发布，更新前等待进程干净退出并保留原有数据。
+
+#### optimization:
+1. 优化 Windows 中文浅色界面的信息层级、页面和托盘布局、图表与数字单位，保留 WinUI 原生控件及响应式布局。
+
+#### bugFix:
+1. [TOO-660] 修复 Windows 扩展路径导致的来源漏索引，以及切换到空 Codex Home 后错误回退旧数据的问题。
+2. [TOO-665] 修复打开原生日历后切换语言可能导致的 Windows 客户端崩溃。
+
+#### note:
+1. Windows 发行包使用开发密钥签名，未进行 Authenticode 公信任签名；内置的开发更新源仅用于本机，公开用户需手动下载后续版本。
+2. Windows 需要 Windows 11 24H2 或更高版本的 x64 系统；ARM64 与未列出的真实来源验收不在本次已验证范围。
+
 ## v0.16.5 - 2026-10-27
 
 #### feature:

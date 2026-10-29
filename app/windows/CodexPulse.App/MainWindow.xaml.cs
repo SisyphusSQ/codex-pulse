@@ -61,6 +61,12 @@ public sealed partial class MainWindow : Window
     private readonly HashSet<string> pendingDomains = [];
     private bool applying, starting, closing, allowClose;
     private bool localeSaving;
+    private bool pageLoading;
+    private LoadKind presentedPageState=LoadKind.Idle;
+    private readonly ComboBox LanguagePicker = new() { HorizontalAlignment=HorizontalAlignment.Stretch };
+    private readonly ComboBox ThemePicker = new() { HorizontalAlignment=HorizontalAlignment.Stretch };
+    private StackPanel? appearancePanel;
+    private readonly List<Grid> appearanceRows=[];
     private CalendarDatePicker StartDate = null!, EndDate = null!;
     private string? datePickerLanguage;
     private long renderGeneration;
@@ -100,6 +106,13 @@ public sealed partial class MainWindow : Window
         PageCatalog.Register(Feature.LocalStatus, host => new LocalStatusPage(host));
         PageCatalog.Register(Feature.SourcesJobs, host => new SourcesJobsPage(host));
         InitializeComponent();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(WindowTitleBar);
+        Root.ActualThemeChanged+=(_,_)=>UpdateTitleBarTheme();
+        LanguagePicker.SelectionChanged += LanguageChanged;
+        ThemePicker.SelectionChanged += ThemeChanged;
+        AutomationProperties.SetAutomationId(LanguagePicker,"language-picker");
+        AutomationProperties.SetAutomationId(ThemePicker,"theme-picker");
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory,"Assets","CodexPulse.ico"));
         try { preferences = WindowPreferences.Load(Options.Runtime); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or System.Security.SecurityException)
@@ -108,7 +121,6 @@ public sealed partial class MainWindow : Window
         catch(Exception error)when(error is IOException or UnauthorizedAccessException or JsonException or ArgumentException or System.Security.SecurityException)
         {ShowNotice("平台程序路径无法读取，沿用环境与自动发现。","Platform executable paths could not be read. Using the environment and discovery.");}
         Workspace.Changed += WorkspaceChanged;
-        Navigation.DisplayModeChanged += (_, args) => UpdateHeaderInset();
         invalidations.Tick += async (_, _) =>
         {
             invalidations.Stop();
@@ -118,7 +130,7 @@ public sealed partial class MainWindow : Window
         };
         AppWindow.Closing += ClosingWindow;
         Activated+=(_,args)=>{WindowActive=args.WindowActivationState!=WindowActivationState.Deactivated;if(WindowActive)QueueLifecycle("application_did_become_active");};
-        Root.Loaded += (_, _) => UpdateHeaderInset();
+        Root.Loaded += (_, _) => UpdateTitleBarTheme();
         ApplyLabels();
         SetWindowBounds();
         try
@@ -170,7 +182,37 @@ public sealed partial class MainWindow : Window
     public void OpenProject(string dimension, UTCTimeRange range) { Selection = new(Feature.Projects, dimension, range.Clone()); Workspace.Navigate(Feature.Projects); }
     public void OpenProjectList(string project,UTCTimeRange range) {Selection=new(Feature.Projects,"",range.Clone(),project);Workspace.Navigate(Feature.Projects);}
     public void OpenProvider(string provider) { applying=true; Workspace.SelectProvider(provider); applying=false; Navigate(Feature.Overview); }
-    public void SetPageState(LoadKind state) => PageStatus.Text = Localization.State(state);
+    public void SetPageState(LoadKind state)
+    {
+        pageLoading=state==LoadKind.Loading;
+        if(!pageLoading || presentedPageState==LoadKind.Idle)presentedPageState=state;
+        UpdatePagePresentation();
+    }
+    private void UpdatePagePresentation()
+    {
+        PageStatus.Text=Localization.State(presentedPageState);
+        PageStatus.Visibility=presentedPageState is LoadKind.Ready or LoadKind.Idle?Visibility.Collapsed:Visibility.Visible;
+        LoadingIndicator.IsActive=pageLoading;LoadingIndicator.Opacity=pageLoading?1:0;
+        AutomationProperties.SetName(LoadingIndicator,Localization.Text("正在刷新当前页面","Refreshing the current page"));
+        RefreshButton.Content=pageLoading?Localization.Text("取消","Cancel"):Localization.Text("重新加载","Reload");
+        ToolTipService.SetToolTip(RefreshButton,pageLoading?Localization.Text("取消加载 · Esc","Cancel loading · Esc"):Localization.Text("刷新当前页面 · Ctrl+R","Refresh this page · Ctrl+R"));
+    }
+    public FrameworkElement CreateAppearanceSettings()
+    {
+        // Pickers keep the existing authoritative locale and local theme handlers.
+        // Detach from a disposed settings page before attaching to its replacement.
+        foreach(var row in appearanceRows)row.Children.Clear();appearanceRows.Clear();
+        appearancePanel?.Children.Clear();
+        LanguagePicker.Header=null;ThemePicker.Header=null;
+        var panel=new StackPanel { Spacing=4 };
+        appearancePanel=panel;
+        panel.Children.Add(PresentationControls.Heading(Localization.Text("外观与语言","Appearance & language")));
+        panel.Children.Add(PresentationControls.Caption(Localization.Text("更改后立即生效。","Changes take effect immediately.")));
+        appearanceRows.Add(PresentationControls.SettingRow(Localization.Text("语言","Language"),LanguagePicker));
+        appearanceRows.Add(PresentationControls.SettingRow(Localization.Text("外观","Appearance"),ThemePicker));
+        foreach(var row in appearanceRows)panel.Children.Add(row);
+        return PresentationControls.Card(panel);
+    }
     public void SetPageState(FeaturePage owner, LoadKind state) { if (ReferenceEquals(owner, page)) SetPageState(state); }
     public void ShowNotice(string chinese, string english, InfoBarSeverity severity = InfoBarSeverity.Warning)
     {
@@ -388,8 +430,8 @@ public sealed partial class MainWindow : Window
         if (renderedContext is {} old && (old.Provider!=Workspace.Provider || old.Generation!=Workspace.Generation ||
             renderedFeature==Workspace.Feature && (old.Start!=Workspace.Start || old.EndExclusive!=Workspace.EndExclusive || old.Preset!=Workspace.RangePreset))) Selection=null;
         page?.Cancel();
-        if (renderedContext is {} previous && previous.Provider==Workspace.Provider && previous.Generation==Workspace.Generation && renderedFeature==Workspace.Feature)
-        { applying=true; ApplyRangeLabels(false); applying=false; }
+        if (renderedContext is {} previous && previous.Provider==Workspace.Provider && previous.Generation==Workspace.Generation)
+        { applying=true; ApplyRangeLabels(renderedFeature!=Workspace.Feature); applying=false; }
         else ApplyLabels();
         RenderPage();
         if (!starting) SaveWindowPreferences();
@@ -408,7 +450,7 @@ public sealed partial class MainWindow : Window
         SetPageState(Session?.State == CoreConnectionState.Recovery ? LoadKind.RecoveryBlocked : LoadKind.Idle);
         applying = true;
         foreach (var item in Navigation.MenuItems.OfType<NavigationViewItem>())
-            if (item.Tag is Feature feature && feature == Workspace.Feature) Navigation.SelectedItem = item;
+            if (item.Tag is Feature feature && feature == Workspace.Feature && !ReferenceEquals(Navigation.SelectedItem,item)) Navigation.SelectedItem = item;
         applying = false;
     }
 
@@ -435,6 +477,7 @@ public sealed partial class MainWindow : Window
 
     private void ApplyLabels()
     {
+        Root.Language=Localization.Culture.Name;
         applying = true;
         ProviderPicker.Header = Localization.Text("客户端", "Client");
         AutomationProperties.SetName(ProviderPicker, Localization.Text("客户端", "Client"));
@@ -444,19 +487,21 @@ public sealed partial class MainWindow : Window
         ProviderPicker.PlaceholderText = Localization.Text("尚未启用客户端", "No enabled clients");
         ProviderPicker.SelectedItem = ProviderPicker.Items.Cast<ComboBoxItem>().FirstOrDefault(item => (string)item.Tag == Workspace.Provider);
         Navigation.MenuItems.Clear();
+        Navigation.MenuItems.Add(new NavigationViewItemHeader { Content=Localization.Text("总览","Overview") });
         AddNavigation(Feature.Summary, Symbol.AllApps);
         if (Workspace.Provider is not null)
         {
-            Navigation.MenuItems.Add(new NavigationViewItemSeparator());
+            Navigation.MenuItems.Add(new NavigationViewItemHeader { Content=ProviderName(Workspace.Provider) });
             AddNavigation(Feature.Overview, Symbol.Home); AddNavigation(Feature.Sessions, Symbol.Message);
             AddNavigation(Feature.Projects, Symbol.Folder); AddNavigation(Feature.Quota, Symbol.ReportHacked);
             if (Workspace.Provider == "codex") AddNavigation(Feature.AccountQuotas, Symbol.People);
         }
         Navigation.MenuItems.Add(new NavigationViewItemSeparator());
         AddNavigation(Feature.ApiSubscriptions, Symbol.Shop);
+        Navigation.MenuItems.Add(new NavigationViewItemHeader { Content=Localization.Text("系统","System") });
         AddNavigation(Feature.LocalStatus, Symbol.Important); AddNavigation(Feature.SourcesJobs, Symbol.Library);
         AddNavigation(Feature.Settings, Symbol.Setting);
-        RefreshButton.Content = Localization.Text("重新加载", "Reload"); CancelButton.Content = Localization.Text("取消", "Cancel");
+        UpdatePagePresentation();
         OpenTrayMenu.Text=Localization.Text("额度面板","Quota panel");HideMenu.Text=Localization.Text("收起到托盘","Hide to tray");QuitMenu.Text=Localization.Text("退出","Quit");
         AutomationProperties.SetName(AppMenu,Localization.Text("应用菜单","App menu"));
         ReconnectButton.Content = Localization.Text("重新连接", "Reconnect");
@@ -486,14 +531,26 @@ public sealed partial class MainWindow : Window
         }
         RangePicker.Width=Workspace.Feature==Feature.Overview?200:128;
         RangePicker.SelectedItem=RangePicker.Items.Cast<ComboBoxItem>().FirstOrDefault(item=>(string)item.Tag==Workspace.RangePreset);
-        var quotaRange=Workspace.Feature==Feature.Overview && Workspace.RangePreset is "quota_week" or "quota_month";
         EnsureDatePickers();
-        StartDate.Visibility=EndDate.Visibility=DateSeparator.Visibility=quotaRange?Visibility.Collapsed:Visibility.Visible;
+        StartDateHost.Visibility=EndDateHost.Visibility=DateSeparator.Visibility=Workspace.RangePreset=="custom"?Visibility.Visible:Visibility.Collapsed;
         StartDate.Date = new DateTimeOffset(Workspace.Start.ToDateTime(TimeOnly.MinValue));
         EndDate.Date = new DateTimeOffset(Workspace.EndExclusive.AddDays(-1).ToDateTime(TimeOnly.MinValue));
         AutomationProperties.SetName(StartDate, Localization.Text("开始日期", "Start date"));
         AutomationProperties.SetName(EndDate, Localization.Text("结束日期（含）", "End date (inclusive)"));
-        TimeZoneLabel.Text = Workspace.TimeZone;
+        TimeZoneLabel.Text = Workspace.RangePreset is "custom" or "quota_week" or "quota_month" ? Workspace.TimeZone
+            : Workspace.Start.ToString("d",Localization.Culture)+" — "+Workspace.EndExclusive.AddDays(-1).ToString("d",Localization.Culture)+" · "+Workspace.TimeZone;
+        TimeZoneLabel.Visibility=Workspace.RangePreset=="custom"?Visibility.Visible:Visibility.Collapsed;
+        ToolTipService.SetToolTip(RangePicker,TimeZoneLabel.Text);
+        ArrangeHeader();
+    }
+
+    private void HeaderSizeChanged(object sender,SizeChangedEventArgs args)=>ArrangeHeader();
+    private void ArrangeHeader()
+    {
+        if(RangeBar is null)return;
+        var stacked=PageHeading.ActualWidth<680 || Workspace.RangePreset=="custom";
+        Grid.SetRow(RangeBar,stacked?1:0);Grid.SetColumn(RangeBar,stacked?0:1);Grid.SetColumnSpan(RangeBar,stacked?3:1);
+        RangeBar.HorizontalAlignment=stacked?HorizontalAlignment.Stretch:HorizontalAlignment.Right;
     }
 
     private void EnsureDatePickers()
@@ -541,7 +598,7 @@ public sealed partial class MainWindow : Window
     {
         if (applying || StartDate.Date is not { } start || EndDate.Date is not { } end) return;
         var first = DateOnly.FromDateTime(start.Date); var last = DateOnly.FromDateTime(end.Date).AddDays(1);
-        if (last <= first || last.DayNumber-first.DayNumber > 366) { PageStatus.Text = Localization.Text("请选择有效范围（最多 366 天）", "Choose a valid range (up to 366 days)"); return; }
+        if (last <= first || last.DayNumber-first.DayNumber > 366) { PageStatus.Text = Localization.Text("请选择有效范围（最多 366 天）", "Choose a valid range (up to 366 days)"); PageStatus.Visibility=Visibility.Visible; return; }
         applying = true; RangePicker.SelectedIndex = 3; applying = false;
         Workspace.SetRange(first, last, Workspace.TimeZone);
     }
@@ -569,8 +626,8 @@ public sealed partial class MainWindow : Window
         trayPanel?.UpdatePresentation();
         SaveWindowPreferences();
     }
-    private async void RefreshClicked(object sender, RoutedEventArgs args) => await ReloadPageAsync(true);
-    private void CancelClicked(object sender, RoutedEventArgs args) => page?.Cancel();
+    private async void RefreshClicked(object sender, RoutedEventArgs args)
+    {if(pageLoading)page?.Cancel();else await ReloadPageAsync(true);}
     private async void ReconnectClicked(object sender, RoutedEventArgs args) { startup = StartAsync(); await startup; }
     public void ShowApiCredentials(){ApiCredentialsRequested=true;Navigate(Feature.Settings);}
     private void OpenTrayClicked(object sender,RoutedEventArgs args)=>trayPanel?.Show(nativeTray?.Anchor()??new RectInt32(AppWindow.Position.X,AppWindow.Position.Y,1,1));
@@ -589,6 +646,12 @@ public sealed partial class MainWindow : Window
         try { preferences.Save(Options.Runtime); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Security.SecurityException) { ShowNotice("窗口偏好无法保存。", "Window preferences could not be saved."); }
     }
+    private void CaptureWindowBounds()
+    {
+        if(AppWindow.Presenter is not OverlappedPresenter {State:OverlappedPresenterState.Restored})return;
+        var scale=GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this))/96d;
+        preferences=preferences with {Width=(int)(AppWindow.Size.Width/scale),Height=(int)(AppWindow.Size.Height/scale)};
+    }
     private async Task StopWatchAsync()
     {
         watchCancellation?.Cancel();
@@ -600,8 +663,7 @@ public sealed partial class MainWindow : Window
         if (allowClose) return;
         args.Cancel = true;
         if (closing) return;
-        var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96d;
-        preferences = preferences with { Width = (int)(AppWindow.Size.Width/scale), Height = (int)(AppWindow.Size.Height/scale) };
+        CaptureWindowBounds();
         SaveWindowPreferences();
         if(nativeTray?.Available==true){HideMain();return;}
         await QuitAsync();
@@ -609,6 +671,7 @@ public sealed partial class MainWindow : Window
     public async Task<bool> QuitAsync()
     {
         if(closing)return false;
+        CaptureWindowBounds();SaveWindowPreferences();
         closing = true; invalidations.Stop(); page?.Dispose();subscriptions?.Dispose();SettingsEditor.Dispose();Reporting.Dispose();ApiSubscriptions.Dispose();WindowsUpdates.Dispose();trayPanel?.Hide();lifecycle.Stop();
         lifetime.Cancel();
         if (startup is not null) await startup;
@@ -645,7 +708,18 @@ public sealed partial class MainWindow : Window
         var height = Math.Min((int)(Math.Clamp(preferences.Height,480,16384) * scale), area.Height - 32);
         AppWindow.MoveAndResize(new RectInt32(area.X + (area.Width-width)/2, area.Y + (area.Height-height)/2, width, height));
     }
-    private void UpdateHeaderInset() => PageHeading.Margin = Navigation.DisplayMode == NavigationViewDisplayMode.Minimal ? new Thickness(48,0,0,0) : new Thickness(0);
+    private void PaneToggleRequested(TitleBar sender, object args) => Navigation.IsPaneOpen = !Navigation.IsPaneOpen;
+    private void UpdateTitleBarTheme()
+    {
+        var titleBar=AppWindow.TitleBar;
+        var background=(Root.Background as SolidColorBrush)?.Color;
+        var foreground=(PageTitle.Foreground as SolidColorBrush)?.Color;
+        titleBar.BackgroundColor=titleBar.InactiveBackgroundColor=titleBar.ButtonBackgroundColor=titleBar.ButtonInactiveBackgroundColor=background;
+        titleBar.ForegroundColor=titleBar.ButtonForegroundColor=foreground;
+        titleBar.InactiveForegroundColor=titleBar.ButtonInactiveForegroundColor=(ConnectionLabel.Foreground as SolidColorBrush)?.Color;
+        titleBar.ButtonHoverBackgroundColor=Root.ActualTheme==ElementTheme.Dark?Microsoft.UI.ColorHelper.FromArgb(255,64,64,64):Microsoft.UI.ColorHelper.FromArgb(255,224,224,224);
+        titleBar.ButtonHoverForegroundColor=foreground;
+    }
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)]private static extern bool ShowWindow(IntPtr window,int command);
 }

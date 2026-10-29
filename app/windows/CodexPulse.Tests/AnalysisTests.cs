@@ -29,9 +29,9 @@ internal static class AnalysisTests
         var rejected=false;try{AnalysisQueries.Sessions(context,new(Sort:"title-contains"),pager);}catch(ArgumentException){rejected=true;}
         Require(rejected,"unsupported title-search contract is not invented in the UI");
         var l=new Localization();l.Set("en-US");
-        Require(AnalysisQueries.CacheRate(null,l)=="—" && AnalysisQueries.CacheRate(new(){Value=0},l)=="0.0%" && AnalysisQueries.CacheRate(new(){Value=10000},l)=="100.0%","cache-rate presentation distinguishes unknown, zero, and full hit rate without recomputing tokens");
-        Require(AnalysisQueries.Tps(null,l)=="—" && AnalysisQueries.Tps(new(){AverageOutputMilliTps=new(){Value=0}},l)=="0.00 TPS" && AnalysisQueries.Tps(new(){AverageOutputMilliTps=new(){Value=12345}},l)=="12.35 TPS","TPS formats backend milli-TPS and retains real zero");
-        Require(AnalysisQueries.Duration(new(){Value=1250},l)=="1.3 s","active duration is a millisecond-to-second display conversion");
+        Require(AnalysisQueries.CacheRate(null,l)=="—" && AnalysisQueries.CacheRate(new(){Value=0,Unit="basis_points"},l)=="0.0%" && AnalysisQueries.CacheRate(new(){Value=10000,Unit="basis_points"},l)=="100.0%","cache-rate presentation distinguishes unknown, zero, and full hit rate without recomputing tokens");
+        Require(AnalysisQueries.Tps(null,l)=="—" && AnalysisQueries.Tps(new(){AverageOutputMilliTps=new(){Value=0,Unit="milli_tokens_per_second"}},l)=="0.00 TPS" && AnalysisQueries.Tps(new(){AverageOutputMilliTps=new(){Value=12345,Unit="milli_tokens_per_second"}},l)=="12.35 TPS","TPS formats backend milli-TPS and retains real zero");
+        Require(AnalysisQueries.Duration(new(){Value=1250,Unit="milliseconds"},l)=="1.250 s","active duration retains millisecond precision like macOS");
         var state=new AnalysisNavigation();state.Sessions("codex").Selected="old-codex-entity";
         Require(state.Sessions("cursor").Selected is null && !ReferenceEquals(state.Projects("codex"),state.Projects("cursor")),"analysis navigation cannot share selected entities across providers");
         state.Clear();Require(state.Sessions("codex").Selected is null,"account or Home-context reset removes prior analysis selections");

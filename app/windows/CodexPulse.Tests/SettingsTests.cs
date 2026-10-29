@@ -47,6 +47,6 @@ internal static class SettingsTests
         Require(RuntimePresentation.AllowedAction("pause_all") && !RuntimePresentation.AllowedAction("delete") && RuntimePresentation.RecoveryRoute("repair_store")=="analyze" && RuntimePresentation.RecoveryRoute("shell") is null,"runtime and recovery actions accept only the fixed registry");
         var l=new Localization();l.Set("en-US");Require(RuntimePresentation.Phase("invented",l)=="Unknown task","unknown runtime phases cannot masquerade as known work");
         Require(RuntimeCopy.State("active",l)=="Active source" && RuntimeCopy.State("completed",l)=="Succeeded","local source states do not fall back to unknown");
-        Require(RuntimeCopy.Bytes(new(){Value=4096},l)=="4.00 KiB" && RuntimeCopy.Bytes(new(),l)=="—","small storage values do not round to zero and missing bytes remain unknown");
+        Require(RuntimeCopy.Bytes(new(){Value=4096},l)=="4.0 KB" && RuntimeCopy.Bytes(new(),l)=="—","storage units match macOS and missing bytes remain unknown");
     }
 }

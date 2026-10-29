@@ -26,6 +26,7 @@ internal sealed class SessionsPage:FeaturePage
         if(navigation.Context!=context){navigation.Pager.Reset();navigation.Selected=null;navigation.ExactRange=null;navigation.Context=context;}
         if(host.Selection is{Feature:Feature.Sessions} selection){navigation.Selected=selection.Identity;navigation.ExactRange=selection.Range.Clone();navigation.Pager.Reset();}
         chrome=new(L);View=chrome.View;
+        chrome.ShowDetail(navigation.Selected is not null);
         activity=AnalysisChrome.Combo(L.Text("活动状态","Activity"),[("",L.Text("全部","All")),("active",L.Text("进行中","Active")),("idle",L.Text("空闲","Idle"))],navigation.Filters.Activity);
         project=AnalysisChrome.Combo(L.Text("项目 · 精确筛选","Project · Exact filter"),[("",L.Text("全部项目","All projects"))],"");
         model=AnalysisChrome.Combo(L.Text("模型 · 精确筛选","Model · Exact filter"),[("",L.Text("全部模型","All models"))],"");
@@ -33,11 +34,11 @@ internal sealed class SessionsPage:FeaturePage
         direction=AnalysisChrome.Combo(L.Text("顺序","Direction"),[("desc",L.Text("降序","Descending")),("asc",L.Text("升序","Ascending"))],navigation.Filters.Direction);
         limit=AnalysisChrome.Combo(L.Text("每页条数","Page size"),[("10","10"),("20","20"),("50","50"),("100","100")],navigation.Filters.Limit.ToString());
         var controls=new Grid {RowSpacing=10,ColumnSpacing=12};foreach(var control in new[]{activity,project,model,sort,direction,limit})controls.Children.Add(control);
-        controls.SizeChanged+=(_,args)=>PresentationControls.Layout(controls,6,args.NewSize.Width);chrome.Filters.Children.Add(controls);
+        controls.SizeChanged+=(_,args)=>PresentationControls.Layout(controls,6,args.NewSize.Width,180);chrome.Filters.Children.Add(controls);
         chrome.Filters.Children.Add(Text(L.Text("项目和模型选项来自当前页；选择后由服务端精确筛选，不是标题全文搜索。","Project and model choices come from the current page. Exact filters run on the service; title full-text search is not available.")));
         var actions=new StackPanel {Orientation=Orientation.Horizontal,Spacing=8};
-        var apply=new Button{Content=L.Text("应用筛选","Apply filters")};apply.Click+=async(_,_)=>{if(loadingList)return;navigation.Filters=new(AnalysisChrome.Choice(activity),AnalysisChrome.Choice(project),AnalysisChrome.Choice(model),AnalysisChrome.Choice(sort),AnalysisChrome.Choice(direction),int.Parse(AnalysisChrome.Choice(limit)));navigation.Pager.Reset();ClearSelection();await LoadListAsync(true);};
-        var reset=new Button{Content=L.Text("重置筛选","Reset filters")};reset.Click+=async(_,_)=>{if(loadingList)return;navigation.Filters=new();activity.SelectedIndex=sort.SelectedIndex=direction.SelectedIndex=project.SelectedIndex=model.SelectedIndex=0;limit.SelectedIndex=1;navigation.Pager.Reset();ClearSelection();await LoadListAsync(true);};actions.Children.Add(apply);actions.Children.Add(reset);chrome.Filters.Children.Add(actions);
+        var apply=new Button{Content=L.Text("应用筛选","Apply filters")};apply.Click+=async(_,_)=>{if(loadingList)return;navigation.Filters=new(AnalysisChrome.Choice(activity),AnalysisChrome.Choice(project),AnalysisChrome.Choice(model),AnalysisChrome.Choice(sort),AnalysisChrome.Choice(direction),int.Parse(AnalysisChrome.Choice(limit)));navigation.Pager.Reset();ClearSelection();chrome.CloseFilters();await LoadListAsync(true);};
+        var reset=new Button{Content=L.Text("重置筛选","Reset filters")};reset.Click+=async(_,_)=>{if(loadingList)return;navigation.Filters=new();activity.SelectedIndex=sort.SelectedIndex=direction.SelectedIndex=project.SelectedIndex=model.SelectedIndex=0;limit.SelectedIndex=1;navigation.Pager.Reset();ClearSelection();chrome.CloseFilters();await LoadListAsync(true);};actions.Children.Add(apply);actions.Children.Add(reset);chrome.Filters.Children.Add(actions);
         chrome.Selected+=row=>Select((SessionItem)row.Source);
         chrome.First.Click+=async(_,_)=>{if(loadingList)return;navigation.Pager.Reset();ClearSelection();await LoadListAsync();};
         chrome.Previous.Click+=async(_,_)=>{if(!loadingList && navigation.Pager.Previous()){ClearSelection();await LoadListAsync();}};
@@ -92,63 +93,93 @@ internal sealed class SessionsPage:FeaturePage
     private void RenderList()
     {
         if(disposed)return;
+        chrome.SetFilterCount(new[]{navigation.Filters.Activity,navigation.Filters.Project,navigation.Filters.Model}.Count(value=>value.Length>0));
         State(list.State.Kind);chrome.Summary.Text=L.State(list.State.Kind);chrome.Paging(navigation.Pager,list.State.Value?.Meta?.Page,list.State.Kind==LoadKind.Loading);
         if(list.State.Value is not {} response){renderedList=null;chrome.Rows([],navigation.Selected);return;}
-        chrome.Summary.Text=L.State(list.State.Kind)+" · "+L.Text("匹配会话 ","Matched sessions ")+L.Number(response.MatchedCount)+" · "+L.Number(response.MatchedTotals?.TotalTokens)+" Token · "+L.Money(response.MatchedTotals?.EstimatedUsdMicros);
+        chrome.Summary.Text=L.Text("匹配会话 ","Matched sessions ")+L.Number(response.MatchedCount)+" · "+L.Tokens(response.MatchedTotals?.TotalTokens)+" Token · "+L.Money(response.MatchedTotals?.EstimatedUsdMicros);
         if(Equals(renderedList,response))return;renderedList=response;
-        var scope=navigation.ExactRange is {} exact?L.Text("下钻精确范围 ","Drilldown exact range ")+L.Timestamp(exact.StartAtMs)+" — "+L.Timestamp(exact.EndAtMs)+" · "+exact.TimeZone:context.Start.ToString("yyyy-MM-dd")+" — "+context.EndExclusive.ToString("yyyy-MM-dd")+L.Text("（结束日不含）"," (end exclusive)")+" · "+context.TimeZone;
+        var scope=navigation.ExactRange is {} exact?L.Text("下钻精确范围 ","Drilldown exact range ")+L.Timestamp(exact.StartAtMs,exact.TimeZone)+" — "+L.Timestamp(exact.EndAtMs,exact.TimeZone)+" · "+exact.TimeZone:context.Start.ToString("yyyy-MM-dd")+" — "+context.EndExclusive.ToString("yyyy-MM-dd")+L.Text("（结束日不含）"," (end exclusive)")+" · "+context.TimeZone;
         chrome.Notice.Text=scope+"\n"+L.Text("按最近活动时间筛选；Token、成本、缓存命中率和 TPS 都是会话生命周期指标。","Filtered by last activity; tokens, cost, cache rate, and TPS describe the session lifetime.");
         chrome.Rows(response.Items.Select(item=>new AnalysisRow {Identity=item.SessionId,Source=item,Title=item.DisplayTitle,
             Subtitle=DashboardPresentation.Name(item.Project,L.Text("未归类项目","Unclassified project"))+" · "+DashboardPresentation.Name(item.Model,L.Text("未归类模型","Unattributed model")),
-            Metrics=L.Number(item.Totals?.TotalTokens)+" Token · "+L.Money(item.Totals?.EstimatedUsdMicros),
-            Evidence=(item.Activity=="active"?L.Text("进行中","Active"):L.Text("空闲","Idle"))+" · "+L.Timestamp(item.LastActivityAtMs?.HasValue==true?item.LastActivityAtMs.Value:null)+(context.Provider=="codex"?" · "+L.Text("缓存 ","Cache ")+AnalysisQueries.CacheRate(item.CacheHitRate,L)+" · "+AnalysisQueries.Tps(item.Throughput,L):"")}),navigation.Selected);
+            Metrics=L.Tokens(item.Totals?.TotalTokens)+" Token · "+L.Money(item.Totals?.EstimatedUsdMicros),
+            Evidence=(item.Activity=="active"?L.Text("进行中","Active"):L.Text("空闲","Idle"))+" · "+L.Timestamp(item.LastActivityAtMs?.HasValue==true?item.LastActivityAtMs.Value:null)+(context.Provider=="codex"?" · "+L.Text("缓存 ","Cache ")+AnalysisQueries.CacheRate(item.CacheHitRate,L)+" · "+AnalysisQueries.Tps(item.Throughput,L):"")}),navigation.Selected,L.Text("当前范围与筛选条件下暂无会话。可调整日期范围或筛选条件。","No sessions match this range and these filters. Adjust the date range or filters."));
         AnalysisChrome.Options(project,response.Items.Where(item=>item.Project?.HasId==true).Select(item=>(item.Project.Id,DashboardPresentation.Name(item.Project,"—"))),navigation.Filters.Project,L.Text("全部项目","All projects"),L.Text("已选项目","Selected project"));
         AnalysisChrome.Options(model,response.Items.Where(item=>item.Model?.HasId==true).Select(item=>(item.Model.Id,DashboardPresentation.Name(item.Model,"—"))),navigation.Filters.Model,L.Text("全部模型","All models"),L.Text("已选模型","Selected model"));
     }
     private void RenderDetail()
     {
-        if(disposed)return;chrome.DetailStatus.Text=L.State(detail.State.Kind);
-        if(detail.State.Value is not {} response){renderedDetail=null;chrome.DetailBody.Children.Clear();return;}
+        if(disposed)return;chrome.DetailStatus.Text=L.State(detail.State.Kind);chrome.DetailStatus.Visibility=detail.State.Kind is LoadKind.Ready or LoadKind.Idle?Visibility.Collapsed:Visibility.Visible;
+        if(detail.State.Value is not {} response)
+        {
+            renderedDetail=null;chrome.DetailBody.Children.Clear();
+            if(navigation.Selected is null)chrome.DetailBody.Children.Add(Text(L.Text("选择会话查看详情。","Select a session for details.")));
+            return;
+        }
         if(Equals(renderedDetail,response))return;renderedDetail=response;var panel=chrome.DetailBody;panel.Children.Clear();var item=response.Item;
         panel.Children.Add(Text(item.DisplayTitle,"SubtitleTextBlockStyle"));
-        panel.Children.Add(Text(DashboardPresentation.Name(item.Project,L.Text("未归类项目","Unclassified project"))+" · "+DashboardPresentation.Name(item.Model,L.Text("未归类模型","Unattributed model"))));
-        panel.Children.Add(Text(L.Text("完整会话生命周期；不随列表范围或轮次翻页重新累计。","Full session lifetime. List ranges and turn pages do not recalculate these totals.")));
-        panel.Children.Add(PresentationControls.Metrics(("Token",L.Number(item.Totals?.TotalTokens)),(L.Text("API 等价估算成本","API-equivalent estimate"),L.Money(item.Totals?.EstimatedUsdMicros))));
-        panel.Children.Add(PresentationControls.Table([L.Text("输入","Input"),L.Text("缓存输入","Cached input"),L.Text("输出","Output"),L.Text("推理","Reasoning")],
-            [new[]{L.Number(item.Totals?.InputTokens),L.Number(item.Totals?.CachedInputTokens),L.Number(item.Totals?.OutputTokens),L.Number(item.Totals?.ReasoningTokens)}]));
-        panel.Children.Add(Text(L.Text("归因/来源：","Attribution/source: ")+item.Project?.Confidence+" · "+item.Project?.Source+" · "+item.Project?.Reason+" / "+item.Model?.Confidence+" · "+item.Model?.Source));
-        if(response.HasDegradedReason)panel.Children.Add(Text(L.Text("部分数据：","Partial data: ")+response.DegradedReason));
-        panel.Children.Add(Text(L.Text("定价依据：","Pricing basis: ")+(response.HasPricingSource?response.PricingSource:"—")+" · "+string.Join(", ",response.PricingVersions)+"\n"+L.Text("估算不是订阅账单；未定价轮数 ","This estimate is not a subscription bill. Unpriced turns ")+L.Number(item.Totals?.UnpricedTurnCount)));
-        if(response.UnpricedReasons.Count>0)panel.Children.Add(Text(string.Join(" · ",response.UnpricedReasons.Select(reason=>reason.Reason+" "+L.Number(reason.Count)))));
+        panel.Children.Add(PresentationControls.Caption(DashboardPresentation.Name(item.Project,L.Text("未归类项目","Unclassified project"))+" · "+DashboardPresentation.Name(item.Model,L.Text("未归类模型","Unattributed model"))));
+        var totals=new StackPanel {Spacing=16};
+        totals.Children.Add(PresentationControls.MetricStrip(("Token",L.Tokens(item.Totals?.TotalTokens)),(L.Text("API 等价估算成本","API-equivalent estimate"),L.Money(item.Totals?.EstimatedUsdMicros))));
+        totals.Children.Add(PresentationControls.TokenBreakdown(item.Totals,L));
+        totals.Children.Add(PresentationControls.Caption(L.Text("完整会话生命周期","Full session lifetime")));panel.Children.Add(PresentationControls.Card(totals));
+        var evidence=new StackPanel {Spacing=8};
+        evidence.Children.Add(Text(L.Text("完整会话生命周期；不随列表范围或轮次翻页重新累计。","Full session lifetime. List ranges and turn pages do not recalculate these totals.")));
+        evidence.Children.Add(Text(L.Text("归因/来源：","Attribution/source: ")+item.Project?.Confidence+" · "+item.Project?.Source+" · "+item.Project?.Reason+" / "+item.Model?.Confidence+" · "+item.Model?.Source));
+        if(response.HasDegradedReason){var coverage=PresentationControls.Caption(AnalysisQueries.UsageCoverageReason(response.DegradedReason,L));ToolTipService.SetToolTip(coverage,response.DegradedReason);panel.Children.Add(coverage);}
+        evidence.Children.Add(Text(L.Text("定价依据：","Pricing basis: ")+(response.HasPricingSource?response.PricingSource:"—")+" · "+string.Join(", ",response.PricingVersions)+"\n"+L.Text("估算不是订阅账单；未定价轮数 ","This estimate is not a subscription bill. Unpriced turns ")+L.Number(item.Totals?.UnpricedTurnCount)));
+        if(response.UnpricedReasons.Count>0)evidence.Children.Add(Text(string.Join(" · ",response.UnpricedReasons.Select(reason=>reason.Reason+" "+L.Number(reason.Count)))));
+        totals.Children.Add(PresentationControls.DataButton(L.Text("统计口径与定价依据","Scope and pricing details"),evidence));
         if(context.Provider=="codex")
         {
-            panel.Children.Add(Text(L.Text("缓存命中率 ","Cache hit rate ")+AnalysisQueries.CacheRate(item.CacheHitRate,L)+"\n"+L.Text("已索引的会话累计缓存输入 / 输入；缓存已包含在输入中。","Indexed lifetime cached input / input. Cached tokens are already included in input.")));
-            panel.Children.Add(Text(L.Text("活跃期间平均输出 ","Average active output ")+AnalysisQueries.Tps(item.Throughput,L),"SubtitleTextBlockStyle"));
+            var performance=new StackPanel{Spacing=12};performance.Children.Add(PresentationControls.Heading(L.Text("输出效率","Output efficiency")));
+            performance.Children.Add(PresentationControls.MetricStrip((L.Text("活跃期间平均输出","Average active output"),AnalysisQueries.Tps(item.Throughput,L)),(L.Text("缓存命中率","Cache hit rate"),AnalysisQueries.CacheRate(item.CacheHitRate,L))));
+            var performanceDetails=new StackPanel{Spacing=12};
+            performanceDetails.Children.Add(PresentationControls.Caption(L.Text("缓存命中率按已索引的会话累计缓存输入 / 输入计算；缓存已包含在输入中。","Cache hit rate uses indexed lifetime cached input / input. Cached tokens are already included in input.")));
+            performanceDetails.Children.Add(PresentationControls.Caption(L.Text("平均输出为输出 Token / 活跃区间并集；含思考、工具和轮内等待，不含轮间空闲。","Average output is output tokens / union of active intervals. Includes reasoning, tools, and in-turn waits; excludes idle time between turns.")));
             if(item.Throughput is {} throughput)
             {
-                panel.Children.Add(Text(L.Text("输出 Token / 活跃区间并集；含思考、工具和轮内等待，不含轮间空闲。","Output tokens / union of active intervals. Includes reasoning, tools, and in-turn waits; excludes idle time between turns.")));
-                panel.Children.Add(PresentationControls.Table([L.Text("输出 Token","Output tokens"),L.Text("活跃时长","Active duration"),L.Text("参与 / 排除 / 未结束","Included / excluded / open")],
-                    [new[]{L.Number(throughput.OutputTokens),AnalysisQueries.Duration(throughput.ActiveDurationMs,L),L.Number(throughput.IncludedTurns)+" / "+L.Number(throughput.ExcludedTurns)+" / "+L.Number(throughput.OpenTurns)}]));
-                panel.Children.Add(Text(L.Text("覆盖 / 原因 / 时间来源：","Coverage / reason / time source: ")+throughput.Status+" · "+throughput.Reason+" · "+throughput.DurationSource));
+                performance.Children.Add(PresentationControls.KeyValue(L.Text("参与统计的输出","Included output"),L.Tokens(throughput.OutputTokens)+" Token"));
+                performance.Children.Add(PresentationControls.KeyValue(L.Text("活跃时长","Active duration"),AnalysisQueries.Duration(throughput.ActiveDurationMs,L)));
+                performanceDetails.Children.Add(PresentationControls.Caption(L.Text("状态代码：","Status codes: ")+throughput.Status+" · "+throughput.Reason));
+                performanceDetails.Children.Add(PresentationControls.KeyValue(L.Text("参与 / 排除 / 未结束","Included / excluded / open"),L.Number(throughput.IncludedTurns)+" / "+L.Number(throughput.ExcludedTurns)+" / "+L.Number(throughput.OpenTurns)));
+                performanceDetails.Children.Add(PresentationControls.KeyValue(L.Text("时间来源","Time source"),throughput.DurationSource));
             }
-            panel.Children.Add(PresentationControls.Disclosure(L.Text("最近轮次 TPS","Recent turn TPS"),PresentationControls.Table([L.Text("开始时间","Started"),"TPS",L.Text("输出 Token","Output tokens"),L.Text("活跃时长","Active duration"),L.Text("覆盖","Coverage")],
-                response.ThroughputTurns.Select(turn=>new[]{L.Timestamp(turn.StartedAtMs?.HasValue==true?turn.StartedAtMs.Value:null),AnalysisQueries.Tps(turn.Throughput,L),L.Number(turn.Throughput?.OutputTokens),AnalysisQueries.Duration(turn.Throughput?.ActiveDurationMs,L),turn.Throughput?.Status+" · "+turn.Throughput?.Reason}))));
+            performance.Children.Add(PresentationControls.Caption(AnalysisQueries.ThroughputStatus(item.Throughput,L)));
+            var throughputReason=AnalysisQueries.ThroughputReason(item.Throughput,L);if(throughputReason.Length>0)performance.Children.Add(PresentationControls.Caption(throughputReason));
+            performanceDetails.Children.Add(PresentationControls.Heading(L.Text("最近轮次 TPS","Recent turn TPS")));
+            performanceDetails.Children.Add(PresentationControls.Table([L.Text("开始时间","Started"),"TPS",L.Text("输出 Token","Output tokens"),L.Text("活跃时长","Active duration"),L.Text("覆盖","Coverage")],
+                response.ThroughputTurns.Select(turn=>new[]{L.Timestamp(turn.StartedAtMs?.HasValue==true?turn.StartedAtMs.Value:null),AnalysisQueries.Tps(turn.Throughput,L),L.Tokens(turn.Throughput?.OutputTokens),AnalysisQueries.Duration(turn.Throughput?.ActiveDurationMs,L),turn.Throughput?.Status+" · "+turn.Throughput?.Reason})));
+            performance.Children.Add(PresentationControls.DataButton(L.Text("计算口径与最近轮次","Method and recent turns"),performanceDetails));panel.Children.Add(PresentationControls.Card(performance));
         }
         else panel.Children.Add(Text(L.Text("此来源不提供同口径的缓存命中率和 TPS。","This source does not provide comparable cache-hit or TPS metrics.")));
         if(response.Trend.Count>0)
         {
-            panel.Children.Add(Text(L.Text("会话用量趋势 · ","Session usage trend · ")+response.TrendGranularity+" · "+response.ReportingTimeZone,"SubtitleTextBlockStyle"));
-            var usage=new UsageCostResponse();usage.Trend.Add(response.Trend);usage.Models.Add(response.Models);panel.Children.Add(Charts.Bars(DashboardPresentation.UsageTrend(usage),L,"Token",true));
+            panel.Children.Add(Text(L.Text("会话用量趋势 · ","Session usage trend · ")+AnalysisQueries.TrendGranularity(response.TrendGranularity,L),"SubtitleTextBlockStyle"));
+            panel.Children.Add(PresentationControls.Caption(response.ReportingTimeZone));
+            var usage=new UsageCostResponse();usage.Trend.Add(response.Trend);usage.Models.Add(response.Models);panel.Children.Add(Charts.Bars(DashboardPresentation.UsageTrend(usage),L,"Token",true,continuous:true));
         }
         if(item.Project?.HasId==true)
         {
             var related=new Button{Content=L.Text("查看此项目的区间贡献","View this project's range contributions")};
             related.Click+=(_,_)=>Host.OpenProjectList(item.Project.Id,AnalysisQueries.ExactScope(context,navigation.ExactRange));panel.Children.Add(related);
         }
-        panel.Children.Add(Text(L.Text("轮次用量时间线 · 本页不是整段会话合计","Turn usage timeline · This page is not the session total"),"SubtitleTextBlockStyle"));
+        panel.Children.Add(Text(L.Text("轮次用量时间线","Turn usage timeline"),"SubtitleTextBlockStyle"));
+        panel.Children.Add(PresentationControls.Caption(L.Text("每轮的用量与时间；本页不是整段会话合计。","Usage and timing for each turn. This page is not the session total.")));
         if(response.Turns.Count==0)panel.Children.Add(Text(L.Text("当前未返回轮次用量明细。上方生命周期指标按 Helper 已返回的事实展示。","No turn usage details were returned. Lifetime metrics above use the facts returned by the Helper.")));
-        panel.Children.Add(PresentationControls.Table([L.Text("开始 / 结束","Started / ended"),L.Text("模型 / 状态","Model / state"),"Token",L.Text("API 等价成本","API estimate"),L.Text("定价依据","Pricing evidence")],
-            response.Turns.Select(turn=>new[]{L.Timestamp(turn.StartedAtMs?.HasValue==true?turn.StartedAtMs.Value:null)+" / "+L.Timestamp(turn.CompletedAtMs?.HasValue==true?turn.CompletedAtMs.Value:null),DashboardPresentation.Name(turn.Model,"—")+" · "+turn.State,L.Number(turn.Totals?.TotalTokens),L.Money(turn.Totals?.EstimatedUsdMicros),turn.PricingStatus+" · "+(turn.HasPricingVersion?turn.PricingVersion:turn.HasUnpricedReason?turn.UnpricedReason:"—")})));
+        foreach(var turn in response.Turns)
+        {
+            var row=new StackPanel{Spacing=10};
+            var state=turn.State switch{"active"=>L.Text("进行中","Active"),"complete"=>L.Text("已结束","Completed"),_=>turn.State};
+            row.Children.Add(PresentationControls.KeyValue(DashboardPresentation.Name(turn.Model,"—"),state));
+            row.Children.Add(PresentationControls.Caption(L.Timestamp(turn.StartedAtMs?.HasValue==true?turn.StartedAtMs.Value:null)+" — "+L.Timestamp(turn.CompletedAtMs?.HasValue==true?turn.CompletedAtMs.Value:null)));
+            row.Children.Add(Text(L.Tokens(turn.Totals?.TotalTokens)+" Token · "+L.Text("API 等价估算 ","API estimate ")+L.Money(turn.Totals?.EstimatedUsdMicros)));
+            ToolTipService.SetToolTip(row,turn.PricingStatus+" · "+(turn.HasPricingVersion?turn.PricingVersion:turn.HasUnpricedReason?turn.UnpricedReason:"—"));
+            panel.Children.Add(PresentationControls.Card(row));
+        }
+        if(response.Turns.Count>0)panel.Children.Add(PresentationControls.DataButton(L.Text("轮次数据与定价依据","Turn data and pricing evidence"),()=>PresentationControls.Table([L.Text("开始 / 结束","Started / ended"),L.Text("模型 / 状态","Model / state"),"Token",L.Text("API 等价成本","API estimate"),L.Text("定价依据","Pricing evidence")],
+            response.Turns.Select(turn=>new[]{L.Timestamp(turn.StartedAtMs?.HasValue==true?turn.StartedAtMs.Value:null)+" / "+L.Timestamp(turn.CompletedAtMs?.HasValue==true?turn.CompletedAtMs.Value:null),DashboardPresentation.Name(turn.Model,"—")+" · "+turn.State,L.Tokens(turn.Totals?.TotalTokens),L.Money(turn.Totals?.EstimatedUsdMicros),turn.PricingStatus+" · "+(turn.HasPricingVersion?turn.PricingVersion:turn.HasUnpricedReason?turn.UnpricedReason:"—")}))));
+        if(!turns.CanPrevious && response.TurnPage?.HasMore!=true)return;
         var pager=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};var first=new Button{Content=L.Text("轮次首页","First turns")};var previous=new Button{Content=L.Text("上一页","Previous"),IsEnabled=turns.CanPrevious};var next=new Button{Content=L.Text("下一页轮次","Next turns"),IsEnabled=response.TurnPage is{HasMore:true,HasNextCursor:true}};
         first.Click+=async(_,_)=>{if(detail.State.Kind==LoadKind.Loading)return;turns.Reset();await LoadDetailAsync();};previous.Click+=async(_,_)=>{if(detail.State.Kind!=LoadKind.Loading && turns.Previous())await LoadDetailAsync();};next.Click+=async(_,_)=>{if(detail.State.Kind!=LoadKind.Loading && turns.Next(response.TurnPage))await LoadDetailAsync();};pager.Children.Add(first);pager.Children.Add(previous);pager.Children.Add(Text(turns.Page.ToString()));pager.Children.Add(next);panel.Children.Add(new ScrollViewer{Content=pager,HorizontalScrollBarVisibility=ScrollBarVisibility.Auto,VerticalScrollBarVisibility=ScrollBarVisibility.Disabled});
     }

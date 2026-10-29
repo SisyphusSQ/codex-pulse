@@ -24,8 +24,12 @@ public abstract class FeaturePage : IDisposable
     public virtual void Dispose() => Cancel();
     protected TextBlock Text(string value, string? style = null)
     {
-        var block = new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
-        if (style is not null) block.Style = (Style)Application.Current.Resources[style];
+        var block = PresentationControls.Text(value);
+        if (style is not null)
+        {
+            block.ClearValue(TextBlock.FontSizeProperty);
+            block.Style = (Style)Application.Current.Resources[style == "SubtitleTextBlockStyle" ? "PulseSectionHeadingStyle" : style];
+        }
         return block;
     }
     protected void State(LoadKind kind) => Host.SetPageState(this, kind);

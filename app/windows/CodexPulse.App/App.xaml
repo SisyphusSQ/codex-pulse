@@ -1,11 +1,87 @@
 <Application x:Class="CodexPulse.App.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:views="using:CodexPulse.App.Views">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="PulseTextBaseStyle" TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="{ThemeResource ContentControlThemeFontFamily}" />
+            </Style>
+            <Style TargetType="TextBlock" BasedOn="{StaticResource PulseTextBaseStyle}" />
+            <SolidColorBrush x:Key="PulseCalendarOutlineBrush" Color="#40808080" />
+            <Style x:Key="PulseRankingButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="8,10" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </Style>
+            <DataTemplate x:Key="PulseAnalysisRowTemplate">
+                <views:AnalysisRowView />
+            </DataTemplate>
+            <Style x:Key="PulsePaneDividerStyle" TargetType="Thumb">
+                <Setter Property="Width" Value="12" />
+                <Setter Property="IsTabStop" Value="True" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Thumb">
+                            <Grid Background="Transparent">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters><Setter Target="DividerLine.Background" Value="{ThemeResource AccentFillColorDefaultBrush}" /></VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters><Setter Target="DividerLine.Background" Value="{ThemeResource AccentFillColorDefaultBrush}" /></VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <Border x:Name="DividerLine" Width="2" Background="{ThemeResource ControlStrongStrokeColorDefaultBrush}" />
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="PulseCalendarCellStyle" TargetType="Border">
+                <Setter Property="BorderBrush" Value="{StaticResource PulseCalendarOutlineBrush}" />
+                <Setter Property="CornerRadius" Value="2" />
+            </Style>
+            <!-- Shared presentation tokens use theme resources so open pages follow theme changes. -->
+            <Thickness x:Key="PulseCardPadding">20</Thickness>
+            <CornerRadius x:Key="PulseCardRadius">12</CornerRadius>
+            <Style x:Key="PulseCardStyle" TargetType="Border">
+                <Setter Property="Padding" Value="{StaticResource PulseCardPadding}" />
+                <Setter Property="CornerRadius" Value="{StaticResource PulseCardRadius}" />
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+            </Style>
+            <Style x:Key="PulseSectionHeadingStyle" TargetType="TextBlock" BasedOn="{StaticResource PulseTextBaseStyle}">
+                <Setter Property="FontSize" Value="18" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="PulseCaptionStyle" TargetType="TextBlock" BasedOn="{StaticResource PulseTextBaseStyle}">
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="LineHeight" Value="20" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="PulseMetricStyle" TargetType="TextBlock" BasedOn="{StaticResource PulseTextBaseStyle}">
+                <Setter Property="FontSize" Value="28" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+            <Style x:Key="PulseTableHeaderStyle" TargetType="Grid">
+                <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                <Setter Property="CornerRadius" Value="6" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

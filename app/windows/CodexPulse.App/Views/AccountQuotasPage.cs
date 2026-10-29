@@ -11,8 +11,8 @@ internal sealed class AccountQuotasPage:FeaturePage
     private bool disposed;
     public AccountQuotasPage(MainWindow host):base(host)
     {
-        Body.Children.Add(Text(L.Text("当前与已保留账号的本机额度快照。历史账号只读；不会请求历史账号在线服务或读取其凭据。","Local snapshots for current and retained accounts. Historical accounts are read-only; their online services and credentials are not accessed.")));
-        accounts=new(host,L.Text("账号额度快照","Account quota snapshots"),Render,"account-quotas");Body.Children.Add(accounts.View);
+        Body.Children.Add(PresentationControls.Caption(L.Text("查看当前账号与历史账号最后采集的额度。历史快照只读，不会触发在线刷新。","View the last collected quota for current and previous accounts. Historical snapshots are read-only and do not refresh online.")));
+        accounts=new(host,L.Text("账号额度快照","Account quota snapshots"),Render,"account-quotas",showHeader:false);Body.Children.Add(accounts.View);
         var manage=new Button{Content=L.Text("管理订阅资料与保留策略","Manage subscription details and retention")};manage.Click+=(_,_)=>Host.Navigate(Feature.Settings);Body.Children.Add(manage);
     }
     public override bool DependsOn(string domain)=>domain is "quota" or "quota_codex" or "account" or "settings";
@@ -29,21 +29,23 @@ internal sealed class AccountQuotasPage:FeaturePage
         foreach(var snapshot in response.Accounts)
         {
             var account=snapshot.Account;var body=new StackPanel{Spacing=10};
-            body.Children.Add(Text(QuotaPresentation.AccountTitle(account,L),"SubtitleTextBlockStyle"));
-            body.Children.Add(Text(account.Current?L.Text("当前账号","Current account"):L.Text("历史账号 · 只读","Historical account · Read-only")));
-            if(account.HasDisplayEmail && account.DisplayEmail!=QuotaPresentation.AccountTitle(account,L))body.Children.Add(Text(account.DisplayEmail));
-            body.Children.Add(Text(QuotaPresentation.Plan(account.HasResolvedPlan?account.ResolvedPlan:null,L)+" · "+QuotaPresentation.SubscriptionDate(account,L)));
+            body.Children.Add(PresentationControls.Caption(account.Current?L.Text("当前账号","Current account"):L.Text("历史快照 · 只读","Historical snapshot · Read-only")));
+            body.Children.Add(PresentationControls.Heading(QuotaPresentation.Plan(account.HasResolvedPlan?account.ResolvedPlan:null,L)));
+            var identity=Text(QuotaPresentation.AccountTitle(account,L));identity.TextWrapping=TextWrapping.NoWrap;identity.TextTrimming=TextTrimming.CharacterEllipsis;ToolTipService.SetToolTip(identity,identity.Text);body.Children.Add(identity);
+            if(account.HasDisplayEmail && account.DisplayEmail!=identity.Text)body.Children.Add(PresentationControls.Caption(account.DisplayEmail));
+            body.Children.Add(PresentationControls.Caption(QuotaPresentation.SubscriptionDate(account,L)));
             foreach(var window in QuotaPresentation.Windows(snapshot,response.EvaluatedAtMs))
             {
                 var title=QuotaPresentation.WindowName(window.LimitId,null,window.HasWindowMinutes?window.WindowMinutes:null,L);
                 var expired=window.HasResetsAtMs && window.ResetsAtMs<=response.EvaluatedAtMs;
                 var remaining=QuotaPresentation.Percent(window.HasRemainingPercent,window.RemainingPercent);
-                body.Children.Add(Text(title+" · "+(expired?L.Text("已结束 · 上次剩余 ","Ended · Last remaining "):L.Text("剩余 ","Remaining "))+QuotaPresentation.PercentText(remaining,L)));
+                body.Children.Add(PresentationControls.Caption(title+" · "+(expired?L.Text("已结束 · 上次剩余","Ended · Last remaining"):L.Text("剩余","Remaining"))));
+                var number=Text(QuotaPresentation.PercentText(remaining,L));number.FontSize=28;number.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;body.Children.Add(number);
                 if(!expired)QuotaPage.AddProgress(body,title,remaining);
-                body.Children.Add(Text(L.Text("重置 ","Resets ")+L.Timestamp(window.HasResetsAtMs?window.ResetsAtMs:null)+" · "+QuotaPresentation.Freshness(window.Freshness,L)));
+                body.Children.Add(PresentationControls.Caption(L.Text("重置 ","Resets ")+L.Timestamp(window.HasResetsAtMs?window.ResetsAtMs:null)+" · "+QuotaPresentation.Freshness(window.Freshness,L)));
                 if(window.Conflict is not("" or "none"))body.Children.Add(Text(L.Text("来源冲突：","Source conflict: ")+window.Conflict));
             }
-            body.Children.Add(Text(L.Text("采集时间 ","Collected ")+L.Timestamp(snapshot.HasLastCollectedAtMs?snapshot.LastCollectedAtMs:null)));
+            body.Children.Add(PresentationControls.Caption(L.Text("采集时间 ","Collected ")+L.Timestamp(snapshot.HasLastCollectedAtMs?snapshot.LastCollectedAtMs:null)));
             if(account.Current)
             {
                 var refresh=new Button{Content=L.Text("刷新当前账号额度","Refresh current account quota")};
@@ -61,7 +63,7 @@ internal sealed class AccountQuotasPage:FeaturePage
                     finally{if(!disposed)refresh.IsEnabled=true;}
                 };body.Children.Add(refresh);
             }
-            var card=PresentationControls.Card(body);grid.Children.Add(card);
+            var card=PresentationControls.Card(body);card.VerticalAlignment=VerticalAlignment.Top;grid.Children.Add(card);
         }
         void Layout(double width)
         {

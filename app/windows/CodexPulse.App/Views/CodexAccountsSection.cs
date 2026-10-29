@@ -36,14 +36,14 @@ internal sealed class CodexAccountsSection:IDisposable
     private Localization L=>host.Localization;
     private readonly SubscriptionController controller;
     private readonly StackPanel rows=new(){Spacing=12},editor=new(){Spacing=12};
-    private readonly TextBlock status=PresentationControls.Text("");
+    private readonly TextBlock status=PresentationControls.Feedback();
     private SubscriptionDraft? renderedDraft;
     private bool disposed,actionRunning;
     public CodexAccountsSection(MainWindow host)
     {
         this.host=host;controller=host.Subscriptions;
-        View.Children.Add(PresentationControls.Text(L.Text("Codex 账号与订阅资料","Codex accounts and subscription details"),22));
-        View.Children.Add(PresentationControls.Text(L.Text("自动资料只读；手工字段可补充或覆盖。Home 的会话、Token 和项目统计独立于这些资料。此处不切换 Agent 登录。","Detected details are read-only; manual fields supplement or override them. Home usage, sessions and projects remain independent. This does not switch the Agent login.")));
+        View.Children.Add(PresentationControls.Heading(L.Text("Codex 账号与订阅资料","Codex accounts and subscription details")));
+        View.Children.Add(PresentationControls.Caption(L.Text("自动资料只读；手工字段可补充或覆盖。Home 的会话、Token 和项目统计独立于这些资料。此处不切换 Agent 登录。","Detected details are read-only; manual fields supplement or override them. Home usage, sessions and projects remain independent. This does not switch the Agent login.")));
         var add=Button(L.Text("新增手工账号","Add manual account"),()=>{controller.BeginNew();return Task.CompletedTask;});View.Children.Add(add);
         View.Children.Add(status);View.Children.Add(editor);View.Children.Add(rows);
         var suppressRetention=false;
@@ -89,7 +89,7 @@ internal sealed class CodexAccountsSection:IDisposable
     private void Publish()
     {
         if(disposed)return;
-        status.Text=L.State(controller.List.State.Kind)+" · "+(controller.Action switch
+        var actionText=controller.Action switch
         {
             SubscriptionAction.Running=>L.Text("正在保存并读回…","Saving and reading back…"),
             SubscriptionAction.Applied=>L.Text("已保存并核对列表","Saved and checked against the list"),
@@ -99,7 +99,8 @@ internal sealed class CodexAccountsSection:IDisposable
             SubscriptionAction.ReadbackChanged=>L.Text("回执与最新列表不一致，请核对；草稿已保留","Receipt and latest list differ; check them. Draft retained"),
             SubscriptionAction.Unknown=>L.Text("结果尚未确认；请重新读取，勿重复新增","Result uncertain. Reload before adding again"),
             SubscriptionAction.Unavailable=>L.Text("操作未完成；已尝试重新读取","Action incomplete; readback attempted"),_=>""
-        });
+        };
+        status.Text=string.Join(" · ",new[]{controller.List.State.Kind is LoadKind.Ready or LoadKind.Idle?"":L.State(controller.List.State.Kind),actionText}.Where(value=>value.Length>0));
         if(controller.Action==SubscriptionAction.Unavailable && controller.Field is {} field)status.Text+=" · "+(field switch
         {"manual.email"=>L.Text("请检查手工邮箱。","Check the manual email."),"manual.alias"=>L.Text("请检查别名的长度与字符。","Check alias length and characters."),"manual.membershipDate"=>L.Text("请检查会员日期与类型。","Check membership date and type."),_=>L.Text("请核对填写内容后重试。","Check the entered values before retrying.")});
         rows.Children.Clear();
@@ -111,11 +112,11 @@ internal sealed class CodexAccountsSection:IDisposable
                 var row=new StackPanel{Spacing=8};row.Children.Add(PresentationControls.Text(QuotaPresentation.AccountTitle(account,L)+(account.Current?L.Text(" · 当前"," · Current"):account.Detected?L.Text(" · 已识别"," · Detected"):L.Text(" · 仅手工资料"," · Manual only")),18));
                 row.Children.Add(PresentationControls.Text(QuotaPresentation.Plan(account.HasResolvedPlan?account.ResolvedPlan:null,L)+" · "+QuotaPresentation.SubscriptionDate(account,L)));
                 if(account.HasDisplayEmail && QuotaPresentation.AccountTitle(account,L)!=account.DisplayEmail)row.Children.Add(PresentationControls.Text(account.DisplayEmail));
-                row.Children.Add(PresentationControls.Text(L.Text("自动套餐：","Detected plan: ")+QuotaPresentation.Plan(account.HasAutomaticPlan?account.AutomaticPlan:null,L)+L.Text("；会员日期仅支持手工维护。","; membership dates are maintained manually.")));
+                row.Children.Add(PresentationControls.Caption(L.Text("自动套餐：","Detected plan: ")+QuotaPresentation.Plan(account.HasAutomaticPlan?account.AutomaticPlan:null,L)+L.Text("；会员日期仅支持手工维护。","; membership dates are maintained manually.")));
                 var actions=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};
                 actions.Children.Add(Button(L.Text("编辑资料","Edit details"),()=>{controller.BeginEdit(account);return Task.CompletedTask;}));
                 if(!account.Current)actions.Children.Add(Button(L.Text("删除资料…","Delete details…"),async()=>{if(await Confirm(L.Text("删除订阅资料","Delete subscription details"),L.Text("删除该条本机资料与对应归属历史；不会删除 Home 会话、Token、项目或 Agent 凭据。","Delete this local profile and its associated history. Home sessions, tokens, projects and Agent credentials are retained."),L.Text("删除资料","Delete details")))await controller.DeleteAsync(account);}));
-                row.Children.Add(actions);
+                row.Children.Add(new ScrollViewer{Content=actions,HorizontalScrollBarVisibility=ScrollBarVisibility.Auto,VerticalScrollBarVisibility=ScrollBarVisibility.Disabled});
                 if(account.Linked)row.Children.Add(Button(L.Text("取消手工关联…","Unlink manual details…"),async()=>{if(await Confirm(L.Text("取消关联","Unlink details"),L.Text("手工资料将恢复为独立账号。须先为手工资料填写邮箱。","Manual details will become a standalone account. Set their manual email first."),L.Text("取消关联","Unlink")))await controller.UnlinkAsync(account);}));
                 foreach(var candidate in list.LinkCandidates.Where(candidate=>candidate.Reason=="same_email" && account.HasDetectedAccountId && candidate.DetectedAccountId==account.DetectedAccountId))
                 {

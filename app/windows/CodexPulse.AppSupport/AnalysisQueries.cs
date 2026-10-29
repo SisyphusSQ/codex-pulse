@@ -81,7 +81,30 @@ public static class AnalysisQueries
         if(exact is null)request.Range=DashboardPresentation.LocalRange(context);else request.ExactRange=exact.Clone();
         return request;
     }
-    public static string CacheRate(NumericValue? value,Localization l)=>value is {HasValue:true,Value:>=0 and <=10000}?(value.Value/100m).ToString("N1",l.Culture)+"%":"—";
-    public static string Tps(ThroughputStats? stats,Localization l)=>stats?.AverageOutputMilliTps is {HasValue:true,Value:>=0} value?(value.Value/1000m).ToString("N2",l.Culture)+" TPS":"—";
-    public static string Duration(NumericValue? value,Localization l)=>value is {HasValue:true,Value:>=0}?(value.Value/1000m).ToString("N1",l.Culture)+l.Text(" 秒"," s"):"—";
+    public static string CacheRate(NumericValue? value,Localization l)=>value is {HasValue:true,HasUnknownReason:false,Unit:"basis_points",Value:>=0 and <=10000}?(value.Value/100m).ToString("N1",l.Culture)+"%":"—";
+    public static string Tps(ThroughputStats? stats,Localization l)=>stats?.AverageOutputMilliTps is {HasValue:true,Unit:"milli_tokens_per_second",Value:>=0} value?(value.Value/1000m).ToString("N2",l.Culture)+" TPS":"—";
+    public static string Duration(NumericValue? value,Localization l)=>value is {HasValue:true,Unit:"milliseconds",Value:>=0}?(value.Value/1000m).ToString("N3",l.Culture)+l.Text(" 秒"," s"):"—";
+    public static string ThroughputStatus(ThroughputStats? stats,Localization l)=>stats?.Status switch
+    {"complete"=>l.Text("已结束轮次平均","Average of completed turns"),"partial"=>l.Text("已知轮次平均","Average of known turns"),_=>l.Text("暂不可用","Unavailable")};
+    public static string ThroughputReason(ThroughputStats? stats,Localization l)=>stats is null?l.Text("此来源暂不支持 TPS","TPS is not available for this source"):stats.Reason switch
+    {
+        "index_pending"=>l.Text("TPS 数据待补齐","TPS data is awaiting indexing"),
+        "index_incomplete"=>l.Text("索引尚未追平，当前为已知轮次平均。","Indexing is catching up; the average uses known turns."),
+        "open_turn"=>l.Text("当前轮待结束","The current turn is still open"),
+        "no_closed_turns"=>l.Text("尚无可计算的已结束轮次","No completed turns are available for calculation"),
+        "incomplete_coverage"=>l.Text("部分轮次未结束或缺少统计事实。","Some turns are open or lack usage facts."),
+        "missing_facts"=>l.Text("轮次缺少有效输出或时长","Turns lack valid output or duration"),
+        "numeric_overflow"=>l.Text("统计数值超出支持范围","Values exceed the supported range"),
+        "state_limit"=>l.Text("轮次记录超出支持范围","Turn records exceed the supported range"),
+        "inherited_history"=>l.Text("会话包含继承历史，无法确认独立 TPS","The session includes inherited history; independent TPS is unknown"),
+        ""=>"",_=>l.Text("详细状态见计算口径","See calculation details for the full status")
+    };
+    public static string UsageCoverageReason(string reason,Localization l)=>reason switch
+    {
+        "rollup_missing"=>l.Text("部分汇总尚未补齐，当前显示已知用量。","Some summaries are still pending; known usage is shown."),
+        "rollup_ambiguous"=>l.Text("部分汇总归属尚未确认，当前显示已知用量。","Some summary attribution is unresolved; known usage is shown."),
+        _=>l.Text("部分用量尚未确认。","Some usage is not yet confirmed.")
+    };
+    public static string TrendGranularity(string granularity,Localization l)=>granularity switch
+    {"hour"=>l.Text("按小时","Hourly"),"day"=>l.Text("按天","Daily"),"week"=>l.Text("按周","Weekly"),"month"=>l.Text("按月","Monthly"),_=>l.Text("统计粒度未知","Unknown granularity")};
 }

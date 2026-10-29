@@ -14,6 +14,7 @@ Require(zero.HasValue && zero.Value == 0, "explicit zero survives wire roundtrip
 var large = NumericValue.Parser.ParseFrom(new NumericValue { Value = long.MaxValue }.ToByteArray());
 Require(large.Value == long.MaxValue, "int64 precision survives wire roundtrip");
 var methods = CoreService.Descriptor.Methods;
+if(args.Length==0 || args.Length==1 && args[0]=="--units") UnitPresentationTests.Run();
 Require(methods.Single(m => m.Name == "SubscribeInvalidations").IsServerStreaming,
     "invalidation retains server streaming contract");
 Require(methods.Single(m => m.Name == "UpdateAPICredential").IsServerStreaming == false,

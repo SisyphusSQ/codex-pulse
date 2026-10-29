@@ -9,7 +9,7 @@ namespace CodexPulse.App.Views;
 internal sealed class RuntimeActions(MainWindow host,Func<Task> reload)
 {
     private Localization L=>host.Localization;
-    public TextBlock Status{get;}=PresentationControls.Text("");
+    public TextBlock Status{get;}=PresentationControls.Feedback();
     public Button Action(string action)
     {
         if(!RuntimePresentation.AllowedAction(action))throw new ArgumentException("runtime_action_unregistered");
