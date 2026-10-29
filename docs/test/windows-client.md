@@ -113,3 +113,20 @@ POSIX FIFO fixture 仅在 Unix 执行；Windows 原生非普通对象边界以 j
 安全自查：仅调用已鉴权 Core RPC；原始正文、Agent 凭据、业务数据库和 JSONL 不进入 C#；使用静态原生模板的数据绑定，不拼接数据为 XAML；opaque identity/cursor 只在进程内，按上下文取消与隔离。提交/合并收尾复用本轮证据，不重复测试或宣称无 CI 的 PR 已通过 CI。
 
 E11 合同复查发现 E09 共享额度摘要在 unknown 时仍创建 Value=0 的原生 ProgressBar。修复为只有已知、有限、0～100 的 remaining 才创建进度条；真实零继续保留，unknown 只显示“—”，避免辅助功能读取伪 0%。该修复使用独立 E09 修复分支/PR；C# 65 项既有值语义/隔离断言通过、客户端构建成功。原生 unknown 辅助功能故障矩阵留在最终验收，不把静态修正或构建当成该真实场景已执行。
+
+## Windows 额度、账号额度与订阅管理
+
+2026-10-29 开发证据：
+
+- WinUI 独立额度页消费 `QuotaCurrent`、`QuotaPace`、`AccountSnapshot`、`UsageCost` 和 `PricingCatalogCurrent`。账号 scope/generation 只在内存中核对，错配隐藏在线事实；Home 用量独立。动态窗口、来源证据、可信状态、过期、重置库存、节奏轨迹/历史带、预测和明细沿用 Go DTO。未知不创建 Value=0 的进度条；刷新仅在 `fetched=true` 时说明已取得新数据。
+- 账号额度页一次读取原子快照，当前与历史共用卡片；历史无在线刷新入口。Codex 设置分区支持独立手工资料、补充字段、套餐、月续费日/到期日、显式同邮箱关联、取消关联、legacy 历史关联、保留策略与清理。日期剩余天数仅使用 Go 结果。独立的 Home 级协调器在列表刷新/页面重建时保留草稿，Home 更换后清空。
+- mutation 使用 revision、receipt 与强制 List 回读；conflict 保留草稿并提供显式 rebase；未知结果不自动重放。回执未识别、列表不匹配或无法读回均不报成功。错误保留安全的字段定位，未回显服务端内容。
+- C# 可执行断言共 80 项通过（包含 E11 新增 15 项），覆盖 scope/generation、pending、unknown/zero、接近 0/100 的百分比、动态去重、自动资料不转换成手工覆盖、日期锚点、当前账号禁止删除、冲突、回执丢失、回读变化和字段校验。WinUI locked build 成功，0 warnings / 0 errors。
+- Go `subscriptionaccounts`、Helper/Core 订阅映射与安全错误、Store 订阅 duplicate/replay/CAS/fence/link/unlink/delete 聚焦测试通过。首次 Store 测试因共享夹具只执行 Unix chmod 而失败，改为 `platformfs.Mkdir` 创建私有子目录后通过；生产权限校验未放宽。
+- 真实 Home 与私有 runtime 的环境/参数/preferences/物理身份全部读回匹配，身份摘要仍为 `9c883cdeaa79cca0`。真实当前账号套餐、实际周额度、Reset Credits 库存与节奏数据已显示；手动额度刷新实际取得新数据并更新成功时间。发现 Reset Credits 使用 `current` freshness 的映射遗漏，已修正并增加断言。
+- 中文 1400×960 DIP 下实际查看额度、账号卡、原生订阅编辑器和删除确认。用临时 `.invalid` 邮箱的手工资料实际完成新增、修改和删除，三次均经列表读回，最终资料已移除；Ctrl+R 重查时保留未保存草稿。这是 UI/本机资料 CRUD 证据，不是第二真实账号或在线切号证据。
+- 修正后以 760×720 DIP 重新启动，实际 Home 绑定再次全部匹配；原生额度页与可访问文本已读回 Reset Credits 的“最新可信值”，未继续显示错误的 unavailable 状态。
+
+未执行与边界：缺少第二真实 Codex 账号，真实 A→B→A、历史卡与跨账号在线隔离按条件不足记录，不能以 fixture 替代；自然跨 reset、真实服务失败恢复、显式关联/清理的全部产品场景和完整中英文/DPI 矩阵留给 Master 集中验收。Cursor/Grok/DSH 真实环境仍由用户豁免，未声称通过。完整设置和平台生命周期由后续卡承接；本卡不改变 Proto、Agent 登录或统计口径。
+
+安全自查：只调用受鉴权的 Core RPC；账号 opaque ID 只在请求/内存中，凭据、正文和原始 JSONL 不进入 UI 数据层；删除/解除/清理有本机产品确认并受服务端 revision 与当前账号边界保护；未新增网络出口或 mutation 重放。提交与合并收尾复用以上证据，不重复测试；无 CI checks 不记 CI 通过。

@@ -28,6 +28,18 @@ public sealed partial class MainWindow : Window
         .FirstOrDefault(attribute => attribute.Key == "PulseVersion")?.Value ?? "dev";
     public PlatformOptions Options { get; }
     public PageSelection? Selection { get; private set; }
+    public XamlRoot DialogRoot => Root.XamlRoot;
+    private SubscriptionController? subscriptions;
+    public SubscriptionController Subscriptions
+    {
+        get
+        {
+            var generation=Settings?.Snapshot.Home.Generation??"";
+            if(subscriptions is null || subscriptions.HomeGeneration!=generation)
+            {subscriptions?.Dispose();subscriptions=new(Client,()=>Workspace.Context,generation);}
+            return subscriptions;
+        }
+    }
     private FeaturePage? page;
     private WindowPreferences preferences = new();
     private CancellationTokenSource? watchCancellation;
@@ -53,6 +65,9 @@ public sealed partial class MainWindow : Window
         PageCatalog.Register(Feature.Overview, host => new OverviewPage(host));
         PageCatalog.Register(Feature.Sessions, host => new SessionsPage(host));
         PageCatalog.Register(Feature.Projects, host => new ProjectsPage(host));
+        PageCatalog.Register(Feature.Quota, host => new QuotaPage(host));
+        PageCatalog.Register(Feature.AccountQuotas, host => new AccountQuotasPage(host));
+        PageCatalog.Register(Feature.Settings, host => new AccountSettingsPage(host));
         InitializeComponent();
         try { preferences = WindowPreferences.Load(Options.Runtime); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException or System.Security.SecurityException)
@@ -391,7 +406,7 @@ public sealed partial class MainWindow : Window
         var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96d;
         preferences = preferences with { Width = (int)(AppWindow.Size.Width/scale), Height = (int)(AppWindow.Size.Height/scale) };
         SaveWindowPreferences();
-        closing = true; invalidations.Stop(); page?.Dispose();
+        closing = true; invalidations.Stop(); page?.Dispose();subscriptions?.Dispose();
         lifetime.Cancel();
         if (startup is not null) await startup;
         await StopWatchAsync();

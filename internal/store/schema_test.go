@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,6 +11,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	storeschema "github.com/SisyphusSQ/codex-pulse/internal/store/schema"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -676,8 +676,8 @@ func TestCoreSchemaEnforcesConstraintsWithoutRepository(t *testing.T) {
 func openTestDatabase(t testing.TB) *storesqlite.Store {
 	t.Helper()
 
-	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
+	directory := filepath.Join(t.TempDir(), "private")
+	if err := platformfs.Mkdir(directory, 0o700); err != nil {
 		t.Fatalf("secure temp directory: %v", err)
 	}
 	database, err := storesqlite.Open(context.Background(), storesqlite.Config{

@@ -92,3 +92,9 @@ Session 以最近活动时间筛选，列表和详情显示 Helper 的生命周�
 Project 列表分别展示服务端 global/matched/page totals，详情仅展示所选区间贡献与已有 daily、模型/Session contribution；已归类和“其他”都使用列表返回的 dimension_key，不从显示名或 project_id 猜测。模型和 Session 贡献各有独立 cursor；索引失效时回到对应代次首页，typed cursor validation 只重置出错的分页。新索引或短暂失败不被伪装为空项目。
 
 查询仅使用现有 Core 的精确项目/模型、活动、置信度、时间和排序；选项明确来自当前页，实际过滤/排序由服务端完成，不提供合同中不存在的标题全文搜索。列表默认每页 20 条，可选 10/50/100；详情默认 20。cursor 仅原样回传且只在当前 App 进程内保存。会话与项目互相下钻保留同一 Provider/精确范围；普通日期范围转为精确 UTC 时仍保留完整半开区间，ProjectDetail 的本地日期与 exact_range 互斥。
+
+## 额度与订阅资料
+
+独立额度页按 Go 返回的 limit/window_minutes/reset 展示当前窗口、来源可信状态、证据与重置库存。Codex 账号、额度和节奏的 binding scope/generation 必须一致；未确认时隐藏在线事实，Home 用量继续独立读取。节奏轨迹、上一周期、历史带和预测直接消费 Core，不在 C# 推算业务额度或会员剩余天数。定价参考独立于用量范围，按当前 Provider 的目录展示，Codex 隐藏旧模型家族与别名的规则与 Mac 一致。
+
+账号额度列表只调用 `ListCodexAccountQuotas` 的原子快照，当前与历史共用动态窗口卡片，历史无在线刷新。订阅资料分区使用独立 Home 级内存协调器：自动资料只读，草稿仅保存手工字段；列表刷新或账号通知后的页面重建不覆盖草稿，真实 Home generation 变化后丢弃。新增/修改/删除、同邮箱显式关联与解除、legacy 历史关联均使用服务端 revision，receipt 后强制 List 读回。conflict 保留草稿并显式 rebase；未知回执不重发，只有最新列表匹配时才单独标记读回确认。保留策略与清理历史是两个独立动作，均有产品确认；清理后再次读取账号额度，不删 Home 用量。
