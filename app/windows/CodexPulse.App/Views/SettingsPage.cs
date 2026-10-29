@@ -10,6 +10,7 @@ internal sealed class SettingsPage:FeaturePage
     private readonly SettingsEditor settings;
     private readonly CodexAccountsSection accounts;
     private readonly HomeSection home;
+    private readonly StartupSection startup;
     private readonly StackPanel form=new(){Spacing=14};
     private readonly TextBlock result;
     private readonly Button save,rebase,discard;
@@ -29,13 +30,14 @@ internal sealed class SettingsPage:FeaturePage
         accounts=new(host);Body.Children.Add(PresentationControls.Disclosure(L.Text("Codex 账号与订阅 · 独立即时保存","Codex accounts & subscriptions · Independent immediate changes"),accounts.View));
         home=new(host);Body.Children.Add(PresentationControls.Disclosure(L.Text("Codex Home 与切换恢复","Codex Home and switch recovery"),home.View));
         Body.Children.Add(PresentationControls.Disclosure(L.Text("Windows 程序路径","Windows executable paths"),PlatformPaths()));
+        startup=new(host);Body.Children.Add(PresentationControls.Disclosure(L.Text("Windows 登录启动","Windows login startup"),startup.View));
         var api=new Button{Content=L.Text("管理 API 与订阅","Manage API & subscriptions")};api.Click+=(_,_)=>Host.Navigate(Feature.ApiSubscriptions);Body.Children.Add(api);
         var status=new Button{Content=L.Text("查看本机状态与数据健康","View local status and Data Health")};status.Click+=(_,_)=>Host.Navigate(Feature.LocalStatus);Body.Children.Add(status);
         settings.Changed+=Changed;settings.Current.Changed+=Changed;Publish();
     }
     public override bool DependsOn(string domain)=>domain is "settings" or "account";
     public override async Task LoadAsync(bool force=false)
-    {await Task.WhenAll(settings.ReloadAsync(),accounts.LoadAsync());if(!disposed){Publish();home.Publish();State(settings.Current.State.Kind);}}
+    {await Task.WhenAll(settings.ReloadAsync(),accounts.LoadAsync());if(!disposed){Publish();home.Publish();startup.Read();State(settings.Current.State.Kind);}}
     private void Changed()=>Host.Dispatch(Publish);
     private void Publish()
     {

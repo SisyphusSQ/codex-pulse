@@ -10,7 +10,7 @@ Windows 使用 C# / WinUI 3 承担原生 UI 和进程管理，共享 Go Helper �
 ./scripts/windows/build.ps1 -LockedRestore
 ```
 
-脚本构建 Windows x64 Helper 与客户端并把 Helper 复制到 App 输出目录，不要求 Swift。业务页面与完整生命周期由后续开发卡交付，当前不能把窗口构建当作完整客户端。
+脚本构建 Windows x64 Helper 与客户端并把 Helper 复制到 App 输出目录，不要求 Swift。业务页面与平台能力按下列工作包交付，不能把构建成功当作完整产品验收。
 
 `CodexPulse.Protocol` 的 MSBuild `Protobuf` 项直接引用唯一 `api/codexpulse/core/v1/core.proto`，固定 Grpc.Tools 每次需要时在 `obj/` 生成 C# message 和 CoreService client。生成文件不提交、不手改；optional、int64、stream 由 IDL 决定。Go 和 Swift 仍沿原有生成入口，不改变其版本和生成结果。
 
@@ -108,3 +108,15 @@ Home 切换与普通设置分开，先 `PlanHomeSwitch` 探测与预览，再 `C
 来源与任务支持服务端筛选、排序、keyset 分页和结构化详情，opaque key 不显示、不持久化。只读 Data Health 位于本机状态之下，消费 `HealthProjection` 与独立时间的 `DataHealth`；资源、队列、覆盖、任务、事件、有限错误及恢复动作直接来自 Helper，缺失保持未知。健康事件另支持 `ListHealth/Health` 分页和关联来源/任务下钻。前台健康页每五秒重读，失去前台后停止该页轮询。资源图不补造缺失样本，也不把 Helper 的进程指标归因给外部 Codex 会话。
 
 受控动作只接受固定 pause/resume/reconcile 与 recovery registry。reconcile 先展示影响并确认，repair 仅开放现有 Analyze-only dry-run；没有任意命令、SQL、日志导出或原始文件删除。迁移失败保持 recovery-only 图，只消费 `MigrationRecovery*`：准备备份后的确认 token 只在内存，取消和结果未知均读回，恢复成功必须结束旧 Helper 并启动新进程，不能热装配正常业务图。
+
+## 托盘与生命周期（WIN-E14）
+
+App 通过 Windows App SDK AppInstance 按 runtime 注册单实例，第二次启动重定向激活并退出，不创建第二个 Helper。普通启动遵循 Go 的 launch_behavior；--show 显式打开主窗口，--background 为登录启动保留托盘。关闭主窗口保留采集，应用菜单和托盘菜单的退出才执行 Shutdown。
+
+NativeHelper 以 HANDLE_LIST 限制继承，使用 PROC_THREAD_ATTRIBUTE_JOB_LIST 在 CreateProcess 时原子绑定不可继承、KILL_ON_JOB_CLOSE 的根 Job，再恢复初始线程。正常退出仍先执行已鉴权 Shutdown、父 pipe EOF 和 Helper exit 等待，随后有界等候 Job 成员归零；必要的强制回收或不确定等待保留 uncertain，不伪装为 clean。退出码和固定原因保存在 runtime 对应的 HKCU 平台偏好中，供安装更新读回；更新仍须独立确认进程退出。异常 Helper/断流最多在十分钟内自动恢复三次，间隔 1/2/4 秒；每次新握手，不因握手成功重置预算，不自动重放 mutation。
+
+托盘由 Shell_NotifyIcon v4 和独立 WinUI tool window 组成，处理 TaskbarCreated、Escape/失焦、右键固定菜单及工作区/DPI 定位。主窗口和托盘 Provider 分别保存；面板只查询呈现的额度、节奏、同周期 Home 用量及可选项目，隐藏即取消页面查询。账号/Home 失效清空旧数据；Codex account/Quota/Pace 必须同 scope/generation。复制入口重新渲染隐藏邮箱/套餐/备注/日期的视图，只向剪贴板写入脱敏 PNG 和固定安全文本；异步刷新期间同样维持脱敏，失败不回退原图或原文。
+
+WM_POWERBROADCAST 映射现有三种 Lifecycle 事件。客户端只积累最新电源转换和一条前台通知，唤醒重新握手、Bootstrap、失效订阅和权威读取；连接变更串行化，不重放休眠期间的页面请求。Go 不增加平台业务口径或网络端点。登录启动使用当前用户、当前 runtime 独立的 Run 项，读取系统实际命令及可识别的可选 StartupApproved 状态；未知审批保持 unknown，应用不写审批元数据。测试使用替身存储，不改真实登录项。
+
+平台依据：[AppInstance](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/applifecycle/applifecycle-instancing)、[通知区域](https://learn.microsoft.com/en-us/windows/win32/shell/notification-area)、[创建时分配 Job](https://devblogs.microsoft.com/oldnewthing/20230209-00/?p=107812)。StartupApproved 为可选 OS 元数据，不视为公开稳定合同；实际登录仍由 Windows 管理。

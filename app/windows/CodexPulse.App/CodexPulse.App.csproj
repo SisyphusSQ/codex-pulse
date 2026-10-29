@@ -11,11 +11,13 @@
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets/CodexPulse.ico</ApplicationIcon>
     <PublishTrimmed>false</PublishTrimmed>
     <PublishReadyToRun>false</PublishReadyToRun>
     <EnableMsixTooling>false</EnableMsixTooling>
   </PropertyGroup>
   <ItemGroup>
+    <Content Update="Assets/CodexPulse.ico" CopyToOutputDirectory="PreserveNewest" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
     <ProjectReference Include="../CodexPulse.Protocol/CodexPulse.Protocol.csproj" />

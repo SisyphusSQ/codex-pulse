@@ -12,12 +12,14 @@ internal sealed class NativeHelper : IDisposable
 {
     private readonly SafeProcessHandle process;
     private readonly Task<int> exit;
+    private readonly ProcessJob job;
     private FileStream? authentication;
     public uint Id { get; }
     public Task<int> Exit => exit;
 
-    private NativeHelper(ProcessInformation information, SafeFileHandle writer)
+    private NativeHelper(ProcessInformation information, SafeFileHandle writer, ProcessJob job)
     {
+        this.job = job;
         process = new SafeProcessHandle(information.Process, true);
         CloseHandle(information.Thread);
         Id = information.ProcessId;
@@ -44,14 +46,15 @@ internal sealed class NativeHelper : IDisposable
                 using var nul = CreateFileW("NUL", 0xC0000000, 3, ref security, 3, 0, IntPtr.Zero);
                 if (nul.IsInvalid) throw NativeError();
                 nuint attributeBytes = 0;
-                InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref attributeBytes);
+                InitializeProcThreadAttributeList(IntPtr.Zero, 2, 0, ref attributeBytes);
                 var attributes = Marshal.AllocHGlobal(checked((int)attributeBytes));
                 var handles = Marshal.AllocHGlobal(2 * IntPtr.Size);
+                var jobHandles = Marshal.AllocHGlobal(IntPtr.Size);
                 IntPtr environment = IntPtr.Zero;
                 var initialized = false;
                 try
                 {
-                    if (!InitializeProcThreadAttributeList(attributes, 1, 0, ref attributeBytes)) throw NativeError();
+                    if (!InitializeProcThreadAttributeList(attributes, 2, 0, ref attributeBytes)) throw NativeError();
                     initialized = true;
                     Marshal.WriteIntPtr(handles, reader.DangerousGetHandle());
                     Marshal.WriteIntPtr(handles, IntPtr.Size, nul.DangerousGetHandle());
@@ -77,10 +80,29 @@ internal sealed class NativeHelper : IDisposable
                     variables.Remove("CODEX_PULSE_QUERY_PROFILE");
                     var block = string.Concat(variables.Select(pair => pair.Key + "=" + pair.Value + "\0")) + "\0";
                     environment = Marshal.StringToHGlobalUni(block);
-                    if (!CreateProcessW(executable, command, IntPtr.Zero, IntPtr.Zero, true,
-                            0x00080000 | 0x08000000 | 0x00000400, environment, runtime, ref startup, out var information))
-                        throw NativeError();
-                    return new NativeHelper(information, writer);
+                    var job = ProcessJob.Create();
+                    try
+                    {
+                        Marshal.WriteIntPtr(jobHandles,job.DangerousGetHandle());
+                        // Assign at creation, closing the parent-death race
+                        // between CreateProcess and AssignProcessToJobObject.
+                        if(!UpdateProcThreadAttribute(attributes,0,0x2000D,jobHandles,(nuint)IntPtr.Size,IntPtr.Zero,IntPtr.Zero))throw NativeError();
+                        if (!CreateProcessW(executable, command, IntPtr.Zero, IntPtr.Zero, true,
+                                0x00080000 | 0x08000000 | 0x00000400 | 0x00000004, environment, runtime, ref startup, out var information))
+                            throw NativeError();
+                        try
+                        {
+                            if (ResumeThread(information.Thread) == uint.MaxValue) throw NativeError();
+                        }
+                        catch
+                        {
+                            TerminateRawProcess(information.Process, 1);
+                            CloseHandle(information.Thread); CloseHandle(information.Process);
+                            throw;
+                        }
+                        return new NativeHelper(information, writer, job);
+                    }
+                    catch { job.Dispose(); throw; }
                 }
                 finally
                 {
@@ -88,6 +110,7 @@ internal sealed class NativeHelper : IDisposable
                     if (initialized) DeleteProcThreadAttributeList(attributes);
                     Marshal.FreeHGlobal(attributes);
                     Marshal.FreeHGlobal(handles);
+                    Marshal.FreeHGlobal(jobHandles);
                 }
             }
             catch { writer.Dispose(); throw; }
@@ -101,8 +124,9 @@ internal sealed class NativeHelper : IDisposable
     }
 
     public void CloseParentPipe() => Interlocked.Exchange(ref authentication, null)?.Dispose();
+    public Task<bool> DrainJobAsync()=>job.DrainAsync();
     public void Terminate() { if (!exit.IsCompleted && !TerminateProcess(process, 1)) throw NativeError(); }
-    public void Dispose() { CloseParentPipe(); process.Dispose(); }
+    public void Dispose() { CloseParentPipe(); job.Dispose(); process.Dispose(); }
 
     internal static string Quote(string value)
     {
@@ -140,5 +164,7 @@ internal sealed class NativeHelper : IDisposable
     [DllImport("kernel32.dll", SetLastError = true)] private static extern uint WaitForSingleObject(SafeProcessHandle handle, uint milliseconds);
     [DllImport("kernel32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool GetExitCodeProcess(SafeProcessHandle process, out uint code);
     [DllImport("kernel32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool TerminateProcess(SafeProcessHandle process, uint code);
+    [DllImport("kernel32.dll", EntryPoint="TerminateProcess", SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool TerminateRawProcess(IntPtr process, uint code);
+    [DllImport("kernel32.dll", SetLastError=true)] private static extern uint ResumeThread(IntPtr thread);
     [DllImport("kernel32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool CloseHandle(IntPtr handle);
 }
