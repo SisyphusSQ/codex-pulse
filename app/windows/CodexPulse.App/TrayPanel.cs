@@ -117,7 +117,7 @@ internal sealed class TrayPanel:Window,IDisposable
                 var qr=new QuotaCurrentRequest{Provider=new(){Provider=provider},EvaluatedAtMs=now};
                 var q=host.Client.QueryAsync("QuotaCurrent",qr,context,["quota","account"],(core,d,c)=>core.QuotaCurrentAsync(qr,deadline:d,cancellationToken:c),ct,true);
                 Task<AccountSnapshotResponse?> a=Task.FromResult<AccountSnapshotResponse?>(null);
-                if(provider=="codex")
+                if(provider is "codex" or "cursor" or "grok")
                 {
                     var ar=new AccountSnapshotRequest{Provider=new(){Provider=provider},EvaluatedAtMs=now,TimeZone=context.TimeZone};
                     a=Optional(host.Client.QueryAsync("AccountSnapshot",ar,context,["account"],(core,d,c)=>core.AccountSnapshotAsync(ar,deadline:d,cancellationToken:c),ct,true));
@@ -163,7 +163,7 @@ internal sealed class TrayPanel:Window,IDisposable
             if(slot.State.Value is {} value && value.Provider==host.Workspace.TrayProvider)
             {
                 var trusted=TrayPresentation.CanShowQuota(value.Provider,value.Quota,value.Account);
-                if(value.Provider=="codex")document.Children.Add(PresentationControls.Text(trusted?TrayPresentation.Identity(value.Account,privacy,L):L.Text("正在确认账号；在线额度暂不展示。","Confirming account; online quota withheld.")));
+                if(value.Provider!="dsh")document.Children.Add(PresentationControls.Text(value.Provider!="codex" || trusted?TrayPresentation.Identity(value.Provider,value.Account,privacy,L):L.Text("正在确认账号；在线额度暂不展示。","Confirming account; online quota withheld.")));
                 if(trusted && value.Quota?.Current is {} quota)
                 {
                     foreach(var window in QuotaPresentation.Windows(quota))

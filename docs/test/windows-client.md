@@ -210,3 +210,9 @@ E13 真实设置保存复验发现页面失效刷新可取消共享查询槽，�
 - Windows Helper/WinUI locked build 成功，0 warnings/errors。真实 development Home 启动后环境/参数/preferences/物理身份及私有 runtime 全部读回一致，Home 摘要 `9c883cdeaa79cca0`。实际打开 API 页、年度空样本图和两张完整的未配置来源卡，再从管理入口进入两个独立 PasswordBox 分区；删除按钮在未配置时禁用，没有录入真实 Key。产品菜单退出后 App/Helper 均消失。
 
 安全自查：固定既有 HTTPS 端点、无新依赖；密钥仅经已鉴权本机 mutation 交给 Go，明文 credentials.db 的 ACL 边界明确，未误称加密。输入不进入偏好、日志、普通响应、启动 pipe 或上报。真实 DeepSeek/OpenCode Go 账户数据、余额图及远端额度验收未执行：本轮没有其可用凭据及明确调用授权，不能用上述 fixture 或未配置页面替代。提交/合并阶段按约定不重复测试，无 CI checks 不记 CI 通过。
+
+### TOO-668：补齐 Cursor/Grok 账号胶囊（2026-10-29）
+
+集成审查发现额度页与托盘只请求 Codex AccountSnapshot。已补齐 Cursor/Grok 的 generated RPC 加载，按 account.type 验证身份；Cursor 保留其 Pro/Pro+/Ultra 等套餐，Grok 原样展示 Go 提供的套餐，不套用 Codex Pro tier、手工订阅或日期。账号读取失败时不继续显示旧胶囊；DSH 不生成账号。托盘复制的隐私分支覆盖三种账号，邮箱与套餐一并隐藏。
+
+C# executable tests 148 项断言通过，新增 4 项验证 Provider 类型隔离、Cursor/Grok 套餐、无凭据不报 Free、非 Codex 脱敏且不挪用 Codex 日期。WinUI locked/no-restore build 成功，0 warnings/errors。本修复不改 Go/Core/上报合同；Cursor/Grok 真实账号/UI 数据验收仍为用户明确豁免，未执行、不记通过。安全自查：仅消费既有无秘密身份 DTO，无新增文件或凭据读取，无隐私复制回退。提交与合并收尾不重复测试，无 CI checks 不记 CI 通过。

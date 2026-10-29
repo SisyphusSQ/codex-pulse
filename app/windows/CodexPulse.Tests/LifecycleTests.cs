@@ -35,6 +35,12 @@ internal static class LifecycleTests
         Require(TrayPresentation.CanShowQuota("codex",quota,account) && !TrayPresentation.CanShowQuota("cursor",quota,account),"tray quota verifies its Provider independently from the main selection");
         account.Binding.BindingGeneration=2;Require(!TrayPresentation.CanShowQuota("codex",quota,account),"tray suppresses quota when account generations differ");
         var l=new Localization();l.Set("en-US");Require(!TrayPresentation.Identity(account,true,l).Contains("private") && !TrayPresentation.ClipboardText.Contains("@"),"private screenshot identity and text representation contain no account details");
+        var cursor=new AccountSnapshotResponse{Account=new(){Type="cursor",Email="cursor-private@example.invalid",PlanType="pro_plus"},Subscription=new(){ResolvedPlan=CodexSubscriptionPlan.Pro20X,MembershipDate="2026-01-01"}};
+        Require(TrayPresentation.Identity("cursor",cursor,false,l)=="cursor-private@example.invalid · Pro+","Cursor account capsule uses its own plan and cannot acquire Codex subscription dates or Pro tiers");
+        Require(!TrayPresentation.Identity("grok",cursor,false,l).Contains("cursor-private"),"account identity with the wrong Provider type is withheld");
+        var grok=new AccountSnapshotResponse{Account=new(){Type="grok",Email="grok-private@example.invalid",PlanType="SuperGrok"}};
+        Require(TrayPresentation.Identity("grok",grok,false,l)=="grok-private@example.invalid · SuperGrok" && !TrayPresentation.Identity("grok",grok,true,l).Contains("private") && !TrayPresentation.Identity("cursor",cursor,true,l).Contains("private"),"Grok identity preserves its plan while private capture hides both non-Codex identities");
+        Require(!TrayPresentation.Identity("dsh",grok,false,l).Contains("SuperGrok") && !TrayPresentation.Identity("cursor",new(),false,l).Contains("Free"),"DSH cannot inherit another account and missing account facts cannot become a free plan");
     }
     public static async Task Parent(string executable,string runtime)
     {

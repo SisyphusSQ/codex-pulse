@@ -99,6 +99,8 @@ Windows Cursor、Grok、DSH 的解析和业务真相仍由 Go 提供。Grok 与 
 
 独立额度页按 Go 返回的 limit/window_minutes/reset 展示当前窗口、来源可信状态、证据与重置库存。Codex 账号、额度和节奏的 binding scope/generation 必须一致；未确认时隐藏在线事实，Home 用量继续独立读取。节奏轨迹、上一周期、历史带和预测直接消费 Core，不在 C# 推算业务额度或会员剩余天数。定价参考独立于用量范围，按当前 Provider 的目录展示，Codex 隐藏旧模型家族与别名的规则与 Mac 一致。
 
+额度页和托盘分别加载当前 Provider 的账号快照。Cursor/Grok 胶囊只展示匹配 account.type 的邮箱和各自套餐，不消费 Codex 手工订阅、Pro tier 或日期；读取失败隐藏旧身份。DSH 不提供官方账号或额度。托盘隐私复制对三家账号统一隐藏邮箱、套餐和日期。
+
 账号额度列表只调用 `ListCodexAccountQuotas` 的原子快照，当前与历史共用动态窗口卡片，历史无在线刷新。订阅资料分区使用独立 Home 级内存协调器：自动资料只读，草稿仅保存手工字段；列表刷新或账号通知后的页面重建不覆盖草稿，真实 Home generation 变化后丢弃。新增/修改/删除、同邮箱显式关联与解除、legacy 历史关联均使用服务端 revision，receipt 后强制 List 读回。conflict 保留草稿并显式 rebase；未知回执不重发，只有最新列表匹配时才单独标记读回确认。保留策略与清理历史是两个独立动作，均有产品确认；清理后再次读取账号额度，不删 Home 用量。
 
 ## 设置、来源与恢复
