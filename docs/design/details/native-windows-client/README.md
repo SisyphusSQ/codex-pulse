@@ -98,3 +98,13 @@ Project 列表分别展示服务端 global/matched/page totals，详情仅展示
 独立额度页按 Go 返回的 limit/window_minutes/reset 展示当前窗口、来源可信状态、证据与重置库存。Codex 账号、额度和节奏的 binding scope/generation 必须一致；未确认时隐藏在线事实，Home 用量继续独立读取。节奏轨迹、上一周期、历史带和预测直接消费 Core，不在 C# 推算业务额度或会员剩余天数。定价参考独立于用量范围，按当前 Provider 的目录展示，Codex 隐藏旧模型家族与别名的规则与 Mac 一致。
 
 账号额度列表只调用 `ListCodexAccountQuotas` 的原子快照，当前与历史共用动态窗口卡片，历史无在线刷新。订阅资料分区使用独立 Home 级内存协调器：自动资料只读，草稿仅保存手工字段；列表刷新或账号通知后的页面重建不覆盖草稿，真实 Home generation 变化后丢弃。新增/修改/删除、同邮箱显式关联与解除、legacy 历史关联均使用服务端 revision，receipt 后强制 List 读回。conflict 保留草稿并显式 rebase；未知回执不重发，只有最新列表匹配时才单独标记读回确认。保留策略与清理历史是两个独立动作，均有产品确认；清理后再次读取账号额度，不删 Home 用量。
+
+## 设置、来源与恢复
+
+通用设置只提交生成的 `UpdateSettingsRequest` 与权威 revision。独立协调器保留未保存字段，重读不会覆盖输入；显式 rebase 采用三方合并，只保留用户改动，未改字段使用最新快照。写入后的有界权威读回独立于页面请求取消，避免 settings invalidation 重建页面时把已提交值误报为未确认。现有 Core 对 stale CAS 的 `Unavailable` 通过读回 revision 变化识别为冲突，不改变共享错误合同，也不自动重发。
+
+Home 切换与普通设置分开，先 `PlanHomeSwitch` 探测与预览，再 `ConfirmHomeSwitch`；路径、策略或 settings revision 变化使旧计划不可确认。确认/恢复后读取 Settings 的 generation、switch status 与 last outcome；不知道结果时保留恢复语义，只有显式恢复操作才调用 `RecoverHomeSwitch`。不在 C# 读取 Preferences、SQLite 或 Codex 源文件。Windows Codex/Node 显式程序路径是独立平台偏好，保存在当前用户 runtime profile 的 HKCU 项，应用时排空并重新连接 Helper；留空恢复自动发现，不解析或执行 npm shim。
+
+来源与任务支持服务端筛选、排序、keyset 分页和结构化详情，opaque key 不显示、不持久化。只读 Data Health 位于本机状态之下，消费 `HealthProjection` 与独立时间的 `DataHealth`；资源、队列、覆盖、任务、事件、有限错误及恢复动作直接来自 Helper，缺失保持未知。健康事件另支持 `ListHealth/Health` 分页和关联来源/任务下钻。前台健康页每五秒重读，失去前台后停止该页轮询。资源图不补造缺失样本，也不把 Helper 的进程指标归因给外部 Codex 会话。
+
+受控动作只接受固定 pause/resume/reconcile 与 recovery registry。reconcile 先展示影响并确认，repair 仅开放现有 Analyze-only dry-run；没有任意命令、SQL、日志导出或原始文件删除。迁移失败保持 recovery-only 图，只消费 `MigrationRecovery*`：准备备份后的确认 token 只在内存，取消和结果未知均读回，恢复成功必须结束旧 Helper 并启动新进程，不能热装配正常业务图。

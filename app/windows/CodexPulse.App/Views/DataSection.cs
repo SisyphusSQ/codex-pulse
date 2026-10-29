@@ -43,6 +43,7 @@ internal sealed class DataSection<T> : IDisposable where T : class
             content.Children.Clear(); render(content, state.Value); rendered = state.Value;
         }
     }
+    public void RefreshPresentation(){rendered=default;Publish();}
     public void Dispose() { disposed = true; Slot.Dispose(); }
 }
 

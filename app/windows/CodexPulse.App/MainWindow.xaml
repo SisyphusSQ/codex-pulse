@@ -31,7 +31,7 @@
                 <InfoBar x:Name="ConnectionNotice" Grid.Row="1" IsOpen="True" IsClosable="False" Severity="Informational">
                     <InfoBar.ActionButton><Button x:Name="ReconnectButton" Click="ReconnectClicked" /></InfoBar.ActionButton>
                 </InfoBar>
-                <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <ScrollViewer x:Name="RangeBar" Grid.Row="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <ComboBox x:Name="RangePicker" Width="128" SelectionChanged="RangeChanged" AutomationProperties.AutomationId="range-picker" />
                         <CalendarDatePicker x:Name="StartDate" MinWidth="140" DateChanged="DatesChanged" AutomationProperties.AutomationId="start-date" />

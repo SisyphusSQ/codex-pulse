@@ -11,11 +11,12 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
+	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 func main() {
-	if len(os.Args) != 3 || !filepath.IsAbs(os.Args[1]) || (os.Args[2] != "normal" && os.Args[2] != "recovery") {
+	if len(os.Args) != 3 || !filepath.IsAbs(os.Args[1]) || (os.Args[2] != "normal" && os.Args[2] != "recovery" && os.Args[2] != "recovery-restore") {
 		panic("invalid fixture arguments")
 	}
 	ctx := context.Background()
@@ -30,9 +31,14 @@ func main() {
 	store, err := preferences.NewFileStore(filepath.Join(runtime, "preferences.json"))
 	must(err)
 	must(store.InitializePreferences(ctx, snapshot))
-	if os.Args[2] == "recovery" {
+	if os.Args[2] == "recovery" || os.Args[2] == "recovery-restore" {
 		database, err := storesqlite.Open(ctx, storesqlite.Config{Path: filepath.Join(runtime, "codex-pulse.db")})
 		must(err)
+		if os.Args[2] == "recovery-restore" {
+			must(factstore.NewRepository(database).EnsureApplicationSchema(ctx))
+			_, err = database.Backup(ctx, storesqlite.BackupOptions{Destination: filepath.Join(runtime, "backups", "known-good.db")})
+			must(err)
+		}
 		must(database.Write(ctx, func(ctx context.Context, tx *gorm.DB) error {
 			return tx.WithContext(ctx).Exec("PRAGMA user_version = 9999").Error
 		}))

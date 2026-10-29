@@ -7,12 +7,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"gorm.io/gorm"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	factstore "github.com/SisyphusSQ/codex-pulse/internal/store"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
@@ -151,6 +154,9 @@ func TestMigrationRecoveryRejectsBackupChangedAfterConfirmation(t *testing.T) {
 }
 
 func TestMigrationRecoveryListsOnlyPrivateBackupDirectoryAndFiles(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix mode contract; Windows DACL rejection is covered by TestWindowsMigrationRecoveryRejectsPublicBackupACL")
+	}
 	config := migrationRecoveryTestConfig(t)
 	backupDirectory := filepath.Join(filepath.Dir(config.Path), "backups")
 	if err := os.Mkdir(backupDirectory, 0o755); err != nil {
@@ -175,7 +181,7 @@ func TestMigrationRecoveryListsOnlyPrivateBackupDirectoryAndFiles(t *testing.T) 
 }
 
 func TestMigrationRecoveryAtomicSwitchRollsBackBeforeCommit(t *testing.T) {
-	directory := t.TempDir()
+	directory := filepath.Dir(migrationRecoveryTestConfig(t).Path)
 	canonical := filepath.Join(directory, "canonical.db")
 	ready := filepath.Join(directory, "ready.db")
 	if err := os.WriteFile(canonical, []byte("old"), 0o600); err != nil {
@@ -221,6 +227,7 @@ func TestMigrationRecoveryCancellationPreservesCanonical(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	cancel()
 	if _, err := controller.ConfirmRestore(ctx, confirmation.Token); err == nil {
 		t.Fatal("ConfirmRestore(cancelled) error = nil")
@@ -327,7 +334,13 @@ func TestMigrationRecoveryPrepareCancellationDoesNotBlockState(t *testing.T) {
 		_, err := controller.PrepareRestore(ctx, "large.db")
 		result <- err
 	}()
-	<-started
+	select {
+	case <-started:
+	case err := <-result:
+		t.Fatalf("PrepareRestore returned before hashing: %v", err)
+	case <-time.After(time.Second):
+		t.Fatal("PrepareRestore did not start hashing")
+	}
 	if _, err := controller.Retry(context.Background()); !errors.Is(err, ErrMigrationRecoveryBusy) {
 		t.Fatalf("Retry during PrepareRestore error = %v, want busy", err)
 	}
@@ -396,7 +409,7 @@ func TestMigrationRecoveryReportsCompletionAuditWarning(t *testing.T) {
 }
 
 func TestMigrationRecoverySwitchRollbackFailureReportsCommitted(t *testing.T) {
-	directory := t.TempDir()
+	directory := filepath.Dir(migrationRecoveryTestConfig(t).Path)
 	canonical := filepath.Join(directory, "canonical.db")
 	ready := filepath.Join(directory, "ready.db")
 	if err := os.WriteFile(canonical, []byte("old"), 0o600); err != nil {
@@ -426,7 +439,7 @@ func TestMigrationRecoverySwitchRollbackFailureReportsCommitted(t *testing.T) {
 }
 
 func TestMigrationRecoveryCompanionCleanupFailureReportsCommitted(t *testing.T) {
-	directory := t.TempDir()
+	directory := filepath.Dir(migrationRecoveryTestConfig(t).Path)
 	canonical := filepath.Join(directory, "canonical.db")
 	ready := filepath.Join(directory, "ready.db")
 	if err := os.WriteFile(canonical, []byte("old"), 0o600); err != nil {
@@ -454,6 +467,9 @@ func TestMigrationRecoveryIgnoresSymlinkBackupAndRejectsSymlinkAudit(t *testing.
 		t.Fatalf("write target: %v", err)
 	}
 	if err := os.Symlink(target, filepath.Join(backupDirectory, "linked.db")); err != nil {
+		if runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(1314)) {
+			t.Skip("current Windows account has no symbolic-link privilege")
+		}
 		t.Fatalf("symlink backup: %v", err)
 	}
 	controller := migrationRecoveryTestController(t, config)
@@ -481,9 +497,9 @@ func TestMigrationRecoveryIgnoresSymlinkBackupAndRejectsSymlinkAudit(t *testing.
 
 func migrationRecoveryTestConfig(t *testing.T) storesqlite.Config {
 	t.Helper()
-	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
-		t.Fatalf("chmod temp directory: %v", err)
+	directory := filepath.Join(t.TempDir(), "private")
+	if err := platformfs.Mkdir(directory, 0o700); err != nil {
+		t.Fatalf("create private temp directory: %v", err)
 	}
 	return storesqlite.Config{Path: filepath.Join(directory, "codex-pulse.db")}
 }

@@ -32,7 +32,7 @@ public sealed record PlatformOptions(string Runtime, string Home, string Helper)
 public sealed record WindowPreferences(string Theme = "system", string Feature = "Summary", string? Provider = null, string? TrayProvider = null,
     int Width = 1280, int Height = 820)
 {
-    private static string Key(string runtime) => @"Software\CodexPulse\Windows\Profiles\" +
+    internal static string Key(string runtime) => @"Software\CodexPulse\Windows\Profiles\" +
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(runtime.ToUpperInvariant())));
     public static WindowPreferences Load(string runtime)
     {
@@ -45,5 +45,34 @@ public sealed record WindowPreferences(string Theme = "system", string Feature =
     {
         using var key = Registry.CurrentUser.CreateSubKey(Key(runtime));
         key.SetValue("Window", JsonSerializer.Serialize(this), RegistryValueKind.String);
+    }
+}
+
+// Paths are platform preferences, separate from Helper-owned business settings.
+// Empty requests discovery; null leaves an inherited environment value intact.
+public sealed record LaunchPreferences(string? CodexBinary=null,string? NodeBinary=null)
+{
+    public static LaunchPreferences Load(string runtime)
+    {
+        using var key=Registry.CurrentUser.OpenSubKey(WindowPreferences.Key(runtime));
+        if(key?.GetValue("Launch") is not string value)return new();
+        if(value.Length>32768)throw new IOException("launch_preferences_invalid");
+        return JsonSerializer.Deserialize<LaunchPreferences>(value)??new();
+    }
+    public void Save(string runtime)
+    {
+        Validate(CodexBinary);Validate(NodeBinary);
+        using var key=Registry.CurrentUser.CreateSubKey(WindowPreferences.Key(runtime));key.SetValue("Launch",JsonSerializer.Serialize(this),RegistryValueKind.String);
+    }
+    private static void Validate(string? path)
+    {
+        if(string.IsNullOrEmpty(path))return;
+        if(!Path.IsPathFullyQualified(path) || !File.Exists(path) || !string.Equals(Path.GetExtension(path),".exe",StringComparison.OrdinalIgnoreCase))throw new ArgumentException("executable_path_invalid");
+    }
+    public void Apply()
+    {
+        Validate(CodexBinary);Validate(NodeBinary);
+        if(CodexBinary is not null)Environment.SetEnvironmentVariable("CODEX_PULSE_CODEX_BINARY",string.IsNullOrWhiteSpace(CodexBinary)?null:CodexBinary);
+        if(NodeBinary is not null)Environment.SetEnvironmentVariable("CODEX_PULSE_NODE_BINARY",string.IsNullOrWhiteSpace(NodeBinary)?null:NodeBinary);
     }
 }
