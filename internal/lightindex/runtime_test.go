@@ -15,6 +15,7 @@ import (
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
@@ -1646,8 +1647,8 @@ func openLightRuntimeRepository(
 	t *testing.T,
 ) (*storesqlite.Store, *store.Repository, *storelight.Repository) {
 	t.Helper()
-	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
+	directory := filepath.Join(t.TempDir(), "private")
+	if err := platformfs.Mkdir(directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	database, err := storesqlite.Open(context.Background(), storesqlite.Config{Path: filepath.Join(directory, "light.db")})

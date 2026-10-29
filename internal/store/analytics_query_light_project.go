@@ -35,11 +35,11 @@ func listLightProjectAnalytics(
 	database *gorm.DB,
 	filter ProjectAnalyticsFilter,
 ) (ProjectAnalyticsPage, bool, error) {
-	var sessionCount int64
-	if err := database.Table("light_sessions").Count(&sessionCount).Error; err != nil {
+	available, err := hasLightAnalyticsSnapshot(database)
+	if err != nil {
 		return ProjectAnalyticsPage{}, false, err
 	}
-	if sessionCount == 0 {
+	if !available {
 		return ProjectAnalyticsPage{}, false, nil
 	}
 	location, err := time.LoadLocation(filter.Range.ReportingTimezone)

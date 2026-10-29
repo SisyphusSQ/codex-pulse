@@ -122,6 +122,10 @@ func (lister *ThreadLister) List(ctx context.Context, confirmedHome string) (Thr
 }
 
 func canonicalConfirmedHome(confirmedHome string) (string, error) {
+	confirmedHome, err := normalizeMetadataPath(confirmedHome)
+	if err != nil {
+		return "", err
+	}
 	canonicalHome, err := filepath.EvalSymlinks(confirmedHome)
 	if err != nil {
 		return "", fmt.Errorf("confirm Codex Home: %w", err)
@@ -130,7 +134,7 @@ func canonicalConfirmedHome(confirmedHome string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("canonicalize Codex Home: %w", err)
 	}
-	return canonicalHome, nil
+	return normalizeMetadataPath(canonicalHome)
 }
 
 func normalizeThread(thread threadRecord, canonicalHome string, ordinal int) (ThreadMetadata, []MetadataDiagnostic, bool) {
@@ -174,6 +178,14 @@ func normalizeThread(thread threadRecord, canonicalHome string, ordinal int) (Th
 }
 
 func validatedRolloutPath(canonicalHome, candidate string) (string, string) {
+	canonicalHome, err := normalizeMetadataPath(canonicalHome)
+	if err != nil {
+		return "", "rollout_path_invalid"
+	}
+	candidate, err = normalizeMetadataPath(candidate)
+	if err != nil {
+		return "", "rollout_path_invalid"
+	}
 	if !filepath.IsAbs(candidate) || filepath.Ext(candidate) != ".jsonl" {
 		return "", "rollout_path_invalid"
 	}
@@ -182,6 +194,10 @@ func validatedRolloutPath(canonicalHome, candidate string) (string, string) {
 		return "", "rollout_path_unavailable"
 	}
 	canonicalCandidate, err = filepath.Abs(canonicalCandidate)
+	if err != nil {
+		return "", "rollout_path_invalid"
+	}
+	canonicalCandidate, err = normalizeMetadataPath(canonicalCandidate)
 	if err != nil {
 		return "", "rollout_path_invalid"
 	}

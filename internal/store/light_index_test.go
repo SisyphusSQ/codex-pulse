@@ -19,14 +19,14 @@ func TestReplaceLightMetadataPublishesOneGenerationAndRemovesStaleSessions(t *te
 	t.Parallel()
 
 	repository := openLightRuntimeRepository(t)
-	home := storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
+	home := storelight.LightHomeIdentity{Path: lightTestPath("/confirmed-home"), DeviceID: "1", Inode: 2}
 	name := "真实标题"
-	path := "/confirmed-home/sessions/one.jsonl"
+	path := lightTestPath("/confirmed-home/sessions/one.jsonl")
 	if err := repository.ReplaceLightMetadata(context.Background(), storelight.LightMetadataSnapshot{
 		Home: home, Generation: 1, ReadyAtMS: 1_000,
 		Sessions: []storelight.LightSessionMetadata{
-			{SessionID: "one", ThreadName: &name, CWD: "/workspace/one", RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 200},
-			{SessionID: "stale", CWD: "/workspace/stale", CreatedAtMS: 300, UpdatedAtMS: 400},
+			{SessionID: "one", ThreadName: &name, CWD: lightTestPath("/workspace/one"), RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 200},
+			{SessionID: "stale", CWD: lightTestPath("/workspace/stale"), CreatedAtMS: 300, UpdatedAtMS: 400},
 		},
 	}); err != nil {
 		t.Fatalf("ReplaceLightMetadata(first) error = %v", err)
@@ -34,7 +34,7 @@ func TestReplaceLightMetadataPublishesOneGenerationAndRemovesStaleSessions(t *te
 	if err := repository.ReplaceLightMetadata(context.Background(), storelight.LightMetadataSnapshot{
 		Home: home, Generation: 2, ReadyAtMS: 2_000,
 		Sessions: []storelight.LightSessionMetadata{
-			{SessionID: "one", ThreadName: &name, CWD: "/workspace/renamed", RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 500},
+			{SessionID: "one", ThreadName: &name, CWD: lightTestPath("/workspace/renamed"), RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 500},
 		},
 	}); err != nil {
 		t.Fatalf("ReplaceLightMetadata(second) error = %v", err)
@@ -49,7 +49,7 @@ func TestReplaceLightMetadataPublishesOneGenerationAndRemovesStaleSessions(t *te
 		t.Fatalf("ListLightSessions() = %#v, %v", sessions, err)
 	}
 	if sessions[0].SessionID != "one" || sessions[0].MetadataGeneration != 2 ||
-		sessions[0].CWD != "/workspace/renamed" || sessions[0].ThreadName == nil || *sessions[0].ThreadName != name {
+		sessions[0].CWD != lightTestPath("/workspace/renamed") || sessions[0].ThreadName == nil || *sessions[0].ThreadName != name {
 		t.Fatalf("session = %#v", sessions[0])
 	}
 }
@@ -114,17 +114,17 @@ func TestReplaceLightMetadataRejectsHomeGenerationConflictAtomically(t *testing.
 
 	repository := openLightRuntimeRepository(t)
 	first := storelight.LightMetadataSnapshot{
-		Home:       storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2},
+		Home:       storelight.LightHomeIdentity{Path: lightTestPath("/confirmed-home"), DeviceID: "1", Inode: 2},
 		Generation: 1, ReadyAtMS: 1_000,
-		Sessions: []storelight.LightSessionMetadata{{SessionID: "one", CWD: "/workspace", CreatedAtMS: 100, UpdatedAtMS: 200}},
+		Sessions: []storelight.LightSessionMetadata{{SessionID: "one", CWD: lightTestPath("/workspace"), CreatedAtMS: 100, UpdatedAtMS: 200}},
 	}
 	if err := repository.ReplaceLightMetadata(context.Background(), first); err != nil {
 		t.Fatalf("ReplaceLightMetadata(first) error = %v", err)
 	}
 	conflict := storelight.LightMetadataSnapshot{
-		Home:       storelight.LightHomeIdentity{Path: "/other-home", DeviceID: "9", Inode: 10},
+		Home:       storelight.LightHomeIdentity{Path: lightTestPath("/other-home"), DeviceID: "9", Inode: 10},
 		Generation: 2, ReadyAtMS: 2_000,
-		Sessions: []storelight.LightSessionMetadata{{SessionID: "other", CWD: "/other", CreatedAtMS: 300, UpdatedAtMS: 400}},
+		Sessions: []storelight.LightSessionMetadata{{SessionID: "other", CWD: lightTestPath("/other"), CreatedAtMS: 300, UpdatedAtMS: 400}},
 	}
 	if err := repository.ReplaceLightMetadata(context.Background(), conflict); !errors.Is(err, storelight.ErrLightHomeFence) {
 		t.Fatalf("ReplaceLightMetadata(conflict) error = %v", err)
@@ -139,11 +139,11 @@ func TestReplaceLightMetadataForConfirmedHomeSwitchDropsOldDerivedIndex(t *testi
 	t.Parallel()
 
 	repository := lightIndexRepositoryFixture(t)
-	oldHome := storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
-	newHome := storelight.LightHomeIdentity{Path: "/next-home", DeviceID: "9", Inode: 10}
+	oldHome := storelight.LightHomeIdentity{Path: lightTestPath("/confirmed-home"), DeviceID: "1", Inode: 2}
+	newHome := storelight.LightHomeIdentity{Path: lightTestPath("/next-home"), DeviceID: "9", Inode: 10}
 	if err := repository.ReplaceLightMetadataForHomeSwitch(context.Background(), oldHome, storelight.LightMetadataSnapshot{
 		Home: newHome, Generation: 1, ReadyAtMS: 3_000,
-		Sessions: []storelight.LightSessionMetadata{{SessionID: "next", CWD: "/workspace/next", CreatedAtMS: 300, UpdatedAtMS: 400}},
+		Sessions: []storelight.LightSessionMetadata{{SessionID: "next", CWD: lightTestPath("/workspace/next"), CreatedAtMS: 300, UpdatedAtMS: 400}},
 	}); err != nil {
 		t.Fatalf("ReplaceLightMetadataForHomeSwitch() error = %v", err)
 	}
@@ -159,7 +159,7 @@ func TestReplaceLightMetadataForConfirmedHomeSwitchDropsOldDerivedIndex(t *testi
 		t.Fatalf("old Home token facts survived switch: %v", err)
 	}
 	if err := repository.ReplaceLightMetadataForHomeSwitch(context.Background(), oldHome, storelight.LightMetadataSnapshot{
-		Home:       storelight.LightHomeIdentity{Path: "/third-home", DeviceID: "11", Inode: 12},
+		Home:       storelight.LightHomeIdentity{Path: lightTestPath("/third-home"), DeviceID: "11", Inode: 12},
 		Generation: 1, ReadyAtMS: 4_000,
 	}); !errors.Is(err, storelight.ErrLightHomeFence) {
 		t.Fatalf("stale expected Home error = %v", err)
@@ -210,11 +210,11 @@ func TestReplaceLightMetadataRejectsDuplicateSessionIDs(t *testing.T) {
 
 	repository := openLightRuntimeRepository(t)
 	err := repository.ReplaceLightMetadata(context.Background(), storelight.LightMetadataSnapshot{
-		Home:       storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2},
+		Home:       storelight.LightHomeIdentity{Path: lightTestPath("/confirmed-home"), DeviceID: "1", Inode: 2},
 		Generation: 1, ReadyAtMS: 1_000,
 		Sessions: []storelight.LightSessionMetadata{
-			{SessionID: "same", CWD: "/one", CreatedAtMS: 100, UpdatedAtMS: 200},
-			{SessionID: "same", CWD: "/two", CreatedAtMS: 300, UpdatedAtMS: 400},
+			{SessionID: "same", CWD: lightTestPath("/one"), CreatedAtMS: 100, UpdatedAtMS: 200},
+			{SessionID: "same", CWD: lightTestPath("/two"), CreatedAtMS: 300, UpdatedAtMS: 400},
 		},
 	})
 	if !errors.Is(err, storelight.ErrInvalidRecord) {
@@ -1551,7 +1551,7 @@ func TestLightAnalyticsGroupsCodexWorktreesAndKeepsScratchUsageAsOther(t *testin
 
 	ctx := context.Background()
 	repository := openLightRuntimeRepository(t)
-	home := storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2}
+	home := storelight.LightHomeIdentity{Path: lightTestPath("/confirmed-home"), DeviceID: "1", Inode: 2}
 	root := t.TempDir()
 	worktreeOne := filepath.Join(root, ".codex", "worktrees", "aaaa", "codex-pulse")
 	worktreeTwo := filepath.Join(root, ".codex", "worktrees", "bbbb", "codex-pulse", "internal")
@@ -1942,13 +1942,13 @@ func TestLightTokenBatchReconcilesAggregateTotalsNotRawCounters(t *testing.T) {
 func lightIndexRepositoryFixture(t *testing.T) *lightTestRepository {
 	t.Helper()
 	repository := openLightRuntimeRepository(t)
-	path := "/confirmed-home/sessions/one.jsonl"
+	path := lightTestPath("/confirmed-home/sessions/one.jsonl")
 	name := "真实标题"
 	if err := repository.ReplaceLightMetadata(context.Background(), storelight.LightMetadataSnapshot{
-		Home:       storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2},
+		Home:       storelight.LightHomeIdentity{Path: lightTestPath("/confirmed-home"), DeviceID: "1", Inode: 2},
 		Generation: 1, ReadyAtMS: 1_000,
 		Sessions: []storelight.LightSessionMetadata{{
-			SessionID: "one", ThreadName: &name, CWD: "/workspace", RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 200,
+			SessionID: "one", ThreadName: &name, CWD: lightTestPath("/workspace"), RolloutPath: &path, CreatedAtMS: 100, UpdatedAtMS: 200,
 		}},
 	}); err != nil {
 		t.Fatal(err)
@@ -1958,8 +1958,8 @@ func lightIndexRepositoryFixture(t *testing.T) *lightTestRepository {
 
 func lightRolloutFixture() storelight.LightRolloutIdentity {
 	return storelight.LightRolloutIdentity{
-		Path: "/confirmed-home/sessions/one.jsonl", SourceFileID: "codex:test",
-		Home:     storelight.LightHomeIdentity{Path: "/confirmed-home", DeviceID: "1", Inode: 2},
+		Path: lightTestPath("/confirmed-home/sessions/one.jsonl"), SourceFileID: "codex:test",
+		Home:     storelight.LightHomeIdentity{Path: lightTestPath("/confirmed-home"), DeviceID: "1", Inode: 2},
 		DeviceID: "3", Inode: 4, SizeBytes: 8_192, MTimeNS: 100,
 		PrefixBytes: 4_096, PrefixSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		FingerprintSHA256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

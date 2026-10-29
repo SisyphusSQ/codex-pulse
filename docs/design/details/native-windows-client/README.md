@@ -140,3 +140,6 @@ WM_POWERBROADCAST 映射现有三种 Lifecycle 事件。客户端只积累最新
 当前用户自包含 bundle 配对 App、PRI、Helper 与独立 PackageHost；用户不依赖 Go、Visual Studio 或共享 .NET 安装。固定 HTTPS feed 和内置 ECDSA P-256 信任根独立于 macOS Sparkle，自动检查不下载，安装要求用户确认和完整包核验。程序目录、runtime 与 Home 分离，稳定启动器读取经核验的 current 指针；签名清单外文件、reparse/hard-link、占用、uncertain/活 PID 和陈旧退出回执均拒绝。
 
 安装发布使用 current/previous/journal 与跨进程互斥，先排空 App/Helper 后切换，再等待 exact nonce/PID/version 的 connected/recovery 回执。失败结果可读回；切换前失败可安全重开旧版，二进制回退仅在实际 SQLite/偏好/凭据 DDL 兼容声明一致时允许，数据库不自动降级。卸载仅移除本安装程序和自有平台入口，保留 Home、runtime 与凭据。完整操作、信任配置和开发/真实证据见 [Windows 安装更新 runbook](../../../test/windows-install-update.md)；正式 Authenticode、公信任和公开更新源本轮未执行。
+### Windows metadata 与空 Home 边界
+
+App Server 的扩展 DOS rollout 路径与普通 Home 路径先统一表示，再验证真实路径与根边界；不接受 UNC/设备命名空间或 ADS 作为本机 metadata 路径。轻量分析以已发布的 Home metadata snapshot 选择读取模式，即便会话数为零也不回退旧深索引，避免 Home 切换后读到旧用量、会话或项目。保留的深索引只在没有已发布轻量快照的既有模式中使用。

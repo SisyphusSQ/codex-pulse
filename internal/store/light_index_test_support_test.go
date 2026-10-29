@@ -1,10 +1,22 @@
 package store
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
 )
+
+// lightTestPath keeps the logical Unix fixture paths unchanged on Unix and
+// represents them on a local Windows volume. It never creates source files.
+func lightTestPath(path string) string {
+	if filepath.IsAbs(path) || !strings.HasPrefix(path, "/") {
+		return path
+	}
+	return filepath.Join(filepath.VolumeName(os.TempDir())+string(filepath.Separator), filepath.FromSlash(strings.TrimPrefix(path, "/")))
+}
 
 type lightTestRepository struct {
 	*coreTestRepository
