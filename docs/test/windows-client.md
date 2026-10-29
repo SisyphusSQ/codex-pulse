@@ -165,3 +165,15 @@ E13 真实设置保存复验发现页面失效刷新可取消共享查询槽，�
 托盘 tool window 未作为独立目标暴露给当前自动化工具：已有面板画面和外部点击关闭观察，尚无托盘内复制、Escape、右键/单击切换的完整原生输入证据。复制隐私目前为代码/开发断言，未声称实际 PNG 已验收。物理睡眠/唤醒、Explorer 重建、多屏/各 DPI 及真实登录启动未执行；系统支持 S3，但未进行物理睡眠；真实登录项变更按本卡范围不作为自动测试。最终安装版本的集中验收和这些缺口归 Master，不把 RPC 通知测试冒充 OS 睡眠。
 
 安全自查：无新增 TCP/任意命令入口；一次性 token 仍只经专用继承 pipe；Job 句柄不继承，退出和连接变更有界；剪贴板两种表示均脱敏；无 C# 业务文件读取或 Agent 凭据处理。合并收尾复用既有证据，无 CI checks 不记通过。
+
+### TOO-672：Windows 中心同步（2026-10-29）
+
+- C# executable tests 126 项断言通过，本卡新增 13 项：短期配对请求清空、默认关闭、独立草稿、清队列的权威范围/间隔、未知回执不重放、读回并发与旧响应栅栏、后台进度不重建日期控件、processing/publication_failed/unknown 不伪装成功、Web 地址与凭据边界。WinUI locked/no-restore build 0 warnings/0 errors。
+- `go test ./internal/reporting ./api/codexpulse/reporting/v1` 通过，使用 synthetic 来源/账号/网络夹具；Windows reporting 队列 fixture 改用 platformfs 私有子目录及真实 ACL 检查，未放宽生产校验。覆盖既有不可变批次、分片/最终确认、全量、重启/重配分区、额度/账号、DSH 白名单和失败状态。它们不作为真实 Provider 验收。
+- 真实原生 App 显式绑定真实 Home 与 ACL 私有 runtime，App/Helper 环境、参数、preferences、物理身份读回全部匹配，摘要 `9c883cdeaa79cca0`。实际完成独立 Windows 设备配对、关闭状态读回、启用/保存、暂停保留队列、退出重启后保留同一设备/起点/17 个批次，以及更新中心后的续传。一次性码没有进入截图、仓库或普通状态 DTO。
+- 真实联调先发现开发中心版本落后并返回 protocol_rejected，客户端没有丢弃队列或剥除字段。已在 sqmc04 对独立开发数据库完成约 50.9 MB 的私有逻辑备份和 SHA-256 记录，再更新仅 development LaunchAgent 的中心/Web；原有 6 个设备均保留，配置哈希及正式中心的进程/二进制/plist 均未变。数据库实际为 SeekDB 1.2（MySQL 5.7 协议兼容标识），不能写成独立 MySQL 8.x 或生产验收。
+- 同一 Windows 设备恢复后，原 17 个批次全部有效确认，pending=0/0 B；固定 Asia/Shanghai、2026-10-28 半开日范围的 Codex 汇总在重复全量导出前后保持一致（9 个会话，43,198,983 total tokens，6,154,928 微美元 API 等价金额，reported charge 仍 unknown）。这证明该范围没有因重复补传双计，尚不替代最终本机源事实/原生页面/Web 的三方精确对账。
+- 原生全量确认/受理及进度已实际观察，Codex 来源为 ready、已排入快照获得确认；整个四 Provider 全量任务仍 running/source_unavailable，因为本机没有 Cursor/Grok/DSH 来源。没有把 pending=0 写成 completed，未寻找这些真实账户或数据；它们的真实环境验收由用户豁免。实际全量 completed 的开发语义由隔离测试覆盖，最终 Codex 专项验收继续在 Master 矩阵记录。
+- 原生“打开中心 Web”实际在默认 Chrome 打开已保存的开发中心根地址，返回正常浏览器授权页面。完整浏览器授权、撤销/重配、真实异常恢复与最终 Windows→Server→Web 对账继续由 Master 集中执行；此处不把登录页当成 Web 业务对账通过。
+
+对抗自审修复了进度轮询重建草稿造成的日期/视口漂移，以及清队列意外保存未提交间隔的问题。安全自查：只复用已鉴权 Core 与既有上报白名单；凭据归 Go 私有存储，一次性码不缓存，未知 mutation 不重放；没有 C# 业务文件读取、TLS 降级或正式中心变更。提交/推送/合并收尾复用以上证据，不重复测试，无 CI checks 不记为 CI 通过。

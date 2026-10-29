@@ -11,12 +11,13 @@ import (
 	"gorm.io/gorm"
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
 func testState(t *testing.T) (*State, string) {
 	t.Helper()
-	dir := t.TempDir()
-	if err := os.Chmod(dir, 0700); err != nil {
+	dir := filepath.Join(t.TempDir(), "private")
+	if err := platformfs.Mkdir(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "reporting.db")
@@ -155,7 +156,7 @@ func TestPrivateStateStableHomeKeysAndFutureSchema(t *testing.T) {
 		t.Fatal("default enabled")
 	}
 	for _, candidate := range []string{path, path + "-wal", path + "-shm"} {
-		if info, err := os.Stat(candidate); err == nil && info.Mode().Perm() != 0600 {
+		if info, err := os.Stat(candidate); err == nil && !platformfs.PrivateMode(candidate, info, 0600) {
 			t.Fatal("unsafe database permissions")
 		}
 	}

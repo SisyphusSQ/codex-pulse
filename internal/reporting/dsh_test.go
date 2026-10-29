@@ -12,6 +12,7 @@ import (
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/dshprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
@@ -32,8 +33,8 @@ func TestDSHCollectorExporterDurableQueueAndDisable(t *testing.T) {
 	}{{"deepseek-account", "deepseek-flash", 136}, {"openai-codex", "gpt-6.1-sol", 2230}, {"openai-codex", "gpt-6.1-terra", 1115}} {
 		t.Run(tc.route, func(t *testing.T) {
 			ctx := t.Context()
-			root := t.TempDir()
-			if err := os.Chmod(root, 0700); err != nil {
+			root := filepath.Join(t.TempDir(), "private")
+			if err := platformfs.Mkdir(root, 0700); err != nil {
 				t.Fatal(err)
 			}
 			db, err := storesqlite.Open(ctx, storesqlite.Config{Path: filepath.Join(root, "facts.db")})

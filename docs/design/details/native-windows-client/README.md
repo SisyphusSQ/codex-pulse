@@ -120,3 +120,13 @@ NativeHelper 以 HANDLE_LIST 限制继承，使用 PROC_THREAD_ATTRIBUTE_JOB_LIS
 WM_POWERBROADCAST 映射现有三种 Lifecycle 事件。客户端只积累最新电源转换和一条前台通知，唤醒重新握手、Bootstrap、失效订阅和权威读取；连接变更串行化，不重放休眠期间的页面请求。Go 不增加平台业务口径或网络端点。登录启动使用当前用户、当前 runtime 独立的 Run 项，读取系统实际命令及可识别的可选 StartupApproved 状态；未知审批保持 unknown，应用不写审批元数据。测试使用替身存储，不改真实登录项。
 
 平台依据：[AppInstance](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/applifecycle/applifecycle-instancing)、[通知区域](https://learn.microsoft.com/en-us/windows/win32/shell/notification-area)、[创建时分配 Job](https://devblogs.microsoft.com/oldnewthing/20230209-00/?p=107812)。StartupApproved 为可选 OS 元数据，不视为公开稳定合同；实际登录仍由 Windows 管理。
+
+## 中心配对与同步（WIN-E15）
+
+设置中的独立同步分区使用现有 PairReporting、ConfigureReporting、ReportingStatus、SyncReportingNow、FullSyncReporting，不增加本机网络入口或协议字段。中心地址与显式私网 HTTP 许可只随配对提交；配对后默认保持关闭，启用、15～3600 秒间隔和历史起点另行保存。代码输入使用不可揭示的 PasswordBox，确认前清空；一次性码仅存于短期方法请求，finally 清空，不进入草稿、查询缓存、平台偏好或日志。
+
+同步协调器以 runtime 为生命周期，页面重建或 Home 变更不把设备身份与同步草稿混入订阅状态。配对和配置各自保留独立的未保存字段；清队列强制关闭并使用权威历史起点/间隔，未保存的间隔继续留在草稿。所有命令仅发送一次，独立有界 ReportingStatus 回读不受页面取消影响；未知回执不自动重放，不以新成功时间推断某次补传已执行。
+
+历史起点开始导出后锁定。普通关闭保留不可变批次，清队列需产品确认且只丢弃当前中心的本机待确认批次，不删除中心历史或其他中心分区。全量请求受理、后台 processing、publication_failed、协议拒绝、来源不可用与最终 completed 分别呈现；pending=0 或一次成功确认不能代替整个全量任务完成。仅前台展开分区轮询，进度更新保持同值草稿与原生控件，避免日期漂移和滚动跳动。
+
+打开 Web 只使用已保存且无 userinfo/query/fragment 的根地址；HTTPS 与显式允许的 HTTP 仍由 Go 的既有地址/出口策略校验，客户端不降级、不持有采集凭证。Windows reporting.db 延用平台私有 ACL 和 Go 的分片、最终 receipt、账号 fence 与断点续传。Server module 的 x/sys 约束与共享 module 同步到 0.49.0，使锁定依赖下的中心构建可用；不改变中心业务 schema、计价或上传白名单。
