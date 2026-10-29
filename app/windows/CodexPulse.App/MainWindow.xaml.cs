@@ -61,6 +61,8 @@ public sealed partial class MainWindow : Window
     private readonly HashSet<string> pendingDomains = [];
     private bool applying, starting, closing, allowClose;
     private bool localeSaving;
+    private CalendarDatePicker StartDate = null!, EndDate = null!;
+    private string? datePickerLanguage;
     private long renderGeneration;
     private long settingsRequest;
     private readonly CancellationTokenSource lifetime = new();
@@ -400,11 +402,11 @@ public sealed partial class MainWindow : Window
         renderedContext=Workspace.Context;renderedFeature=Workspace.Feature;
         page?.Dispose();
         page = Session?.State == CoreConnectionState.Recovery ? new RecoveryPage(this) : PageCatalog.Create(Workspace.Feature, this);
+        page.View.Language = Localization.Culture.Name;
         PageContainer.Content = page.View;
         PageTitle.Text = Localization.FeatureTitle(Workspace.Feature);
         SetPageState(Session?.State == CoreConnectionState.Recovery ? LoadKind.RecoveryBlocked : LoadKind.Idle);
         applying = true;
-        Root.Language = Localization.Culture.Name;
         foreach (var item in Navigation.MenuItems.OfType<NavigationViewItem>())
             if (item.Tag is Feature feature && feature == Workspace.Feature) Navigation.SelectedItem = item;
         applying = false;
@@ -485,15 +487,38 @@ public sealed partial class MainWindow : Window
         RangePicker.Width=Workspace.Feature==Feature.Overview?200:128;
         RangePicker.SelectedItem=RangePicker.Items.Cast<ComboBoxItem>().FirstOrDefault(item=>(string)item.Tag==Workspace.RangePreset);
         var quotaRange=Workspace.Feature==Feature.Overview && Workspace.RangePreset is "quota_week" or "quota_month";
+        EnsureDatePickers();
         StartDate.Visibility=EndDate.Visibility=DateSeparator.Visibility=quotaRange?Visibility.Collapsed:Visibility.Visible;
-        var dateFormat = Localization.Chinese ? "{year.full}/{month.integer(2)}/{day.integer(2)}" : "{month.integer(2)}/{day.integer(2)}/{year.full}";
-        StartDate.DateFormat = dateFormat; EndDate.DateFormat = dateFormat;
-        StartDate.Language = Localization.Culture.Name; EndDate.Language = Localization.Culture.Name;
         StartDate.Date = new DateTimeOffset(Workspace.Start.ToDateTime(TimeOnly.MinValue));
         EndDate.Date = new DateTimeOffset(Workspace.EndExclusive.AddDays(-1).ToDateTime(TimeOnly.MinValue));
         AutomationProperties.SetName(StartDate, Localization.Text("开始日期", "Start date"));
         AutomationProperties.SetName(EndDate, Localization.Text("结束日期（含）", "End date (inclusive)"));
         TimeZoneLabel.Text = Workspace.TimeZone;
+    }
+
+    private void EnsureDatePickers()
+    {
+        var language = Localization.Culture.Name;
+        if (datePickerLanguage == language) return;
+        // Changing Language/DateFormat on an opened WinUI calendar can cause a deferred native crash.
+        // Configure replacement controls before attaching them; ordinary refreshes retain the controls.
+        if (StartDate is not null) { StartDate.DateChanged -= DatesChanged; StartDate.IsCalendarOpen = false; }
+        if (EndDate is not null) { EndDate.DateChanged -= DatesChanged; EndDate.IsCalendarOpen = false; }
+        CalendarDatePicker Create(string automationId)
+        {
+            var picker = new CalendarDatePicker
+            {
+                MinWidth = 140,
+                Language = language,
+                DateFormat = Localization.Chinese ? "{year.full}/{month.integer(2)}/{day.integer(2)}" : "{month.integer(2)}/{day.integer(2)}/{year.full}"
+            };
+            AutomationProperties.SetAutomationId(picker, automationId);
+            picker.DateChanged += DatesChanged;
+            return picker;
+        }
+        StartDate = Create("start-date"); EndDate = Create("end-date");
+        StartDateHost.Content = StartDate; EndDateHost.Content = EndDate;
+        datePickerLanguage = language;
     }
 
     public static string ProviderName(string provider) => provider switch { "codex" => "Codex", "cursor" => "Cursor", "grok" => "Grok", "dsh" => "DSH", _ => provider };
