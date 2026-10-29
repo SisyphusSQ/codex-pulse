@@ -64,7 +64,9 @@ func NewBillingClient(config BillingClientConfig) (*BillingClient, error) {
 		return nil, ErrBillingProtocol
 	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
-	return &BillingClient{baseURL: parsed, httpClient: config.HTTPClient, tokenSource: config.TokenSource}, nil
+	httpClient := *config.HTTPClient
+	httpClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &BillingClient{baseURL: parsed, httpClient: &httpClient, tokenSource: config.TokenSource}, nil
 }
 
 func (client *BillingClient) GetCredits(ctx context.Context) (BillingCredits, error) {

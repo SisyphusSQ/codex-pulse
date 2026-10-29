@@ -2,9 +2,52 @@ package store
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 )
+
+func TestGrokLocalFailureKeepsFactsAndIndependentBilling(t *testing.T) {
+	t.Parallel()
+	repository := openRuntimeRepository(t)
+	ctx := t.Context()
+	good := GrokSnapshot{Generation: 100, CollectedAtMS: 100,
+		Sources:  []CursorSourceStatus{{Provider: "grok", SourceKey: "grok.summary", SourceType: "filesystem_scan", State: "available", CoverageState: "exact", CheckpointKind: "filesystem_scan", LastAttemptAtMS: 100, LastSuccessAtMS: pointerInt64ForCursorTest(100), UpdatedAtMS: 100}},
+		Sessions: []GrokSession{{ExternalSessionID: "stable", DisplayTitle: "Local", TitleSource: "grok_summary", ProjectKey: strings.Repeat("a", 64), ProjectDisplayName: "demo", CreatedAtMS: 1, LastActivityAtMS: 2, RequestCount: 1, CoverageState: "exact", UpdatedAtMS: 100}},
+	}
+	if err := repository.ReplaceGrokSnapshot(ctx, good); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.CommitGrokBillingSnapshot(ctx, GrokBillingSnapshot{Generation: 101, CollectedAtMS: 101, PeriodType: "weekly", PeriodStartMS: 1, PeriodEndMS: 1000, UsedPercent: 25}); err != nil {
+		t.Fatal(err)
+	}
+	failed := good
+	failed.Generation, failed.CollectedAtMS, failed.Sessions = 200, 200, nil
+	failed.Sources = append([]CursorSourceStatus(nil), good.Sources...)
+	code := "read_failed"
+	failed.Sources[0].State, failed.Sources[0].CoverageState, failed.Sources[0].FailureCode = "partial", "partial", &code
+	failed.Sources[0].LastAttemptAtMS, failed.Sources[0].UpdatedAtMS, failed.Sources[0].LastSuccessAtMS = 200, 200, nil
+	if err := repository.ReplaceGrokSnapshot(ctx, failed); !errors.Is(err, ErrGrokSourceUnavailable) {
+		t.Fatalf("failure = %v", err)
+	}
+	value, err := repository.GrokSnapshot(ctx)
+	if err != nil || value.Generation != 100 || len(value.Sessions) != 1 || value.Billing == nil || value.Billing.UsedPercent != 25 {
+		t.Fatalf("last good or billing lost: %+v %v", value, err)
+	}
+	for _, source := range value.Sources {
+		if source.SourceKey == "grok.summary" && (source.State != "partial" || source.LastAttemptAtMS != 200 || source.LastSuccessAtMS == nil || *source.LastSuccessAtMS != 100) {
+			t.Fatal("failure appeared fresh or erased last success")
+		}
+	}
+	good.Generation, good.CollectedAtMS, good.Sessions = 300, 300, nil
+	if err := repository.ReplaceGrokSnapshot(ctx, good); err != nil {
+		t.Fatal(err)
+	}
+	value, err = repository.GrokSnapshot(ctx)
+	if err != nil || len(value.Sessions) != 0 || value.Generation != 300 || value.Billing == nil {
+		t.Fatal("known empty recovery did not replace the local snapshot independently of billing")
+	}
+}
 
 func TestGrokLocalReplacementPreservesLastBillingSnapshot(t *testing.T) {
 	t.Parallel()

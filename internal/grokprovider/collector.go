@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -48,7 +49,7 @@ type updatesFileCursor struct {
 }
 
 func NewCollector(writer SnapshotWriter, config Config) (*Collector, error) {
-	if writer == nil || config.SessionsRoot == "" {
+	if writer == nil || !filepath.IsAbs(config.SessionsRoot) {
 		return nil, ErrCollector
 	}
 	if config.Now == nil {
@@ -82,6 +83,9 @@ func (collector *Collector) RefreshIfDue(ctx context.Context) (bool, error) {
 	if err := providercontrol.WriteWithCommit(ctx, func() error {
 		return collector.writer.ReplaceGrokSnapshot(ctx, snapshot)
 	}); err != nil {
+		if errors.Is(err, store.ErrGrokSourceUnavailable) {
+			collector.last = now
+		}
 		return true, fmt.Errorf("%w: persist snapshot: %w", ErrCollector, err)
 	}
 	collector.updatesCursors = cursors
@@ -127,26 +131,27 @@ func scanSummaries(ctx context.Context, root string, snapshot *collectedSnapshot
 		State: "unavailable", CoverageState: "unknown", CheckpointKind: "filesystem_scan",
 		LastAttemptAtMS: atMS, UpdatedAtMS: atMS,
 	}
-	info, err := os.Stat(root)
+	source, err := platformfs.OpenSourceRoot(root)
 	if err != nil {
 		status.FailureCode = pointerString(filesystemFailure(err))
 		return status
 	}
-	if !info.IsDir() {
-		status.FailureCode = pointerString("missing")
-		return status
-	}
+	defer source.Close()
 	count := 0
-	walkErr := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkError error) error {
+	var readFailure error
+	walkErr := fs.WalkDir(source.FS(), ".", func(path string, entry fs.DirEntry, walkError error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if walkError != nil {
-			return nil
+			return walkError
+		}
+		if entry.Type()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return platformfs.ErrUnsafe
 		}
 		if entry.IsDir() {
 			name := entry.Name()
-			if name == "session_search.sqlite" || strings.HasPrefix(name, ".") {
+			if path != "." && (name == "session_search.sqlite" || strings.HasPrefix(name, ".")) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -154,11 +159,18 @@ func scanSummaries(ctx context.Context, root string, snapshot *collectedSnapshot
 		if entry.Name() != "summary.json" {
 			return nil
 		}
-		if mergeSummary(path, snapshot, atMS) {
+		accepted, err := mergeSummary(source, path, snapshot, atMS)
+		if err != nil {
+			readFailure = err
+		}
+		if accepted {
 			count++
 		}
 		return nil
 	})
+	if walkErr == nil {
+		walkErr = readFailure
+	}
 	status.RowCount = int64(count)
 	if walkErr != nil && !errors.Is(walkErr, context.Canceled) {
 		status.FailureCode = pointerString("read_failed")
@@ -191,21 +203,30 @@ type grokSummaryFile struct {
 	} `json:"info"`
 }
 
-func mergeSummary(path string, snapshot *collectedSnapshot, atMS int64) bool {
-	content, err := os.ReadFile(path)
+func mergeSummary(root platformfs.SourceRoot, path string, snapshot *collectedSnapshot, atMS int64) (bool, error) {
+	file, err := root.Open(path)
 	if err != nil {
-		return false
+		return false, err
+	}
+	defer file.Close()
+	const maxSummaryBytes = 1 << 20
+	content, err := io.ReadAll(io.LimitReader(file, maxSummaryBytes+1))
+	if err != nil {
+		return false, err
+	}
+	if len(content) > maxSummaryBytes {
+		return false, ErrCollector
 	}
 	var summary grokSummaryFile
 	if err := json.Unmarshal(content, &summary); err != nil {
-		return false
+		return false, ErrCollector
 	}
 	sessionID := normalizeID(summary.Info.ID)
 	if sessionID == "" {
 		sessionID = normalizeID(filepath.Base(filepath.Dir(path)))
 	}
 	if sessionID == "" {
-		return false
+		return false, ErrCollector
 	}
 	created := parseTimestamp(summary.CreatedAt)
 	updated := parseTimestamp(summary.LastActiveAt)
@@ -236,7 +257,7 @@ func mergeSummary(path string, snapshot *collectedSnapshot, atMS int64) bool {
 		ExternalSessionID: sessionID, SourceKey: SourceSummary,
 		LineageKey: digest, ContentDigest: digest, ObservedAtMS: atMS,
 	}
-	return true
+	return true, nil
 }
 
 func scanUpdates(
@@ -252,23 +273,39 @@ func scanUpdates(
 		LastAttemptAtMS: atMS, UpdatedAtMS: atMS,
 	}
 	cursors := map[string]updatesFileCursor{}
-	if _, err := os.Stat(root); err != nil {
+	source, err := platformfs.OpenSourceRoot(root)
+	if err != nil {
 		status.FailureCode = pointerString(filesystemFailure(err))
 		return status, cursors
 	}
+	defer source.Close()
 	count := 0
-	walkErr := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkError error) error {
+	var readFailure error
+	walkErr := fs.WalkDir(source.FS(), ".", func(path string, entry fs.DirEntry, walkError error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if walkError != nil || entry.IsDir() || entry.Name() != "updates.jsonl" {
+		if walkError != nil {
+			return walkError
+		}
+		if entry.Type()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return platformfs.ErrUnsafe
+		}
+		if entry.IsDir() || entry.Name() != "updates.jsonl" {
 			return nil
 		}
-		accepted, cursor := mergeUpdates(path, previous[path], snapshot, atMS)
-		cursors[path] = cursor
+		key := filepath.Join(root, filepath.FromSlash(path))
+		accepted, cursor, err := mergeUpdates(ctx, source, path, previous[key], snapshot, atMS)
+		if err != nil {
+			readFailure = err
+		}
+		cursors[key] = cursor
 		count += accepted
 		return nil
 	})
+	if walkErr == nil {
+		walkErr = readFailure
+	}
 	status.RowCount = int64(len(snapshot.usage) + len(snapshot.tools))
 	if digest := updatesCheckpointDigest(cursors); digest != "" {
 		status.CheckpointValue = &digest
@@ -323,33 +360,35 @@ type grokUsageDTO struct {
 }
 
 func mergeUpdates(
+	ctx context.Context,
+	root platformfs.SourceRoot,
 	path string,
 	previous updatesFileCursor,
 	snapshot *collectedSnapshot,
 	atMS int64,
-) (int, updatesFileCursor) {
-	info, err := os.Stat(path)
+) (int, updatesFileCursor, error) {
+	file, err := root.Open(path)
 	if err != nil {
-		return 0, updatesFileCursor{}
-	}
-	identity, hasIdentity := fileIdentity(path, info)
-	sameFile := hasIdentity && previous.identity != "" && previous.identity == identity
-	unchanged := sameFile && previous.size == info.Size()
-	if unchanged {
-		replayUpdatesCursor(previous, snapshot)
-		return len(previous.usage) + len(previous.tools), previous
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return 0, updatesFileCursor{}
+		return 0, previous, err
 	}
 	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return 0, previous, err
+	}
+	identity, hasIdentity := fileIdentity(file, info)
+	sameFile := hasIdentity && previous.identity != "" && previous.identity == identity
+	unchanged := sameFile && previous.size == info.Size() && previous.modNano == info.ModTime().UnixNano() && previous.offset == info.Size()
+	if unchanged {
+		replayUpdatesCursor(previous, snapshot)
+		return len(previous.usage) + len(previous.tools), previous, nil
+	}
 	canAppend := sameFile && previous.offset > 0 && info.Size() > previous.size && previous.offset <= info.Size()
 	if canAppend {
 		if _, err := file.Seek(previous.offset, io.SeekStart); err != nil {
 			canAppend = false
 			if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
-				return 0, updatesFileCursor{}
+				return 0, previous, seekErr
 			}
 		}
 	}
@@ -358,21 +397,30 @@ func mergeUpdates(
 	}
 	sessionID := normalizeID(filepath.Base(filepath.Dir(path)))
 	beforeRequests, beforeTools := sessionCounts(snapshot, sessionID)
-	reader := bufio.NewReaderSize(file, 64*1024)
+	offset, _ := file.Seek(0, io.SeekCurrent)
+	reader := bufio.NewReaderSize(io.LimitReader(file, info.Size()-offset), 64*1024)
 	accepted := 0
+	var readFailure error
 	for {
-		line, err := readLimitedLine(reader, maxUpdatesLineBytes)
-		if len(line) > 0 && mergeUpdatesLine(line, sessionID, snapshot, atMS) {
-			accepted++
+		if ctx.Err() != nil {
+			return accepted, previous, ctx.Err()
 		}
+		line, err := readLimitedLine(reader, maxUpdatesLineBytes)
 		if errors.Is(err, io.EOF) {
+			if len(line) > 0 {
+				readFailure = io.ErrUnexpectedEOF
+			}
 			break
 		}
 		if err != nil {
+			readFailure = err
 			break
 		}
+		offset += int64(len(line))
+		if len(line) > 0 && mergeUpdatesLine(line, sessionID, snapshot, atMS) {
+			accepted++
+		}
 	}
-	offset, _ := file.Seek(0, io.SeekCurrent)
 	afterRequests, afterTools := sessionCounts(snapshot, sessionID)
 	cursor := updatesFileCursor{
 		size: info.Size(), modNano: info.ModTime().UnixNano(), offset: offset,
@@ -394,7 +442,7 @@ func mergeUpdates(
 	if canAppend {
 		accepted += len(previous.usage) + len(previous.tools)
 	}
-	return accepted, cursor
+	return accepted, cursor, readFailure
 }
 
 func replayUpdatesCursor(cursor updatesFileCursor, snapshot *collectedSnapshot) {
@@ -864,10 +912,13 @@ func parseJSONTimestamp(raw json.RawMessage) int64 {
 }
 
 func filesystemFailure(err error) string {
+	if errors.Is(err, os.ErrNotExist) {
+		return "missing"
+	}
 	if errors.Is(err, os.ErrPermission) {
 		return "permission"
 	}
-	return "missing"
+	return "read_failed"
 }
 
 func digestString(value string) string { return digestBytes([]byte(value)) }
@@ -889,19 +940,17 @@ func maxInt64(left, right int64) int64 {
 func readLimitedLine(reader *bufio.Reader, limit int) ([]byte, error) {
 	var builder []byte
 	for {
-		chunk, isPrefix, err := reader.ReadLine()
+		chunk, err := reader.ReadSlice('\n')
 		if len(chunk) > 0 {
 			if len(builder)+len(chunk) > limit {
 				return nil, io.ErrUnexpectedEOF
 			}
 			builder = append(builder, chunk...)
 		}
-		if err != nil {
-			return builder, err
+		if errors.Is(err, bufio.ErrBufferFull) {
+			continue
 		}
-		if !isPrefix {
-			return builder, nil
-		}
+		return builder, err
 	}
 }
 

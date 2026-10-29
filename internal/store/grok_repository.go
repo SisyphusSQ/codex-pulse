@@ -11,6 +11,9 @@ import (
 
 const grokBillingSourceKey = "grok.billing"
 
+// ErrGrokSourceUnavailable retains the coherent last-good local generation.
+var ErrGrokSourceUnavailable = errors.New("grok local source snapshot is unavailable")
+
 type grokSessionModel struct {
 	ID                 int64   `gorm:"column:id;primaryKey;autoIncrement"`
 	Provider           string  `gorm:"column:provider"`
@@ -115,8 +118,14 @@ func (repository *Repository) ReplaceGrokSnapshot(ctx context.Context, snapshot 
 	if err := validateGrokSnapshot(snapshot); err != nil {
 		return err
 	}
-	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+	retained := false
+	err := repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
 		database := transaction.WithContext(ctx)
+		var err error
+		retained, err = retainLocalProviderSnapshot(database, "grok", snapshot.Sources)
+		if err != nil || retained {
+			return err
+		}
 		for _, table := range []string{
 			"grok_session_lineage", "grok_tool_events", "grok_usage_events", "grok_sessions",
 		} {
@@ -198,6 +207,10 @@ func (repository *Repository) ReplaceGrokSnapshot(ctx context.Context, snapshot 
 		}
 		return nil
 	})
+	if err == nil && retained {
+		return ErrGrokSourceUnavailable
+	}
+	return err
 }
 
 func (repository *Repository) CommitGrokBillingSnapshot(ctx context.Context, snapshot GrokBillingSnapshot) error {

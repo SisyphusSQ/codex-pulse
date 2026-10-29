@@ -335,7 +335,7 @@ func (service *QueryService) UsageCost(ctx context.Context, request usagecost.Us
 	}
 	events := usageEventsInRange(snapshot.UsageEvents, *rangeValue)
 	response := usagecost.UsageCostResponse{
-		ProviderContext: contextFor(snapshot), Meta: completeMeta(nil), Range: *rangeValue,
+		ProviderContext: contextFor(snapshot), Meta: snapshotMeta(snapshot, nil), Range: *rangeValue,
 		ReportingTimeZone: rangeValue.TimeZone, PricingVersions: []string{},
 		Trend: []usagecost.TrendPoint{}, Models: []usagecost.UsageModelItem{},
 		UnpricedReasons: []usagecost.ReasonCount{},
@@ -416,7 +416,7 @@ func (service *QueryService) ListSessions(ctx context.Context, request basequery
 	matchedTotals.TurnCount = known(sessionRequestCount(sessions), basequery.NumericCount)
 	pageTotals.TurnCount = known(sessionRequestCount(slicePage(sessions, offset, limit)), basequery.NumericCount)
 	return usagecost.SessionListResponse{
-		ProviderContext: contextFor(snapshot), Meta: completeMeta(pageInfo(offset, limit, len(sessions), snapshot.Generation, queryFingerprint(validated))),
+		ProviderContext: contextFor(snapshot), Meta: snapshotMeta(snapshot, pageInfo(offset, limit, len(sessions), snapshot.Generation, queryFingerprint(validated))),
 		Items: items, MatchedCount: known(int64(len(sessions)), basequery.NumericCount),
 		MatchedTotals: matchedTotals, PageTotals: pageTotals,
 	}, nil
@@ -481,7 +481,7 @@ func (service *QueryService) SessionDetail(ctx context.Context, request usagecos
 		versions = []string{pricing.GrokPricingVersion}
 	}
 	return usagecost.SessionDetailResponse{
-		ProviderContext: contextFor(snapshot), Meta: completeMeta(nil),
+		ProviderContext: contextFor(snapshot), Meta: snapshotMeta(snapshot, nil),
 		PricingSource: pricingSource, Currency: currency, PricingVersions: versions,
 		UnpricedReasons: []usagecost.ReasonCount{}, Item: item,
 		TurnPage: *pageInfo(offset, limit, len(events), snapshot.Generation, digestString("session-turns:" + session.ExternalSessionID)[:16]),
@@ -524,7 +524,7 @@ func (service *QueryService) ListProjects(ctx context.Context, request basequery
 	globalTotals, _ := totalsForUsageEvents(rangeEvents)
 	pageTotals, _ := totalsForUsageEvents(pageEvents)
 	return usagecost.ProjectListResponse{
-		ProviderContext: contextFor(snapshot), Meta: completeMeta(pageInfo(offset, limit, len(groups), snapshot.Generation, queryFingerprint(validated))),
+		ProviderContext: contextFor(snapshot), Meta: snapshotMeta(snapshot, pageInfo(offset, limit, len(groups), snapshot.Generation, queryFingerprint(validated))),
 		Range: *validated.TimeRange, ReportingTimeZone: validated.TimeRange.TimeZone, PricingVersions: []string{},
 		Items: items, MatchedCount: known(int64(len(groups)), basequery.NumericCount),
 		GlobalTotals: globalTotals, MatchedTotals: globalTotals, PageTotals: pageTotals,
@@ -577,7 +577,7 @@ func (service *QueryService) ProjectDetail(ctx context.Context, request usagecos
 	}
 	globalTotals, _ := totalsForUsageEvents(rangeEvents)
 	return usagecost.ProjectDetailResponse{
-		ProviderContext: contextFor(snapshot), Meta: completeMeta(nil), Range: *rangeValue,
+		ProviderContext: contextFor(snapshot), Meta: snapshotMeta(snapshot, nil), Range: *rangeValue,
 		ReportingTimeZone: rangeValue.TimeZone, PricingVersions: []string{}, Item: projectItem(*selected),
 		Daily:       projectDaily(selected.events, *rangeValue),
 		SessionPage: *pageInfo(sessionOffset, sessionLimit, len(selected.sessions), snapshot.Generation, digestString("project-sessions:" + request.DimensionKey)[:16]),

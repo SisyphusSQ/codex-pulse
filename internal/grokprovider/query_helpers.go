@@ -796,6 +796,15 @@ func unknown(unit basequery.NumericUnit, reason basequery.UnknownReason) baseque
 	return numeric
 }
 
+func snapshotMeta(snapshot store.GrokSnapshot, page *basequery.PageInfo) basequery.ResponseMeta {
+	for _, source := range snapshot.Sources {
+		if (source.SourceKey == SourceSummary || source.SourceKey == SourceUpdates) && (source.State != "available" || source.CoverageState != "exact") {
+			return partialMeta(page)
+		}
+	}
+	return completeMeta(page)
+}
+
 func completeMeta(page *basequery.PageInfo) basequery.ResponseMeta {
 	meta, err := basequery.NewResponseMeta(basequery.ResponseComplete, page, nil)
 	if err != nil {
@@ -805,7 +814,7 @@ func completeMeta(page *basequery.PageInfo) basequery.ResponseMeta {
 }
 
 func partialMeta(page *basequery.PageInfo) basequery.ResponseMeta {
-	meta, err := basequery.NewResponseMeta(basequery.ResponsePartial, page, nil)
+	meta, err := basequery.NewResponseMeta(basequery.ResponsePartial, page, []basequery.ErrorCode{basequery.ErrorPartial})
 	if err != nil {
 		return basequery.ResponseMeta{Status: basequery.ResponsePartial}
 	}

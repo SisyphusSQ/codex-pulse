@@ -20,6 +20,8 @@ import (
 
 var ErrAuthRefreshFailed = errors.New("grok authentication refresh failed")
 
+var errCredentialChanged = errors.New("grok credential changed during refresh")
+
 const (
 	maxAuthResponseBytes = 1 << 20
 	authLockTimeout      = 15 * time.Second
@@ -84,7 +86,19 @@ func (reader *AuthReader) refreshAccessTokenLocked(
 	if err != nil {
 		return AccessToken{}, err
 	}
-	if err := reader.persistRefreshedCredential(current.ScopeKey, refreshed); err != nil {
+	if ctx.Err() != nil {
+		return AccessToken{}, ctx.Err()
+	}
+	if !reader.refreshEnabled() {
+		return AccessToken{}, ErrAuthRefreshFailed
+	}
+	if err := reader.persistRefreshedCredential(current, refreshed); err != nil {
+		if errors.Is(err, errCredentialChanged) {
+			latest, readErr := reader.loadAccount()
+			if readErr == nil && latest.Key != "" && latest.UserID != "" && (latest.ExpiresAt.IsZero() || latest.ExpiresAt.After(now)) && (!force || latest.Key != rejectedToken) {
+				return accessToken(latest), nil
+			}
+		}
 		return AccessToken{}, ErrAuthRefreshFailed
 	}
 	return accessToken(refreshed), nil
@@ -318,7 +332,7 @@ func parseOIDCEndpoint(raw string) (*url.URL, error) {
 	return nil, ErrAuthRefreshFailed
 }
 
-func (reader *AuthReader) persistRefreshedCredential(scopeKey string, account grokAuthAccount) error {
+func (reader *AuthReader) persistRefreshedCredential(expected grokAuthAccount, account grokAuthAccount) error {
 	content, err := readRegularAuthFile(reader.path)
 	if err != nil {
 		return err
@@ -328,13 +342,33 @@ func (reader *AuthReader) persistRefreshedCredential(scopeKey string, account gr
 		return ErrAuthRefreshFailed
 	}
 	var payload map[string]json.RawMessage
-	if raw, ok := root[scopeKey]; !ok || json.Unmarshal(raw, &payload) != nil {
+	raw, ok := root[expected.ScopeKey]
+	if !ok {
+		return errCredentialChanged
+	}
+	if json.Unmarshal(raw, &payload) != nil {
 		return ErrAuthRefreshFailed
+	}
+	// Re-read under the cross-process lock: a CLI can rotate credentials while
+	// the network request is in flight without using this reader instance.
+	for key, value := range map[string]string{"key": expected.Key, "refresh_token": expected.RefreshToken, "user_id": expected.UserID, "oidc_issuer": expected.OIDCIssuer, "oidc_client_id": expected.OIDCClientID} {
+		if whitelistString(payload, key) != value {
+			return errCredentialChanged
+		}
+	}
+	expiry := whitelistString(payload, "expires_at")
+	if expiry != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, expiry)
+		if err != nil || !parsed.Equal(expected.ExpiresAt) {
+			return errCredentialChanged
+		}
+	} else if !expected.ExpiresAt.IsZero() {
+		return errCredentialChanged
 	}
 	payload["key"] = mustMarshalAuthString(account.Key)
 	payload["refresh_token"] = mustMarshalAuthString(account.RefreshToken)
 	payload["expires_at"] = mustMarshalAuthString(account.ExpiresAt.UTC().Format(time.RFC3339Nano))
-	root[scopeKey], err = json.Marshal(payload)
+	root[expected.ScopeKey], err = json.Marshal(payload)
 	if err != nil {
 		return err
 	}

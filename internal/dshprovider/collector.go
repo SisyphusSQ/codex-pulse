@@ -24,6 +24,7 @@ import (
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/jsonshape"
+	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 	"github.com/SisyphusSQ/codex-pulse/internal/providercontrol"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	"github.com/SisyphusSQ/codex-pulse/internal/throughput"
@@ -98,18 +99,14 @@ func (c *Collector) collect(ctx context.Context, at int64) (store.DSHSnapshot, m
 		result.Sources = append(result.Sources, header)
 		return result, next
 	}
-	rootInfo, err := os.Lstat(c.config.SessionsRoot)
-	if err != nil || !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
-		code := "missing"
-		if err == nil {
-			code = "invalid_path"
-		}
-		status.FailureCode = &code
-		return finish()
-	}
-	root, err := os.OpenRoot(c.config.SessionsRoot)
+	root, err := platformfs.OpenSourceRoot(c.config.SessionsRoot)
 	if err != nil {
 		code := "read_failed"
+		if errors.Is(err, os.ErrNotExist) {
+			code = "missing"
+		} else if errors.Is(err, platformfs.ErrUnsafe) {
+			code = "invalid_path"
+		}
 		status.FailureCode = &code
 		return finish()
 	}
@@ -124,8 +121,8 @@ func (c *Collector) collect(ctx context.Context, at int64) (store.DSHSnapshot, m
 		if walkErr != nil {
 			return walkErr
 		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return nil
+		if entry.Type()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return platformfs.ErrUnsafe
 		}
 		if entry.IsDir() {
 			if strings.HasPrefix(entry.Name(), ".") && path != "." {

@@ -16,17 +16,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/platformfs"
 )
 
-func fileIdentity(path string, _ os.FileInfo) (string, bool) {
-	root, err := platformfs.OpenReadRoot(filepath.Dir(path))
-	if err != nil {
-		return "", false
-	}
-	defer root.Close()
-	file, err := root.OpenMetadata(filepath.Base(path))
-	if err != nil {
-		return "", false
-	}
-	defer file.Close()
+func fileIdentity(file platformfs.SourceFile, _ os.FileInfo) (string, bool) {
 	info, err := platformfs.InspectHandle(windows.Handle(file.Fd()))
 	if err != nil {
 		return "", false
@@ -65,11 +55,33 @@ func openAuthLockFile(path string) (*os.File, func() error, error) {
 		return nil, nil, err
 	}
 	closeFile := func() error { return errors.Join(file.Close(), root.Close()) }
+	var metadata windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(windows.Handle(file.Fd()), &metadata); err != nil || metadata.NumberOfLinks != 1 {
+		closeFile()
+		return nil, nil, ErrAuthRefreshFailed
+	}
 	if err := platformfs.Secure(path, 0o600); err != nil || !platformfs.SingleOwnedFile(file.File) {
 		closeFile()
 		return nil, nil, ErrAuthRefreshFailed
 	}
-	return file.File, closeFile, nil
+	_ = file.Close()
+	name, err := authNativePath(path)
+	if err != nil {
+		root.Close()
+		return nil, nil, err
+	}
+	handle, err := windows.CreateFile(name, windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
+	if err != nil {
+		root.Close()
+		return nil, nil, err
+	}
+	lockedFile := os.NewFile(uintptr(handle), path)
+	closeLocked := func() error { return errors.Join(lockedFile.Close(), root.Close()) }
+	if !platformfs.SingleOwnedFile(lockedFile) {
+		closeLocked()
+		return nil, nil, ErrAuthRefreshFailed
+	}
+	return lockedFile, closeLocked, nil
 }
 
 func writeAuthFileAtomic(path string, content []byte) error {
