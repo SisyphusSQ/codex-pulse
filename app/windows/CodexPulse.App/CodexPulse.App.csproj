@@ -14,7 +14,7 @@
     <ApplicationIcon>Assets/CodexPulse.ico</ApplicationIcon>
     <PublishTrimmed>false</PublishTrimmed>
     <PublishReadyToRun>false</PublishReadyToRun>
-    <EnableMsixTooling>false</EnableMsixTooling>
+    <EnableMsixTooling>true</EnableMsixTooling>
   </PropertyGroup>
   <ItemGroup>
     <Content Update="Assets/CodexPulse.ico" CopyToOutputDirectory="PreserveNewest" />
@@ -23,9 +23,14 @@
     <ProjectReference Include="../CodexPulse.Protocol/CodexPulse.Protocol.csproj" />
     <ProjectReference Include="../CodexPulse.CoreClient/CodexPulse.CoreClient.csproj" />
     <ProjectReference Include="../CodexPulse.AppSupport/CodexPulse.AppSupport.csproj" />
+    <ProjectReference Include="../CodexPulse.Distribution/CodexPulse.Distribution.csproj" />
     <AssemblyMetadata Include="PulseVersion" Value="$(PulseVersion)" />
   </ItemGroup>
   <Target Name="CopyWindowsHelper" AfterTargets="Build" Condition="Exists('$(MSBuildThisFileDirectory)../../../.artifacts/windows/helper/codex-pulse.exe')">
     <Copy SourceFiles="$(MSBuildThisFileDirectory)../../../.artifacts/windows/helper/codex-pulse.exe" DestinationFolder="$(TargetDir)" />
+  </Target>
+  <Target Name="IncludeNativeResourceIndex" AfterTargets="Publish">
+    <Error Condition="!Exists('$(TargetDir)$(AssemblyName).pri')" Text="WinUI resource index is missing from the build output." />
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).pri" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" />
   </Target>
 </Project>

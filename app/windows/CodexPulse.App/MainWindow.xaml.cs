@@ -5,6 +5,7 @@ using Codexpulse.Core.V1;
 using CodexPulse.AppSupport;
 using CodexPulse.App.Views;
 using CodexPulse.CoreClient;
+using CodexPulse.Distribution;
 using Grpc.Core;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -24,6 +25,7 @@ public sealed partial class MainWindow : Window
     public SettingsEditor SettingsEditor{get;}
     public ReportingController Reporting{get;}
     public ApiSubscriptionsController ApiSubscriptions{get;}
+    public WindowsUpdater WindowsUpdates{get;}
     public bool ApiCredentialsRequested{get;private set;}
     public HomeSwitchDraft HomeSwitchDraft{get;}=new();
     public bool DataHealthRequested{get;private set;}
@@ -74,6 +76,7 @@ public sealed partial class MainWindow : Window
     private readonly SemaphoreSlim connectionGate=new(1,1);
     private bool recovering,sleeping;
     private DateTimeOffset lastWake;
+    private string? updateNonce;
 
     public MainWindow(PlatformOptions options)
     {
@@ -83,6 +86,7 @@ public sealed partial class MainWindow : Window
         SettingsEditor=new(Client,()=>Workspace.Context);
         Reporting=new(Client,()=>Workspace.Context);
         ApiSubscriptions=new(Client,()=>Workspace.Context,async()=>{var previous=Session;await StartAsync();return Session?.State==CoreConnectionState.Connected && !ReferenceEquals(previous,Session);});
+        WindowsUpdates=new(AppContext.BaseDirectory,Options.Runtime,Options.Home,()=>{var value=Settings?.Snapshot.Updates;return(value?.AutoCheckEnabled??false,value?.Channel??"stable",value?.CheckIntervalSeconds??3600);},QuitForUpdateAsync);
         PageCatalog.Register(Feature.Summary, host => new DashboardPage(host));
         PageCatalog.Register(Feature.Overview, host => new OverviewPage(host));
         PageCatalog.Register(Feature.Sessions, host => new SessionsPage(host));
@@ -223,6 +227,7 @@ public sealed partial class MainWindow : Window
                 ConnectionNotice.IsOpen = false;
             }
             ConnectionChanged();
+            if(Options.StartupNonce is {} nonce)UpdateRuntime.Startup(Options.Runtime,nonce,BundleVersion,Session.State==CoreConnectionState.Recovery?"recovery":"connected");
             watchCancellation = new();
             watch = ObserveInvalidationsAsync(watchCancellation.Token);
             if(WindowVisible)await ReloadPageAsync();
@@ -250,6 +255,7 @@ public sealed partial class MainWindow : Window
                 (client, deadline, cancellation) => client.SettingsAsync(request, deadline: deadline, cancellationToken: cancellation), force: true);
             if (version != settingsRequest || closing) return false;
             Settings = response;
+            WindowsUpdates.Configure();
             SettingsEditor.Observe(response);
             Workspace.OverviewDefault = Settings.Snapshot.Ui.OverviewRange;
             Localization.Set(Settings.Snapshot.Ui.Locale);
@@ -578,7 +584,7 @@ public sealed partial class MainWindow : Window
     public async Task<bool> QuitAsync()
     {
         if(closing)return false;
-        closing = true; invalidations.Stop(); page?.Dispose();subscriptions?.Dispose();SettingsEditor.Dispose();Reporting.Dispose();ApiSubscriptions.Dispose();trayPanel?.Hide();lifecycle.Stop();
+        closing = true; invalidations.Stop(); page?.Dispose();subscriptions?.Dispose();SettingsEditor.Dispose();Reporting.Dispose();ApiSubscriptions.Dispose();WindowsUpdates.Dispose();trayPanel?.Hide();lifecycle.Stop();
         lifetime.Cancel();
         if (startup is not null) await startup;
         await StopWatchAsync();
@@ -586,16 +592,18 @@ public sealed partial class MainWindow : Window
         var clean=true;
         if (Session is not null)
         {
-            clean=await Session.StopAsync();
+            clean=await Session.StopAsync(updateNonce is null?"client_exit":"client_restart");
             try{using var key=Microsoft.Win32.Registry.CurrentUser.CreateSubKey(WindowPreferences.Key(Options.Runtime));key.SetValue("ShutdownDetail",JsonSerializer.Serialize(new{ExitCode=Session.ShutdownExitCode,Reason=Session.ShutdownReason}));}
             catch(Exception e)when(e is IOException or UnauthorizedAccessException or System.Security.SecurityException){clean=false;}
             try{await Session.DisposeAsync();}catch(IOException){clean=false;}
             Session=null;
         }
         RecordShutdown(clean?"clean":"uncertain");nativeTray?.Dispose();trayPanel?.Dispose();
+        if(updateNonce is {} nonce){try{UpdateRuntime.Shutdown(Options.Runtime,nonce,Environment.ProcessId,clean);}catch(Exception error)when(error is IOException or UnauthorizedAccessException or System.Security.SecurityException){clean=false;}}
         allowClose = true; Close();
         Application.Current.Exit();return clean;
     }
+    public Task<bool> QuitForUpdateAsync(string nonce){if(!Guid.TryParseExact(nonce,"N",out _))throw new ArgumentException("update_nonce_invalid");updateNonce=nonce;return QuitAsync();}
     private void RecordShutdown(string state)
     {try{using var key=Microsoft.Win32.Registry.CurrentUser.CreateSubKey(WindowPreferences.Key(Options.Runtime));key.SetValue("Shutdown",state);}catch(Exception e)when(e is IOException or UnauthorizedAccessException or System.Security.SecurityException){ShowNotice("退出状态无法持久化；更新须另行确认进程退出。","Shutdown status could not be saved; updates must independently confirm process exit.");}}
     private void EnsureWindowVisible()

@@ -60,6 +60,9 @@ const (
 	applicationSchemaVersion    = applicationSchemaV38Version
 )
 
+// ApplicationSchemaVersion 返回当前二进制支持的 schema，不访问数据库。
+func ApplicationSchemaVersion() int { return applicationSchemaVersion }
+
 var (
 	// ErrMigrationContract 表示本地 migration history、checksum 或版本状态不自洽。
 	ErrMigrationContract = errors.New("migration contract mismatch")

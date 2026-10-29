@@ -96,7 +96,7 @@ Local Codex data / optional online quota
 
 ## Run from source
 
-Windows native client development uses C# / WinUI 3 and the shared Go Helper. See [Windows architecture and pinned toolchain](docs/design/details/native-windows-client/README.md) and [development evidence](docs/test/windows-client.md). Build the client with `./scripts/windows/build.ps1 -LockedRestore` in PowerShell. Windows support and real Codex acceptance are recorded separately from macOS; the initial engineering baseline is not a complete Windows product.
+Windows native client uses C# / WinUI 3 and the shared Go Helper. See [Windows architecture and pinned toolchain](docs/design/details/native-windows-client/README.md), [development evidence](docs/test/windows-client.md), and [installation/update runbook](docs/test/windows-install-update.md). Build with `./scripts/windows/build.ps1 -LockedRestore` in PowerShell. The self-contained Windows 11 24H2 x64 bundle includes the paired App, Helper, .NET and Windows App SDK runtime; end users do not need Go or Visual Studio. Windows acceptance and development package signatures are recorded separately from macOS, formal Authenticode trust and public distribution.
 
 Requirements:
 

@@ -1,11 +1,9 @@
 using System.Text.Json;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.Win32;
 
 namespace CodexPulse.App;
 
-public sealed record PlatformOptions(string Runtime, string Home, string Helper, bool Background=false, bool Show=false)
+public sealed record PlatformOptions(string Runtime, string Home, string Helper, bool Background=false, bool Show=false,string? UpdateNonce=null,string? StartupNonce=null)
 {
     public static PlatformOptions Parse()
     {
@@ -14,7 +12,7 @@ public sealed record PlatformOptions(string Runtime, string Home, string Helper,
         var home = Environment.GetEnvironmentVariable("CODEX_HOME");
         if (string.IsNullOrWhiteSpace(home)) home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
         var arguments = Environment.GetCommandLineArgs();
-        var background=false;var show=false;
+        var background=false;var show=false;string? updateNonce=null,startupNonce=null;
         for (var index = 1; index < arguments.Length; index++)
         {
             switch (arguments[index])
@@ -23,19 +21,20 @@ public sealed record PlatformOptions(string Runtime, string Home, string Helper,
                 case "--codex-home" when index+1<arguments.Length: home = arguments[++index]; break;
                 case "--background":background=true;break;
                 case "--show":show=true;break;
+                case "--quit-for-update" when index+1<arguments.Length: updateNonce=arguments[++index];if(!Guid.TryParseExact(updateNonce,"N",out _))throw new ArgumentException("update_nonce_invalid");break;
+                case "--startup-token" when index+1<arguments.Length: startupNonce=arguments[++index];if(!Guid.TryParseExact(startupNonce,"N",out _))throw new ArgumentException("startup_nonce_invalid");break;
                 default: throw new ArgumentException("startup_argument_unknown");
             }
         }
         if (!Path.IsPathFullyQualified(runtime) || !Path.IsPathFullyQualified(home)) throw new ArgumentException("startup_path_not_absolute");
-        return new(Path.GetFullPath(runtime), Path.GetFullPath(home), Path.Combine(AppContext.BaseDirectory, "codex-pulse.exe"),background,show);
+        return new(Path.GetFullPath(runtime), Path.GetFullPath(home), Path.Combine(AppContext.BaseDirectory, "codex-pulse.exe"),background,show,updateNonce,startupNonce);
     }
 }
 
 public sealed record WindowPreferences(string Theme = "system", string Feature = "Summary", string? Provider = null, string? TrayProvider = null,
     int Width = 1280, int Height = 820)
 {
-    internal static string Key(string runtime) => @"Software\CodexPulse\Windows\Profiles\" +
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(runtime.ToUpperInvariant())));
+    internal static string Key(string runtime) => CodexPulse.CoreClient.RuntimeProfile.Key(runtime);
     public static WindowPreferences Load(string runtime)
     {
         using var key = Registry.CurrentUser.OpenSubKey(Key(runtime));

@@ -199,7 +199,8 @@
       "codexpulse.appsupport": {
         "type": "Project",
         "dependencies": {
-          "CodexPulse.CoreClient": "[1.0.0, )"
+          "CodexPulse.CoreClient": "[1.0.0, )",
+          "CodexPulse.Distribution": "[1.0.0, )"
         }
       },
       "codexpulse.coreclient": {
@@ -208,6 +209,12 @@
           "CodexPulse.Protocol": "[1.0.0, )",
           "Grpc.Net.Client": "[2.84.0, )",
           "Grpc.StatusProto": "[2.84.0, )"
+        }
+      },
+      "codexpulse.distribution": {
+        "type": "Project",
+        "dependencies": {
+          "CodexPulse.CoreClient": "[1.0.0, )"
         }
       },
       "codexpulse.protocol": {
