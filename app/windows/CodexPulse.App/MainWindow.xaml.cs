@@ -23,6 +23,8 @@ public sealed partial class MainWindow : Window
     public FeatureClient Client { get; }
     public SettingsEditor SettingsEditor{get;}
     public ReportingController Reporting{get;}
+    public ApiSubscriptionsController ApiSubscriptions{get;}
+    public bool ApiCredentialsRequested{get;private set;}
     public HomeSwitchDraft HomeSwitchDraft{get;}=new();
     public bool DataHealthRequested{get;private set;}
     public bool WindowActive{get;private set;}
@@ -80,12 +82,14 @@ public sealed partial class MainWindow : Window
         Client = new(() => Session?.Connection.Raw ?? throw new IOException("helper_disconnected"));
         SettingsEditor=new(Client,()=>Workspace.Context);
         Reporting=new(Client,()=>Workspace.Context);
+        ApiSubscriptions=new(Client,()=>Workspace.Context,async()=>{var previous=Session;await StartAsync();return Session?.State==CoreConnectionState.Connected && !ReferenceEquals(previous,Session);});
         PageCatalog.Register(Feature.Summary, host => new DashboardPage(host));
         PageCatalog.Register(Feature.Overview, host => new OverviewPage(host));
         PageCatalog.Register(Feature.Sessions, host => new SessionsPage(host));
         PageCatalog.Register(Feature.Projects, host => new ProjectsPage(host));
         PageCatalog.Register(Feature.Quota, host => new QuotaPage(host));
         PageCatalog.Register(Feature.AccountQuotas, host => new AccountQuotasPage(host));
+        PageCatalog.Register(Feature.ApiSubscriptions,host=>new ApiSubscriptionsPage(host));
         PageCatalog.Register(Feature.Settings, host => new SettingsPage(host));
         PageCatalog.Register(Feature.LocalStatus, host => new LocalStatusPage(host));
         PageCatalog.Register(Feature.SourcesJobs, host => new SourcesJobsPage(host));
@@ -197,7 +201,7 @@ public sealed partial class MainWindow : Window
                 if (!Session.Exit.IsCompleted && !await Session.StopAsync()) { RecordShutdown("uncertain");ShowNotice("上次退出状态不确定，请退出应用后重新打开。", "The last shutdown is uncertain. Quit and reopen the app."); return; }
                 await Session.DisposeAsync(); Session = null;
             }
-            Client.Invalidate(); Workspace.ResetContext();
+            Client.Invalidate();ApiSubscriptions.ResetConnection(); Workspace.ResetContext();
             Session = await HelperSession.StartAsync(Options.Helper, Options.Runtime, Options.Home, BundleVersion, lifetime.Token);
             var connected=Session;
             connected.StateChanged += _ => Dispatch(()=>{if(ReferenceEquals(Session,connected))ConnectionChanged();});
@@ -355,6 +359,7 @@ public sealed partial class MainWindow : Window
                 var receipt=await Session.Connection.Raw.NotifyLifecycleAsync(new LifecycleNotificationRequest{Event=name},deadline:DateTime.UtcNow.AddSeconds(3),cancellationToken:lifetime.Token);
                 if(!receipt.Accepted || receipt.Event!=name)ShowNotice("系统状态通知未被确认。","System lifecycle notification was not acknowledged.");
             }
+            if(name=="application_did_become_active" && WindowVisible && Workspace.Feature==Feature.ApiSubscriptions)await ReloadPageAsync(true);
             if(name=="system_did_wake" && Session is not null)
             {
                 if(Session.State==CoreConnectionState.Connected)await ReloadSettingsAsync();else RenderPage();
@@ -536,6 +541,7 @@ public sealed partial class MainWindow : Window
     private async void RefreshClicked(object sender, RoutedEventArgs args) => await ReloadPageAsync(true);
     private void CancelClicked(object sender, RoutedEventArgs args) => page?.Cancel();
     private async void ReconnectClicked(object sender, RoutedEventArgs args) { startup = StartAsync(); await startup; }
+    public void ShowApiCredentials(){ApiCredentialsRequested=true;Navigate(Feature.Settings);}
     private void OpenTrayClicked(object sender,RoutedEventArgs args)=>trayPanel?.Show(nativeTray?.Anchor()??new RectInt32(AppWindow.Position.X,AppWindow.Position.Y,1,1));
     private void HideClicked(object sender,RoutedEventArgs args){if(nativeTray?.Available==true)HideMain();}
     private async void QuitClicked(object sender,RoutedEventArgs args)=>await QuitAsync();
@@ -572,7 +578,7 @@ public sealed partial class MainWindow : Window
     public async Task<bool> QuitAsync()
     {
         if(closing)return false;
-        closing = true; invalidations.Stop(); page?.Dispose();subscriptions?.Dispose();SettingsEditor.Dispose();Reporting.Dispose();trayPanel?.Hide();lifecycle.Stop();
+        closing = true; invalidations.Stop(); page?.Dispose();subscriptions?.Dispose();SettingsEditor.Dispose();Reporting.Dispose();ApiSubscriptions.Dispose();trayPanel?.Hide();lifecycle.Stop();
         lifetime.Cancel();
         if (startup is not null) await startup;
         await StopWatchAsync();

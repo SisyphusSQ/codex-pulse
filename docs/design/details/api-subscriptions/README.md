@@ -77,6 +77,14 @@ DeepSeek 的“总充值”是相邻成功采样之间 `topped_up_balance` 正�
 
 进入页面、手动刷新、全局刷新和应用生命周期刷新都会触发查询。Helper 启动时还会立即采样一次，此后在 App 运行期间每 15 分钟采样一次；后台采样串行执行，并在 SQLite 关闭前停止。页面标题和数据不随 Agent Provider 选择器变化。
 
+## Windows 原生页面与凭据
+
+Windows 在独立的“API 与订阅”页消费同一 Core 响应，不依赖 Agent Provider 选择或用量日期。DeepSeek 默认本月，可切今天/本周，逐币种保留原始十进制文本；蓝色阶梯图只连接实际成功观察，显示实际期初样本，充值/消耗明确为采样估算。统一 365 日活动图分别对所选币种的消耗与 OpenCode Go 5 小时峰值取正值分位，再选择较高档，缺样本与已知零分开。OpenCode Go 显示三个真实窗口、来源状态和重置时间，过期窗口不继续展示旧剩余比例。
+
+Settings 的两个独立 PasswordBox 通过已鉴权 Named Pipe 的 `UpdateAPICredential` 提交。输入在提交前清空，方法局部 byte buffer 在复制后归零，请求字段在 RPC 返回后释放；不把密钥放入草稿、查询缓存、平台偏好或启动鉴权 pipe。存储仍为 Helper 的 ACL 私有明文 SQLite，不能声称静态加密或防御同账户恶意进程。保存或删除先隐藏旧代次数据，再排空/重启 Helper，强制读回配置与业务快照；不确定退出禁止继续展示旧采样器数据。新 Key 保存回执未知时，configured=true 不能证明内容相同，不报告成功、不自动重发；删除可通过重启后的未配置状态独立确认。
+
+Windows 开发入口为 `scripts/windows/test-api-credentials.ps1`：合成 Home/Key、真实 C#→Go Named Pipe、四次实际 Helper 重启，固定本机拒绝代理阻断对真实 API 的访问。它与 Go httptest、私有 SQLite/代次测试及 C# 状态/展示断言共同构成开发证据，不作为真实 API 账户验收。
+
 ## 验证边界
 
 单元测试、contract test 和 App deterministic test 使用 `t.TempDir()` 下的独立凭据库、内存凭据、`httptest` 或 fixture，验证权限、重启持久化、请求契约、严格解码、并行独立失败、last-known-good、RPC 映射和 UI 边界。自动测试不得读取真实 `credentials.db`，不得使用真实 API Key，也不得调用 DeepSeek 或 OpenCode Go 线上接口。
