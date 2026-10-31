@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
@@ -186,10 +187,23 @@ func validatedRolloutPath(canonicalHome, candidate string) (string, string) {
 	if err != nil {
 		return "", "rollout_path_invalid"
 	}
-	if !filepath.IsAbs(candidate) || filepath.Ext(candidate) != ".jsonl" {
+	if !filepath.IsAbs(candidate) || !(strings.HasSuffix(candidate, ".jsonl") || strings.HasSuffix(candidate, ".jsonl.zst")) {
 		return "", "rollout_path_invalid"
 	}
 	canonicalCandidate, err := filepath.EvalSymlinks(candidate)
+	if errors.Is(err, os.ErrNotExist) && strings.HasSuffix(candidate, ".jsonl") {
+		// 先核对现存父目录的物理身份，兼容 macOS /var -> /private/var，
+		// 但不在 Home 外探测同名压缩副本。
+		parent, parentErr := filepath.EvalSymlinks(filepath.Dir(candidate))
+		if parentErr != nil {
+			return "", "rollout_path_unavailable"
+		}
+		relative, relErr := filepath.Rel(canonicalHome, parent)
+		if relErr != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return "", "rollout_path_outside_home"
+		}
+		canonicalCandidate, err = filepath.EvalSymlinks(candidate + ".zst")
+	}
 	if err != nil {
 		return "", "rollout_path_unavailable"
 	}

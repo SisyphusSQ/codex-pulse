@@ -130,7 +130,7 @@ func (discoverer *Discoverer) Inspect(
 		return Snapshot{}, err
 	}
 	absolutePath = filepath.Clean(absolutePath)
-	if !filepath.IsAbs(absolutePath) || filepath.Ext(absolutePath) != ".jsonl" ||
+	if !filepath.IsAbs(absolutePath) || !(filepath.Ext(absolutePath) == ".jsonl" || strings.HasSuffix(absolutePath, ".jsonl.zst")) ||
 		!pathWithin(discoverer.home, absolutePath) {
 		return Snapshot{}, ErrUnsafeSource
 	}

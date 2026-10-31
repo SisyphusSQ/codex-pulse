@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/klauspost/compress/zstd"
 	"gorm.io/gorm"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
@@ -301,70 +302,110 @@ func TestRuntimeHomeSwitchReplacesOnlyConfirmedOldHome(t *testing.T) {
 }
 
 func TestRuntimeDeepIndexesOnlyRequestedSessionWithoutQuotaFacts(t *testing.T) {
-	t.Parallel()
+	for _, compressed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "plain", true: "zstd"}[compressed], func(t *testing.T) {
+			t.Parallel()
 
-	ctx := context.Background()
-	homePath := t.TempDir()
-	rollout := filepath.Join(homePath, "sessions", "deep.jsonl")
-	if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	content := strings.Join([]string{
-		`{"timestamp":"2026-07-14T01:00:00Z","type":"session_meta","payload":{"id":"session-deep","timestamp":"2026-07-14T01:00:00Z","cwd":"/tmp/project","originator":"codex_cli_rs","cli_version":"0.142.3","source":"cli","model_provider":"openai"}}`,
-		`{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-deep","started_at":1783990801,"model_context_window":258000}}`,
-		`{"timestamp":"2026-07-14T01:00:02Z","type":"turn_context","payload":{"turn_id":"turn-deep","cwd":"/tmp/project","model":"gpt-5","effort":"high"}}`,
-		`{"timestamp":"2026-07-14T01:00:03Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","primary":{"used_percent":38,"window_minutes":300,"resets_at":1784008800},"plan_type":"pro"}}}`,
-		`{"timestamp":"2026-07-14T01:00:04Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-deep","completed_at":1783990804}}`,
-	}, "\n") + "\n"
-	if err := os.WriteFile(rollout, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	homeMetadata, err := logsource.NewHomeProbe().Probe(ctx, homePath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	path, err := filepath.EvalSymlinks(rollout)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, deepRepository, repository := openLightRuntimeRepository(t)
-	provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
-		return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
-			SessionID: "session-deep", CWD: "/tmp/project", RolloutPath: &path,
-			CreatedAtMS: 100, UpdatedAtMS: 200,
-		}}}, nil
-	})
-	runtime, err := NewRuntime(RuntimeConfig{Repository: repository, DeepRepository: deepRepository, Metadata: provider})
-	if err != nil {
-		t.Fatal(err)
-	}
-	home := storelight.LightHomeIdentity{Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode}
-	run, err := runtime.Start(ctx, home)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := run.Wait(ctx); err != nil {
-		t.Fatal(err)
-	}
-	result, err := runtime.DeepIndexSession(ctx, "session-deep")
-	if err != nil || result.LoadedTurnCount != 1 || result.Reused {
-		t.Fatalf("DeepIndexSession() = %#v, %v", result, err)
-	}
-	detail, err := deepRepository.SessionAnalytics(ctx, store.SessionAnalyticsDetailFilter{SessionID: "session-deep", TurnLimit: 20})
-	if err != nil || detail.Mode != store.AnalyticsReadLightIndex || len(detail.Turns) != 1 || detail.Turns[0].TurnID == "" {
-		t.Fatalf("SessionAnalytics() = %#v, %v", detail, err)
-	}
-	sessionID := "session-deep"
-	observations, err := deepRepository.ListQuotaObservations(
-		ctx,
-		store.QuotaObservationFilter{SessionID: &sessionID, Limit: 10},
-	)
-	if err != nil || len(observations) != 0 {
-		t.Fatalf("quota observations = %#v, %v", observations, err)
-	}
-	reused, err := runtime.DeepIndexSession(ctx, "session-deep")
-	if err != nil || !reused.Reused {
-		t.Fatalf("DeepIndexSession(reuse) = %#v, %v", reused, err)
+			ctx := context.Background()
+			homePath := t.TempDir()
+			rollout := filepath.Join(homePath, "sessions", "deep.jsonl")
+			if err := os.MkdirAll(filepath.Dir(rollout), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			content := strings.Join([]string{
+				`{"timestamp":"2026-07-14T01:00:00Z","type":"session_meta","payload":{"id":"session-deep","timestamp":"2026-07-14T01:00:00Z","cwd":"/tmp/project","originator":"codex_cli_rs","cli_version":"0.142.3","source":"cli","model_provider":"openai"}}`,
+				`{"timestamp":"2026-07-14T01:00:01Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-deep","started_at":1783990801,"model_context_window":258000}}`,
+				`{"timestamp":"2026-07-14T01:00:02Z","type":"turn_context","payload":{"turn_id":"turn-deep","cwd":"/tmp/project","model":"gpt-5","effort":"high"}}`,
+				`{"timestamp":"2026-07-14T01:00:03Z","type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","primary":{"used_percent":38,"window_minutes":300,"resets_at":1784008800},"plan_type":"pro"}}}`,
+				`{"timestamp":"2026-07-14T01:00:04Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-deep","completed_at":1783990804}}`,
+			}, "\n") + "\n"
+			data := []byte(content)
+			if compressed {
+				rollout += ".zst"
+				encoder, err := zstd.NewWriter(nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = encoder.EncodeAll(data, nil)
+				encoder.Close()
+			}
+			if err := os.WriteFile(rollout, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			homeMetadata, err := logsource.NewHomeProbe().Probe(ctx, homePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path, err := filepath.EvalSymlinks(rollout)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, deepRepository, repository := openLightRuntimeRepository(t)
+			provider := metadataProviderFunc(func(context.Context, string) (appserver.ThreadList, error) {
+				return appserver.ThreadList{Threads: []appserver.ThreadMetadata{{
+					SessionID: "session-deep", CWD: "/tmp/project", RolloutPath: &path,
+					CreatedAtMS: 100, UpdatedAtMS: 200,
+				}}}, nil
+			})
+			runtime, err := NewRuntime(RuntimeConfig{Repository: repository, DeepRepository: deepRepository, Metadata: provider})
+			if err != nil {
+				t.Fatal(err)
+			}
+			home := storelight.LightHomeIdentity{Path: homeMetadata.Path, DeviceID: homeMetadata.DeviceID, Inode: homeMetadata.Inode}
+			run, err := runtime.Start(ctx, home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := run.Wait(ctx); err != nil {
+				t.Fatal(err)
+			}
+			result, err := runtime.DeepIndexSession(ctx, "session-deep")
+			if err != nil || result.LoadedTurnCount != 1 || result.Reused {
+				t.Fatalf("DeepIndexSession() = %#v, %v", result, err)
+			}
+			detail, err := deepRepository.SessionAnalytics(ctx, store.SessionAnalyticsDetailFilter{SessionID: "session-deep", TurnLimit: 20})
+			if err != nil || detail.Mode != store.AnalyticsReadLightIndex || len(detail.Turns) != 1 || detail.Turns[0].TurnID == "" {
+				t.Fatalf("SessionAnalytics() = %#v, %v", detail, err)
+			}
+			sessionID := "session-deep"
+			observations, err := deepRepository.ListQuotaObservations(
+				ctx,
+				store.QuotaObservationFilter{SessionID: &sessionID, Limit: 10},
+			)
+			if err != nil || len(observations) != 0 {
+				t.Fatalf("quota observations = %#v, %v", observations, err)
+			}
+			reused, err := runtime.DeepIndexSession(ctx, "session-deep")
+			if err != nil || !reused.Reused {
+				t.Fatalf("DeepIndexSession(reuse) = %#v, %v", reused, err)
+			}
+			if !compressed {
+				encoder, err := zstd.NewWriter(nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				archive := encoder.EncodeAll([]byte(content), nil)
+				encoder.Close()
+				if err := os.WriteFile(path+".zst", archive, 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+				path += ".zst"
+				run, err := runtime.Start(ctx, home)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := run.Wait(ctx); err != nil {
+					t.Fatal(err)
+				}
+				again, err := runtime.DeepIndexSession(ctx, "session-deep")
+				if err != nil || again.LoadedTurnCount != 1 {
+					t.Fatal("plain to compressed conversion duplicated or lost turns", again, err)
+				}
+			}
+		})
 	}
 }
 

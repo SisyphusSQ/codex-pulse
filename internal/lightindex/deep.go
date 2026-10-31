@@ -3,6 +3,7 @@ package lightindex
 import (
 	"context"
 	"errors"
+	"strings"
 
 	logparser "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/parser"
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
@@ -53,6 +54,17 @@ func (runtime *Runtime) DeepIndexSession(ctx context.Context, sessionID string) 
 	if err != nil {
 		return DeepIndexResult{}, err
 	}
+	reader, err := logsource.NewConfirmedSnapshotReader(state.Home.Path, state.Home.DeviceID, state.Home.Inode, DefaultTokenScanChunkBytes)
+	if err != nil {
+		return DeepIndexResult{}, err
+	}
+	if strings.HasSuffix(snapshot.Path, ".jsonl.zst") {
+		reader, snapshot, err = reader.OpenZstdSnapshot(ctx, snapshot)
+		if err != nil {
+			return DeepIndexResult{}, err
+		}
+		defer reader.Close()
+	}
 	if file, lookupErr := runtime.deepRepository.SourceFile(ctx, snapshot.SourceFileID); lookupErr == nil &&
 		file.State == store.SourceFileActive && file.SessionID != nil && *file.SessionID == sessionID &&
 		file.CurrentPath == snapshot.Path && file.DeviceID == snapshot.Fingerprint.DeviceID &&
@@ -67,20 +79,18 @@ func (runtime *Runtime) DeepIndexSession(ctx context.Context, sessionID string) 
 	if err != nil {
 		return DeepIndexResult{}, err
 	}
+	action, err := runtime.deepReconcileAction(ctx, sessionID, snapshot)
+	if err != nil {
+		return DeepIndexResult{}, err
+	}
 	stream, err := ingester.Open(ctx, indexer.OpenRequest{
-		Action: logsource.ReconcileAction{Kind: logsource.ChangeAdded, Current: &snapshot},
+		Action: action,
 		AtMS:   runtime.clock().UnixMilli(), SkipQuotaFacts: true,
 	})
 	if err != nil {
 		return DeepIndexResult{}, err
 	}
 	cursor, err := stream.Cursor()
-	if err != nil {
-		return DeepIndexResult{}, err
-	}
-	reader, err := logsource.NewConfirmedSnapshotReader(
-		state.Home.Path, state.Home.DeviceID, state.Home.Inode, DefaultTokenScanChunkBytes,
-	)
 	if err != nil {
 		return DeepIndexResult{}, err
 	}
@@ -99,6 +109,24 @@ func (runtime *Runtime) DeepIndexSession(ctx context.Context, sessionID string) 
 		return DeepIndexResult{}, err
 	}
 	return runtime.deepIndexResult(ctx, sessionID, false)
+}
+
+func (runtime *Runtime) deepReconcileAction(ctx context.Context, sessionID string, snapshot logsource.Snapshot) (logsource.ReconcileAction, error) {
+	action := logsource.ReconcileAction{Kind: logsource.ChangeAdded, Current: &snapshot}
+	cursor, err := runtime.deepRepository.ActiveSessionGeneration(ctx, sessionID)
+	if errors.Is(err, store.ErrNotFound) {
+		return action, nil
+	}
+	if err != nil {
+		return action, err
+	}
+	if strings.TrimSuffix(cursor.Fingerprint.CurrentPath, ".zst") == strings.TrimSuffix(snapshot.Path, ".zst") {
+		fp := cursor.Fingerprint
+		previous := logsource.Snapshot{SourceFileID: fp.SourceFileID, Provider: fp.Provider, Kind: logsource.SourceKind(fp.SourceKind), Path: fp.CurrentPath,
+			Fingerprint: logsource.Fingerprint{DeviceID: fp.DeviceID, Inode: fp.Inode, SizeBytes: fp.SizeBytes, MTimeNS: fp.MTimeNS, PrefixBytes: fp.PrefixBytes, PrefixSHA256: fp.PrefixSHA256, Digest: fp.FingerprintSHA256}}
+		action.Kind, action.Previous = logsource.ChangeReplaced, &previous
+	}
+	return action, nil
 }
 
 func (runtime *Runtime) deepIndexResult(ctx context.Context, sessionID string, reused bool) (DeepIndexResult, error) {

@@ -32,6 +32,9 @@ func loadLightThroughput(db *gorm.DB, ids []string) (map[string]throughput.Stats
 	accumulators := make(map[string]*throughput.Accumulator, len(ids))
 	for _, source := range sources {
 		stats[source.SessionID] = throughput.Stats{Status: "unavailable", Reason: "index_pending"}
+		if source.ScanState == "deferred" || source.ScanState == "failed" {
+			stats[source.SessionID] = throughput.Stats{Status: "unavailable", Reason: "missing_facts"}
+		}
 		if source.ParserVersion != nil && *source.ParserVersion == throughput.ParserVersion {
 			accumulators[source.SessionID] = throughput.NewAccumulator()
 		}

@@ -1,5 +1,15 @@
 # 轻量会话与 Token 索引验证
 
+## TOO-678 压缩来源与 pending 恢复（2026-10-31）
+
+本次覆盖：明文优先与同名 `.jsonl.zst` 回退、逻辑 offset 与 EOF、有界解压/取消/截断拒绝、读取后源身份变化、等价明文和压缩的按需深索引、压缩副本复读/重启/修订、坏副本保留旧 active、缺失源 deferred 和恢复、无 Token 记录的正常完成、未变化明文来源恢复 complete，以及全局覆盖状态收敛。
+
+开发阶段 Windows 新增场景、App Server、lightindex、reporting 以及 Store 的 Light/Reporting/Throughput 聚焦验证通过。Windows source 全包中的既有 `/tmp` 和符号链接权限夹具失败，没有修改系统权限或伪装通过；source、App Server、lightindex 在 macOS 隔离源码副本补跑通过。明文已建详情索引后切换压缩副本的替换 lineage 回归也通过，具体输出保留为本机证据。
+
+真实只读来源核对：目标旧 Session 的压缩流可解码，扫描逻辑 offset 达到完整 65,544 字节 EOF，未发现 Token 用量记录；这仅证明修复后的解析入口可消费该文件，不代替 App 安装与索引状态读回。代码、私有诊断程序和原始输出边界分开，本机证据位于忽略的 `.artifacts/too-678/`，不提交真实路径或日志正文。
+
+提交与发版收尾按约定不重复执行测试，不声明全仓长测、CI、完整三机矩阵或 macOS 首启/N-1 更新已验收。
+
 TOO-492 在现有轻量扫描 generation 上追加内容无关的轮次 TPS 事实，parser 升级为 `codex-token-model-invocation-throughput-v5`、schema 追加 v35。事务、受控重建及 TPS 专项验证见 [会话活跃期间平均 TPS](session-throughput.md)；下文历史结果保留原执行时口径。
 
 ## 2026-07-19 原始验收结论
