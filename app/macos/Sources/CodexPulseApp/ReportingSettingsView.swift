@@ -89,6 +89,6 @@ struct ReportingSettingsSection: View {
         return Date(timeIntervalSince1970: Double(value) / 1000).formatted(date: .abbreviated, time: .shortened)
     }
     private func stateLabel(_ value: String) -> String {
-        ["processing":"中心正在处理，保留待确认批次", "publication_failed":"中心处理失败，其他同步继续", "disabled":"已关闭", "ready":"已准备 / 等待增量同步", "partial":"部分来源可用", "offline":"连接失败，等待有界重试", "reconnect_required":"凭证已失效，请重新配对", "protocol_rejected":"协议不兼容，请先更新中心", "queue_full":"队列已满，保留待发送数据", "source_budget_exceeded":"来源快照超过总预算", "source_unavailable":"本机来源尚不可用", "storage_unavailable":"本机同步存储不可用"][value] ?? "状态未知"
+        ["processing":"中心正在处理，保留待确认批次", "publication_failed":"中心处理失败，其他同步继续", "disabled":"已关闭", "ready":"已准备 / 等待增量同步", "partial":"部分来源可用", "offline":"连接失败，等待有界重试", "reconnect_required":"凭证已失效，请重新配对", "protocol_rejected":"协议校验失败，修复或更新后可立即同步重试", "queue_full":"队列已满，保留待发送数据", "source_budget_exceeded":"来源快照超过总预算", "source_unavailable":"本机来源尚不可用", "storage_unavailable":"本机同步存储不可用"][value] ?? "状态未知"
     }
 }

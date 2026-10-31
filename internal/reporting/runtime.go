@@ -177,11 +177,21 @@ func (r *Runtime) SyncNow(ctx context.Context) (Status, error) {
 	if status.State == "reconnect_required" {
 		return status, ErrReconnect
 	}
-	if status.State == "protocol_rejected" {
-		return status, ErrProtocol
-	}
 	if err := r.state.resetCursors(ctx, credentialSettings{Endpoint: status.Endpoint, ClientID: status.ClientID}.partition()); err != nil {
 		return Status{}, ErrUnavailable
+	}
+	if status.State == "protocol_rejected" {
+		// 用户显式重试允许修复后的导出器重新运行；自动调度仍暂停协议拒绝，
+		// 已提交的队列正文和配对不变，中心再次拒绝时会重新进入暂停状态。
+		cfg, err := r.state.settings(ctx)
+		if err != nil {
+			return Status{}, ErrUnavailable
+		}
+		cfg.State = "ready"
+		if err := r.state.saveSettings(ctx, cfg); err != nil {
+			return Status{}, ErrUnavailable
+		}
+		status.State = cfg.State
 	}
 	r.signal()
 	return status, nil

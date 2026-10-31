@@ -78,3 +78,34 @@ func TestAccountUsageOutboxBodySurvivesReopenAndDeduplicates(t *testing.T) {
 		t.Fatal("account usage lost", err)
 	}
 }
+
+func TestAccountUsagePeriodWaitsForObservedWindowStart(t *testing.T) {
+	const observed = int64(1793291252894)
+	const start = observed + 3106
+	identity := AccountIdentity{Provider: "codex", LocalScope: "private-scope", AccountID: "account"}
+	q := reportingv1.QuotaObservation{Provider: "codex", LocalScope: identity.LocalScope, LimitID: "codex", Source: "app_server", Validity: "accepted", WindowMinutes: new(int64(10080)), ResetsAtMS: new(start + 10080*60000), ObservedAtMS: observed}
+	for _, now := range []int64{observed, start, start + 60000} {
+		u := accountUsagePeriod([]reportingv1.QuotaObservation{q}, identity, "public-scope", now)
+		if u.ResetsAtMS != 0 {
+			t.Fatal("old observation became valid just by waiting", u)
+		}
+	}
+	if q.ObservedAtMS != observed {
+		t.Fatal("source observation changed")
+	}
+	state, _ := testState(t)
+	for _, at := range []int64{start, start + 1} {
+		q.ObservedAtMS = at
+		u := accountUsagePeriod([]reportingv1.QuotaObservation{q}, identity, "public-scope", at)
+		if !u.Valid() || u.CollectedAtMS != at || u.WindowStartAtMS != start || u.LocalScope != "public-scope" {
+			t.Fatal("valid successor period lost", u)
+		}
+		if _, err := state.EnqueueFactGroups(t.Context(), "center", []FactsGroup{{Key: reportingv1.Key("period"), Batch: reportingv1.Batch{AccountUsage: []reportingv1.AccountTokenUsage{u}}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	q.LocalScope = "other-account"
+	if u := accountUsagePeriod([]reportingv1.QuotaObservation{q}, identity, "public-scope", start+1); u.ResetsAtMS != 0 {
+		t.Fatal("another account supplied the period")
+	}
+}

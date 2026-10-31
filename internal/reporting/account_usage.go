@@ -52,14 +52,7 @@ func (e *Exporter) AccountUsage(ctx context.Context) ([]FactsGroup, error) {
 	if err != nil {
 		return nil, err
 	}
-	var usage reportingv1.AccountTokenUsage
-	for _, q := range quota.Batch.Quotas {
-		if q.LocalScope == identity.LocalScope && q.LimitID == "codex" && q.Source == "app_server" && q.Validity == "accepted" && q.WindowMinutes != nil && *q.WindowMinutes == 10080 && q.ResetsAtMS != nil && *q.ResetsAtMS > now && q.ObservedAtMS <= now {
-			if usage.CollectedAtMS <= q.ObservedAtMS {
-				usage = reportingv1.AccountTokenUsage{Provider: "codex", AccountID: identity.AccountID, LocalScope: e.state.PublicScope("codex", identity.LocalScope), WindowStartAtMS: *q.ResetsAtMS - 10080*60000, ResetsAtMS: *q.ResetsAtMS, CollectedAtMS: q.ObservedAtMS, Facts: []reportingv1.AccountTokenFact{}}
-			}
-		}
-	}
+	usage := accountUsagePeriod(quota.Batch.Quotas, identity, e.state.PublicScope("codex", identity.LocalScope), now)
 	if usage.ResetsAtMS == 0 {
 		return nil, nil
 	}
@@ -103,6 +96,24 @@ func (e *Exporter) AccountUsage(ctx context.Context) ([]FactsGroup, error) {
 	}
 	e.usagePending = &epoch
 	return groups, nil
+}
+
+func accountUsagePeriod(quotas []reportingv1.QuotaObservation, identity AccountIdentity, publicScope string, now int64) (usage reportingv1.AccountTokenUsage) {
+	for _, q := range quotas {
+		if q.LocalScope != identity.LocalScope || q.LimitID != "codex" || q.Source != "app_server" || q.Validity != "accepted" || q.WindowMinutes == nil || *q.WindowMinutes != 10080 || q.ResetsAtMS == nil || *q.ResetsAtMS <= now || q.ObservedAtMS > now {
+			continue
+		}
+		start := *q.ResetsAtMS - 10080*60000
+		// 重置观测的时间可能略早于推算的周期起点；等待有效观测，
+		// 不改写采集时间，也不让可选账号消耗阻断其他事实上报。
+		if q.ObservedAtMS < start {
+			continue
+		}
+		if usage.CollectedAtMS <= q.ObservedAtMS {
+			usage = reportingv1.AccountTokenUsage{Provider: "codex", AccountID: identity.AccountID, LocalScope: publicScope, WindowStartAtMS: start, ResetsAtMS: *q.ResetsAtMS, CollectedAtMS: q.ObservedAtMS, Facts: []reportingv1.AccountTokenFact{}}
+		}
+	}
+	return
 }
 
 // 只有整页进入持久 outbox 后才能推进游标；队列写入失败会重试同一页。
