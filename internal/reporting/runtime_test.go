@@ -60,6 +60,64 @@ func waitStatus(t *testing.T, r *Runtime, want func(Status) bool) Status {
 	t.Fatalf("reporting status: %+v", out)
 	return Status{}
 }
+
+func TestSyncNowExplicitlyRetriesProtocolRejectionWithoutChangingQueuedBody(t *testing.T) {
+	state, _ := testState(t)
+	var requests atomic.Int32
+	var accept atomic.Bool
+	var bodiesMu sync.Mutex
+	var bodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		body, _ := io.ReadAll(req.Body)
+		bodiesMu.Lock()
+		bodies = append(bodies, string(body))
+		bodiesMu.Unlock()
+		requests.Add(1)
+		if !accept.Load() {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var batch reportingv1.Batch
+		if err := json.Unmarshal(body, &batch); err != nil {
+			t.Error(err)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": reportingv1.Receipt{Version: 1, BatchID: batch.ID, ReceivedAtMS: 3000}})
+	}))
+	defer server.Close()
+	cfg := credentialSettings{ID: 1, Endpoint: server.URL, ClientID: "00000000-0000-0000-0000-000000000001", Credential: strings.Repeat("c", 43), Enabled: true, AllowHTTP: true, IntervalSeconds: 60, State: "protocol_rejected"}
+	if err := state.saveSettings(t.Context(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.Enqueue(t.Context(), cfg.partition(), "sweep", testSnapshot()); err != nil {
+		t.Fatal(err)
+	}
+	runtime := Start(state, &fakeSource{})
+	defer runtime.Close(context.Background())
+	for range 2 {
+		if _, err := runtime.SyncNow(t.Context()); err != nil {
+			t.Fatal("explicit retry stayed blocked", err)
+		}
+		waitStatus(t, runtime, func(s Status) bool { return s.State == "protocol_rejected" })
+	}
+	if requests.Load() != 2 {
+		t.Fatal("protocol failure retried automatically", requests.Load())
+	}
+	accept.Store(true)
+	if _, err := runtime.SyncNow(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, runtime, func(s Status) bool { return s.LastSuccessAtMS != nil && s.PendingBatches == 0 })
+	bodiesMu.Lock()
+	defer bodiesMu.Unlock()
+	if len(bodies) < 3 || bodies[0] != bodies[1] || bodies[0] != bodies[2] {
+		t.Fatal("explicit recovery rewrote queued data")
+	}
+	saved, err := state.settings(t.Context())
+	if err != nil || saved.ClientID != cfg.ClientID || saved.Credential != cfg.Credential {
+		t.Fatal("explicit recovery changed pairing", err)
+	}
+}
 func TestOptionalSyncRetriesSameCommittedBatchAndStopsWithOwner(t *testing.T) {
 	state, _ := testState(t)
 	source := &fakeSource{}

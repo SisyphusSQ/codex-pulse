@@ -139,7 +139,7 @@ public static class ReportingCopy
         "publication_failed"=>l.Text("中心处理失败，其他同步继续","Center publication failed; other sync continues"),
         "disabled"=>l.Text("已关闭","Disabled"),"ready"=>l.Text("已准备，等待增量同步","Ready; awaiting incremental sync"),
         "partial"=>l.Text("部分来源可用","Some sources available"),"offline"=>l.Text("连接失败，等待有界重试","Offline; awaiting bounded retry"),
-        "reconnect_required"=>l.Text("凭证已失效，请重新配对","Credential invalid; pair again"),"protocol_rejected"=>l.Text("协议不兼容，请先更新中心","Protocol rejected; update the center first"),
+        "reconnect_required"=>l.Text("凭证已失效，请重新配对","Credential invalid; pair again"),"protocol_rejected"=>l.Text("协议校验失败，修复或更新后可立即同步重试","Protocol validation failed; sync now after fixing or updating"),
         "queue_full"=>l.Text("队列已满，保留待发送数据","Queue full; pending data retained"),"source_budget_exceeded"=>l.Text("来源快照超过总预算","Source snapshot exceeds budget"),
         "source_unavailable"=>l.Text("本机来源尚不可用","Local source unavailable"),"storage_unavailable"=>l.Text("本机同步存储不可用","Local sync storage unavailable"),
         _=>l.Text("状态未知","Unknown state")
