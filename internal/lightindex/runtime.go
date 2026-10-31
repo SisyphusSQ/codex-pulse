@@ -139,6 +139,7 @@ type Runtime struct {
 	refreshFailed     func(error)
 	observeRefresh    func(RefreshObservation)
 	deepMu            sync.Mutex
+	compressedScans   map[string]compressedScanIdentity
 }
 
 type Run struct {
@@ -314,6 +315,17 @@ func (runtime *Runtime) metadataSnapshot(
 			UpdatedAtMS: thread.UpdatedAtMS, RecencyAtMS: thread.RecencyAtMS,
 		})
 	}
+	if len(runtime.compressedScans) != 0 {
+		present := make(map[string]bool, len(snapshot.Sessions))
+		for _, session := range snapshot.Sessions {
+			present[session.SessionID] = true
+		}
+		for id := range runtime.compressedScans {
+			if !present[id] {
+				delete(runtime.compressedScans, id)
+			}
+		}
+	}
 	return snapshot
 }
 
@@ -446,6 +458,7 @@ func recoverableSessionScanError(err error) bool {
 		return false
 	}
 	return errors.Is(err, storelight.ErrLightTokenConflict) ||
+		errors.Is(err, logsource.ErrInvalidCompressedSource) ||
 		errors.Is(err, storelight.ErrNotFound) ||
 		errors.Is(err, logsource.ErrChangedDuringScan) ||
 		errors.Is(err, logsource.ErrUnsafeSource) ||
@@ -542,12 +555,22 @@ func (runtime *Runtime) scanAll(
 			return published, err
 		}
 		if session.RolloutPath == nil {
+			changed, err := runtime.repository.SetLightScanState(ctx, home, session, "deferred", runtime.clock().UnixMilli())
+			published = published || changed
+			if err != nil {
+				return published, err
+			}
 			continue
 		}
 		sessionPublished, err := runtime.scanSession(ctx, home, current, discoverer, reader, nil, true)
 		published = published || sessionPublished
 		if err != nil {
 			if recoverableSessionScanError(err) {
+				changed, markErr := runtime.repository.SetLightScanState(ctx, home, session, "failed", runtime.clock().UnixMilli())
+				published = published || changed
+				if markErr != nil {
+					return published, markErr
+				}
 				continue
 			}
 			if published {
@@ -555,6 +578,11 @@ func (runtime *Runtime) scanAll(
 			}
 			return published, err
 		}
+	}
+	changed, err := runtime.repository.FinishLightScanPass(ctx, home, runtime.clock().UnixMilli())
+	published = published || changed
+	if err != nil {
+		return published, err
 	}
 	if published {
 		runtime.notifyRefreshCommitted()
@@ -656,11 +684,31 @@ func (runtime *Runtime) scanBudgetedSlice(
 			if scanErr != nil && !recoverableSessionScanError(scanErr) {
 				return published, false, scanErr
 			}
+			if scanErr != nil {
+				changed, err := runtime.repository.SetLightScanState(ctx, home, current.Session, "failed", runtime.clock().UnixMilli())
+				published = published || changed
+				if err != nil {
+					return published, false, err
+				}
+			}
+		} else {
+			changed, err := runtime.repository.SetLightScanState(ctx, home, current.Session, "deferred", runtime.clock().UnixMilli())
+			published = published || changed
+			if err != nil {
+				return published, false, err
+			}
 		}
 		continuation.index++
 	}
 	deferred := continuation.deferred
 	continuation.reset()
+	if !deferred {
+		changed, err := runtime.repository.FinishLightScanPass(ctx, home, runtime.clock().UnixMilli())
+		published = published || changed
+		if err != nil {
+			return published, false, err
+		}
+	}
 	return published, !deferred, nil
 }
 
@@ -700,6 +748,13 @@ func (runtime *Runtime) scanSessionOnce(
 	cached *storelight.LightSessionScanSnapshot,
 	budget *scanSliceBudget,
 ) (bool, error) {
+	if strings.HasSuffix(*session.RolloutPath, ".jsonl.zst") {
+		return runtime.scanCompressedSession(ctx, home, session, discoverer, reader, cached, budget)
+	}
+	return runtime.scanSessionData(ctx, home, session, discoverer, reader, cached, budget)
+}
+
+func (runtime *Runtime) scanSessionData(ctx context.Context, home storelight.LightHomeIdentity, session storelight.LightSessionMetadata, discoverer rolloutInspector, reader *logsource.SnapshotReader, cached *storelight.LightSessionScanSnapshot, budget *scanSliceBudget) (bool, error) {
 	var pending storelight.LightTokenScan
 	var pendingErr error
 	if cached != nil {
@@ -742,6 +797,9 @@ func (runtime *Runtime) scanSessionOnce(
 				if budget != nil {
 					budget.unchanged++
 				}
+				if session.ScanState != "complete" {
+					return runtime.repository.SetLightScanState(ctx, home, session, "complete", runtime.clock().UnixMilli())
+				}
 				return false, nil
 			}
 		}
@@ -757,13 +815,13 @@ func (runtime *Runtime) scanSessionOnce(
 		return false, err
 	}
 	identity := identityFromSnapshot(home, current)
-	if activeErr == nil {
+	if activeErr == nil && !reader.Decoded() {
 		decision := DecideRefresh(
 			checkpointFromStoredScan(active), homeIdentity(active.Identity.Home), fileIdentity(identity), TokenParserVersion,
 		)
 		switch decision.Kind {
 		case RefreshReuse:
-			return false, nil
+			return runtime.repository.SetLightScanState(ctx, home, session, "complete", runtime.clock().UnixMilli())
 		case RefreshAppend:
 			generation, err := runtime.repository.StartLightTokenAppend(
 				ctx, session.SessionID, identity, TokenParserVersion, runtime.clock().UnixMilli(),
@@ -812,6 +870,17 @@ func (runtime *Runtime) scanExistingPending(
 		return false, err
 	}
 	identity := identityFromSnapshot(home, current)
+	if reader.Decoded() {
+		generation, err := runtime.repository.RestartLightTokenPendingRebuild(ctx, session.SessionID, pending.Identity, identity, TokenParserVersion, runtime.clock().UnixMilli())
+		if err != nil {
+			return false, err
+		}
+		pending, err = runtime.repository.PendingLightTokenScan(ctx, session.SessionID)
+		if err != nil || pending.Generation != generation {
+			return false, errors.Join(storelight.ErrLightTokenConflict, err)
+		}
+		return runtime.scanPending(ctx, pending, current, reader, budget)
+	}
 	decision := DecideRefresh(
 		checkpointFromStoredScan(pending), homeIdentity(pending.Identity.Home), fileIdentity(identity), TokenParserVersion,
 	)

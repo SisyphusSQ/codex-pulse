@@ -1,5 +1,11 @@
 ## Unreleased
 
+## v0.17.2 - 2026-10-31
+
+#### bugFix:
+1. [TOO-678] 修复 Codex 历史日志只剩同名 Zstd 压缩副本时无法读取、Session 长期停在 pending 的问题；复用既有解析与安全快照，解压正文只保留在扫描内存中。
+2. [TOO-678] 缺失与失败来源分别记录 deferred/failed，来源恢复后可回到 complete；完整扫描轮次按实际覆盖收敛 complete/partial，保留旧的有效统计。
+
 ## v0.17.1 - 2026-10-31
 
 #### bugFix:

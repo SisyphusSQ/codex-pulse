@@ -234,7 +234,7 @@ func snapshotPathAllowed(confirmedHome, path string, kind SourceKind) bool {
 }
 
 func jsonlPathWithin(root, path string) bool {
-	return path != root && pathWithin(root, path) && filepath.Ext(path) == ".jsonl"
+	return path != root && pathWithin(root, path) && (filepath.Ext(path) == ".jsonl" || strings.HasSuffix(path, ".jsonl.zst"))
 }
 
 func validSourceKind(kind SourceKind) bool {

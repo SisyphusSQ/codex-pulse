@@ -20,6 +20,7 @@ type SnapshotReader struct {
 	rootIdentity rootIdentity
 	chunkBytes   int
 	readAt       func(*os.File, []byte, int64) (int, error)
+	decoded      *decodedSnapshot
 }
 
 // SnapshotReadResult 区分实际磁盘IO、交给consumer的内容推进量与真实snapshot EOF。
@@ -82,6 +83,8 @@ func (reader *SnapshotReader) Read(
 }
 
 // ReadLimited 把prefix proof与正文读取都计入maxBytes；budget停止时不会发送伪EOF。
+// 解压视图已在 OpenZstdSnapshot 中完成有界物理读取；其 maxBytes 限制本次逻辑输出，
+// BytesRead 同时记录首次解码的物理开销，不能把压缩长度当作逻辑 EOF。
 func (reader *SnapshotReader) ReadLimited(
 	ctx context.Context,
 	snapshot Snapshot,
@@ -108,6 +111,9 @@ func (reader *SnapshotReader) read(
 	}
 	if err := ctx.Err(); err != nil {
 		return result, err
+	}
+	if reader.decoded != nil {
+		return reader.readDecoded(ctx, snapshot, startOffset, maxBytes, consume)
 	}
 	if err := validateSnapshotForHome(reader.home, snapshot); err != nil ||
 		snapshot.Kind == SourceKindSessionIndex || startOffset < 0 ||
