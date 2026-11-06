@@ -26,8 +26,8 @@ RELEASE_DIR=".artifacts/releases/$TAG"
 - 工作树干净，所需验证针对同一 commit；
 - tag 和 Release 尚不存在；
 - Release Notes、首次安装 DMG、Sparkle App ZIP 和 `SHA256SUMS` 已完成；
-- 已明确实际 distribution。默认是 `signed-notarized`，签名、公证、Gatekeeper、
-  资产 gate 必须全部通过，首启/升级按本次授权验收。仅用户明确授权时选择 `unsigned`。
+- 已明确实际 distribution。stable 默认是 `unsigned`；如果选择
+  `signed-notarized`，签名、公证、Gatekeeper、资产和首启 gate 必须全部通过。
   unsigned 资产仍须完成 ad-hoc 完整性、发行构建、测试/验收规则、Sparkle、
   SHA-256 和对应公开读回，Release Notes 必须披露首次打开操作和 macOS 信任边界。
 

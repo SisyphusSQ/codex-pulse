@@ -379,9 +379,9 @@ def manual_gates(channel: str) -> list[str]:
             ),
             "remote tag, Release, asset, and SHA-256 readback",
             (
-                "stable defaults to signed-notarized; on-site signing, "
-                "notarization, Gatekeeper, and final asset readback must all "
-                "pass; unsigned requires explicit user authorization"
+                "stable defaults to unsigned; signed-notarized is explicit "
+                "opt-in only after on-site signing, notarization, Gatekeeper, "
+                "and final asset readback all pass"
             ),
             (
                 "unsigned requires Gatekeeper disclosure and a retained "

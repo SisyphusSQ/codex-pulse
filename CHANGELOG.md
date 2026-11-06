@@ -1,9 +1,5 @@
 ## Unreleased
 
-#### script:
-1. macOS 发行构建默认使用 Developer ID 签名、Hardened Runtime、可信时间戳与 Apple 公证，完成 App/DMG 票据装订及 Gatekeeper 检查后才生成发行校验和；未签名构建需显式选择，不自动降级。
-2. 保留公证提交编号、资产摘要及失败构建目录，支持按原提交继续等待，拒绝对未知结果盲目重新提交。
-
 ## v0.17.2 - 2026-10-31
 
 #### bugFix:

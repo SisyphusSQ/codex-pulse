@@ -89,12 +89,6 @@ Helper，并向用户显示稳定错误；不能在 SQLite 仍可能提交时把
 
 ## 签名与密钥
 
-- 发行构建默认使用 `signed-notarized`；Developer ID inside-out 签名、Hardened
-  Runtime、可信时间戳、App/DMG 公证与 stapling、最终资产 Gatekeeper 检查缺一
-  不可，不自动降级为 ad-hoc。操作与中断恢复见
-  [正式签名 runbook](../../../test/macos-signed-release.md)。
-- Apple 签名私钥由 Keychain 内部使用，不导出；公证使用已有 Keychain profile。
-  只有用户明确授权未签名分发时才选择 `--distribution unsigned`。
 - 公钥写入 DMG 与 ZIP 共用 App Bundle 的 `SUPublicEDKey`，可公开。
 - 私钥只通过 `scripts/sparkle/generate_appcast.sh` 的 stdin 输入，不进入
   argv、环境、日志、manifest 或仓库。

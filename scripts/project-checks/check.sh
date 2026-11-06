@@ -169,11 +169,6 @@ require_pattern scripts/macos/build-release-app.sh 'release binaries contain a l
 require_pattern scripts/macos/build-release-app.sh 'codesign --force --sign -' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh 'codesign --verify --deep --strict' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern scripts/macos/build-release-app.sh 'Signature=adhoc' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
-require_file scripts/macos/sign-release-app.sh RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
-require_file scripts/macos/notarize-release-archive.sh RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
-require_pattern scripts/macos/build-release-app.sh 'DISTRIBUTION=signed-notarized' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
-require_pattern scripts/macos/build-release-app.sh 'stapler validate' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
-require_pattern scripts/macos/sign-release-app.sh '--options runtime --timestamp' RELEASE-001 .agents/skills/project-version-release/references/codex-pulse-release-policy.md
 require_pattern app/macos/Sources/CodexPulseCoreClient/InvalidationStreamController.swift 'streamGeneration' SWIFT-001 docs/design/details/native-macos-client/README.md
 require_pattern app/macos/Sources/CodexPulseCoreClient/ReadRetryPolicy.swift 'error.code == .unavailable' SWIFT-001 docs/design/details/native-macos-client/README.md
 require_pattern Makefile 'CODEX_PULSE_CANCEL_PROBE' SWIFT-001 docs/test/swift-transport-spike.md
