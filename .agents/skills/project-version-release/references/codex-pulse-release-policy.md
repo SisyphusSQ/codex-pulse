@@ -32,14 +32,14 @@ Release 段和创建版本 tag。
 Stable 表示产品 SemVer 与 GitHub Release 已进入非 prerelease 渠道；macOS
 发行信任等级另行记录为 `unsigned` 或 `signed-notarized`，两者不能混为一谈。
 
-默认 stable 使用 `unsigned`，并满足以下非测试发布 gate：
+默认发行构建使用 `signed-notarized`，并满足以下非测试发布 gate：
 
 - clean release commit，且发布 commit 已冻结；
 - production Bundle identifier、显示名、版本和 build number 正确；
-- App 内所有可执行代码按 inside-out 顺序完成 ad-hoc 签名，证明最终 Bundle
-  完整性；
-- 解压后的最终资产通过 `codesign`，并记录 unsigned 资产预期不会通过
-  Gatekeeper；公证和 stapling 明确记录为未执行；
+- App 内所有可执行代码按 inside-out 顺序完成 Developer ID 签名、Hardened
+  Runtime 与可信时间戳；
+- App 和首次安装 DMG 完成 Apple 公证及 stapling，解压后的 App 和最终 DMG
+  通过 `codesign`、`stapler` 与 Gatekeeper 检查；
 - 挂载后的首次安装 DMG 只包含 App 与 `/Applications` 链接，且其中 App
   通过 `codesign`；
 - 使用正式 Sparkle Ed25519 公钥构建，私钥只经 stdin 参与 exact ZIP 签名；
@@ -51,8 +51,8 @@ Stable 表示产品 SemVer 与 GitHub Release 已进入非 prerelease 渠道；m
 全新 macOS 用户首次打开/重启验收。只有用户明确授权时才执行指定项目，并逐项
 报告未执行的证据；发行模式本身不改变这一测试策略。
 
-`signed-notarized` 是显式 opt-in，不是 stable 的默认值。只有现场完成并读回
-以下全部 gate 后才允许使用该分发等级：
+签名、公证或凭据不可用时停止，不自动降级。只有现场完成并读回以下全部 gate
+后才允许宣称 `signed-notarized`：
 
 - App 内所有可执行代码的 Developer ID inside-out 签名、Hardened Runtime、
   secure timestamp；
@@ -62,12 +62,12 @@ Stable 表示产品 SemVer 与 GitHub Release 已进入非 prerelease 渠道；m
 
 Release Notes 必须按实际产物明确：
 
-- 默认 `unsigned stable` 是正式功能版本，但采用 ad-hoc 签名，未完成
+- 仅用户明确授权的 `unsigned stable` 是正式功能版本，但采用 ad-hoc 签名，未完成
   Developer ID 签名和 Apple 公证，不是 Gatekeeper trusted 分发；
 - unsigned 首次打开仍需通过“系统设置 → 隐私与安全性 → 仍要打开”，并说明
   不要移到废纸篓；
 - signed-notarized 只有在上述全部 gate 通过后，才可按 macOS 可信分发描述；
-- 后续取得可信分发能力时使用新 patch 版本，不覆盖既有 tag 或资产。
+- 后续取得可信分发能力时使用新版本，不覆盖既有 tag 或资产。
 
 ### Preview
 
@@ -84,21 +84,14 @@ Preview 不能被描述为 stable，也不能把 isolated smoke 当作最终用�
 
 ## 3. 当前 signed-notarized stable blockers
 
-检查实际仓库，不要把本节当作永久事实。当前已知 gate 包括：
+逐次检查有效 Developer ID 私钥、无人值守 Keychain 调用、公证认证、Apple
+服务结果、正式 Sparkle 更新密钥、最终安装包与公开资产。仅源码检查无法观察
+这些现场条件，因此 helper 的 `stable_release_ready=false` 表示仍需现场证据，
+不能由 Release Notes 或证书安装状态替代。开发 App 保持原有开发签名方式，不是
+正式发行的 blocker，也不能作为已通过公证的证据。
 
-- `scripts/macos/build-dev-app.sh` 明确只组装 unsigned development App；
-- `scripts/macos/build-release-app.sh` 当前只执行完整 ad-hoc inside-out 签名，
-  不执行 Developer ID、Hardened Runtime、公证或 stapling；
-- 正式 Sparkle key pair、固定生产 appcast 与远端更新资产尚需逐次授权启用；
-- 已安装 N-1 App 的 stable/prerelease 真实下载、验签、Helper clean shutdown、
-  替换重启与 migration/recovery 矩阵需要针对发行候选读回；
-- 首次 Codex Home 确认、持久偏好与普通用户重启仍需完成产品验收。
-
-只要任一项仍成立，skill 必须输出 `stable_release_ready=false`，表示
-`signed-notarized stable` 尚未就绪。这个字段仍只表示可信分发 gate，不是
-unsigned stable 的默认发布开关，也不能由 Release Notes 代替。`unsigned stable`
-可以在 source preflight、ad-hoc 发行资产、Sparkle key、Gatekeeper 披露和远端
-读回成立后继续，但不得把它解释为可信分发 gate 已通过。
+真实首启、旧版更新、Helper clean shutdown、替换重启及数据读回按用户明确
+授权执行并独立报告。未执行时如实标记，不推断产品验收通过。
 
 `render-notes --channel stable` 仍必须显式选择真实 distribution。
 `signed-notarized` 只是防止误操作的分类，不是签名或公证证据；执行者仍须保存

@@ -152,7 +152,7 @@ class ReleaseNotesTests(unittest.TestCase):
         gates = release.manual_gates("stable")
         rendered = "\n".join(gates)
 
-        self.assertIn("stable defaults to unsigned", rendered)
+        self.assertIn("stable defaults to signed-notarized", rendered)
         self.assertIn("skipped by default", rendered)
         self.assertIn("explicit user authorization", rendered)
         self.assertIn("make verify", rendered)

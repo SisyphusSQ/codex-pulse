@@ -9,15 +9,21 @@ BUILD_NUMBER=""
 SPARKLE_FEED_URL=""
 SPARKLE_PUBLIC_KEY_FILE=""
 RUN_APP_TESTS=true
+DISTRIBUTION=signed-notarized
+SIGNING_IDENTITY=""
+NOTARY_PROFILE=""
 
 usage() {
   cat <<'EOF'
 usage: build-release-app.sh --version <semver> --build-number <positive-integer>
   --sparkle-feed-url <https-url> --sparkle-public-key-file <path>
+  [--distribution signed-notarized|unsigned]
+  [--signing-identity <Developer-ID-SHA1> --notary-profile <Keychain-profile>]
   [--skip-app-tests]
 
-Builds an ad-hoc-signed, unnotarized Apple Silicon distribution asset under:
+Builds Developer ID signed and notarized Apple Silicon assets by default under:
   .artifacts/releases/v<semver>/
+Unsigned assets require explicit --distribution unsigned. No automatic fallback.
 EOF
 }
 
@@ -52,6 +58,15 @@ while [ "$#" -gt 0 ]; do
       RUN_APP_TESTS=false
       shift
       ;;
+    --distribution|--signing-identity|--notary-profile)
+      [ "$#" -ge 2 ] || fail "missing value for $1"
+      case "$1" in
+        --distribution) DISTRIBUTION=$2 ;;
+        --signing-identity) SIGNING_IDENTITY=$2 ;;
+        --notary-profile) NOTARY_PROFILE=$2 ;;
+      esac
+      shift 2
+      ;;
     --help|-h)
       usage
       exit 0
@@ -61,6 +76,18 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+case "$DISTRIBUTION" in
+  signed-notarized)
+    [[ "$SIGNING_IDENTITY" =~ ^[0-9A-Fa-f]{40}$ && -n "$NOTARY_PROFILE" ]] ||
+      fail "signed-notarized requires --signing-identity and --notary-profile"
+    ;;
+  unsigned)
+    [[ -z "$SIGNING_IDENTITY" && -z "$NOTARY_PROFILE" ]] ||
+      fail "unsigned distribution cannot accept signing or notarization arguments"
+    ;;
+  *) fail "distribution must be signed-notarized or unsigned" ;;
+esac
 
 [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]] ||
   fail "version must be SemVer"
@@ -76,6 +103,13 @@ done
 for tool in swift xcode-select xcrun go plutil iconutil lipo otool vtool strip codesign ditto hdiutil unzip shasum strings python3; do
   command -v "$tool" >/dev/null 2>&1 || fail "required tool is unavailable: $tool"
 done
+
+if [[ "$DISTRIBUTION" == signed-notarized ]]; then
+  # Authentication must work unattended before a long build or any submission.
+  xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" \
+    --output-format json </dev/null >/dev/null ||
+    fail "notarization profile is unavailable; configure Keychain credentials before building"
+fi
 
 SWIFT_DEVELOPER_DIR=${DEVELOPER_DIR:-$(xcode-select -p 2>/dev/null || true)}
 [ -n "$SWIFT_DEVELOPER_DIR" ] || fail "unable to resolve the active Xcode developer directory"
@@ -121,13 +155,24 @@ CHECKSUM_PATH="$RELEASE_DIR/SHA256SUMS"
 BUILD_ROOT=""
 
 cleanup() {
+  local status=$?
   if [ -n "$BUILD_ROOT" ] && [ -d "$BUILD_ROOT" ]; then
-    rm -rf -- "$BUILD_ROOT"
+    if [[ "$status" == 0 ]]; then
+      rm -rf -- "$BUILD_ROOT"
+    else
+      printf 'release build retained for recovery: %s\n' "$BUILD_ROOT" >&2
+    fi
   fi
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
+umask 077
 mkdir -p "$RELEASE_DIR"
+for output in "$ARCHIVE_PATH" "$DMG_PATH" "$CHECKSUM_PATH"; do
+  [[ ! -e "$output" ]] || fail "release output already exists; inspect before continuing: $output"
+done
 BUILD_ROOT=$(mktemp -d "$RELEASE_DIR/.build.XXXXXX")
 APP_DIR="$BUILD_ROOT/Codex Pulse.app"
 EXTRACT_DIR="$BUILD_ROOT/extracted"
@@ -283,16 +328,26 @@ for local_path in "$REPO_ROOT" "$HOME/"; do
   fi
 done
 
-codesign --force --sign - --timestamp=none \
-  "$APP_DIR/Contents/Helpers/codex-pulse"
-codesign --force --sign - --timestamp=none \
-  "$APP_DIR"
+if [[ "$DISTRIBUTION" == signed-notarized ]]; then
+  bash "$SCRIPT_DIR/sign-release-app.sh" "$APP_DIR" "$SIGNING_IDENTITY"
+  ditto -c -k --keepParent "$APP_DIR" "$BUILD_ROOT/notarization.zip"
+  bash "$SCRIPT_DIR/notarize-release-archive.sh" \
+    "$BUILD_ROOT/notarization.zip" "$NOTARY_PROFILE" "$RELEASE_DIR/notary-app"
+  xcrun stapler staple "$APP_DIR"
+  xcrun stapler validate "$APP_DIR"
+  spctl --assess --type execute --verbose=4 "$APP_DIR"
+else
+  codesign --force --sign - --timestamp=none \
+    "$APP_DIR/Contents/Helpers/codex-pulse"
+  codesign --force --sign - --timestamp=none "$APP_DIR"
+fi
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 APP_CODESIGN_DETAILS=$(codesign -dv --verbose=2 "$APP_DIR" 2>&1)
-grep -Fq 'Signature=adhoc' <<<"$APP_CODESIGN_DETAILS" ||
-  fail "release App does not have a complete ad-hoc signature"
+if [[ "$DISTRIBUTION" == unsigned ]]; then
+  grep -Fq 'Signature=adhoc' <<<"$APP_CODESIGN_DETAILS" ||
+    fail "release App does not have a complete ad-hoc signature"
+fi
 
-rm -f -- "$ARCHIVE_PATH" "$DMG_PATH" "$CHECKSUM_PATH"
 COPYFILE_DISABLE=1 ditto \
   -c -k --norsrc --noextattr --keepParent \
   "$APP_DIR" "$ARCHIVE_PATH"
@@ -326,13 +381,30 @@ codesign --verify --deep --strict --verbose=2 \
 EXTRACTED_CODESIGN_DETAILS=$(
   codesign -dv --verbose=2 "$EXTRACT_DIR/Codex Pulse.app" 2>&1
 )
-grep -Fq 'Signature=adhoc' <<<"$EXTRACTED_CODESIGN_DETAILS" ||
-  fail "extracted release App lost its ad-hoc signature"
+if [[ "$DISTRIBUTION" == signed-notarized ]]; then
+  grep -Fq 'Authority=Developer ID Application:' <<<"$EXTRACTED_CODESIGN_DETAILS" ||
+    fail "extracted release App lost its Developer ID signature"
+  xcrun stapler validate "$EXTRACT_DIR/Codex Pulse.app"
+  spctl --assess --type execute --verbose=4 "$EXTRACT_DIR/Codex Pulse.app"
+else
+  grep -Fq 'Signature=adhoc' <<<"$EXTRACTED_CODESIGN_DETAILS" ||
+    fail "extracted release App lost its ad-hoc signature"
+fi
 
 "$SCRIPT_DIR/create-install-dmg.sh" \
   --app "$APP_DIR" \
   --output "$DMG_PATH" \
   --volume-name "Codex Pulse"
+
+if [[ "$DISTRIBUTION" == signed-notarized ]]; then
+  codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$DMG_PATH"
+  bash "$SCRIPT_DIR/notarize-release-archive.sh" \
+    "$DMG_PATH" "$NOTARY_PROFILE" "$RELEASE_DIR/notary-dmg"
+  xcrun stapler staple "$DMG_PATH"
+  xcrun stapler validate "$DMG_PATH"
+  codesign --verify --strict "$DMG_PATH"
+  spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG_PATH"
+fi
 
 ZIP_DIGEST=$(shasum -a 256 "$ARCHIVE_PATH" | awk '{print $1}')
 DMG_DIGEST=$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')
@@ -341,7 +413,7 @@ printf '%s  %s\n%s  %s\n' \
   "$DMG_DIGEST" "$DMG_NAME" >"$CHECKSUM_PATH"
 
 printf '%s\n' \
-  "release app assembled: tag=$TAG build=$BUILD_NUMBER arch=arm64 minos=15.0 sparkle_updater=yes adhoc_signed=yes developer_id=no notarized=no app_tests=$RUN_APP_TESTS" \
+  "release app assembled: tag=$TAG build=$BUILD_NUMBER arch=arm64 minos=15.0 sparkle_updater=yes distribution=$DISTRIBUTION app_tests=$RUN_APP_TESTS" \
   "release SDK readback: selected=$SWIFT_SDK_VERSION app=$APP_SDK_VERSION zip=$EXTRACTED_SDK_VERSION" \
   "release update asset: $ARCHIVE_PATH" \
   "release install asset: $DMG_PATH" \

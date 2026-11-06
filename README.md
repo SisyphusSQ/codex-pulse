@@ -136,14 +136,17 @@ make check
 # Full PR/CI verification with an isolated Home
 make verify
 
-# Assemble a local unsigned preview candidate without creating a tag or GitHub Release
+# Build signed and notarized assets without creating a tag or GitHub Release
 scripts/macos/build-release-app.sh \
-  --version 0.1.0-beta.1 \
-  --build-number 4 \
+  --version 0.18.0 \
+  --build-number 76 \
   --sparkle-feed-url \
     https://github.com/SisyphusSQ/codex-pulse/releases/download/updates/appcast.xml \
   --sparkle-public-key-file \
-    /secure/path/codex-pulse-sparkle-public.key
+    /secure/path/codex-pulse-sparkle-public.key \
+  --signing-identity "$DEVELOPER_ID_SHA1" \
+  --notary-profile codex-pulse-notary \
+  --skip-app-tests
 
 # Regenerate Go and Swift sources after changing the Proto contract
 make generate-proto
@@ -151,7 +154,7 @@ make generate-proto
 
 Release candidates are written to `.artifacts/releases/<tag>/`. Each candidate includes a first-install DMG, an Apple Silicon app ZIP with Sparkle embedded, and `SHA256SUMS` covering both assets. The DMG provides the standard drag-and-drop path from `Codex Pulse.app` to `/Applications`; the appcast continues to point only to the exact ZIP. The public key file may be public, but it must match the private key supplied through stdin when signing the appcast.
 
-Stable and preview are product release channels. macOS trust is recorded separately as `unsigned` or `signed-notarized`. Stable defaults to `unsigned stable`: release assets use ad-hoc signing, and Release Notes must disclose that Developer ID signing and notarization are incomplete, the build is not Gatekeeper-trusted, and first launch requires choosing **Open Anyway** in **System Settings → Privacy & Security**. A remote release must also pass independent readback of the tag, Release, asset digests, pinned appcast, and first-launch flow. `signed-notarized` is an explicit opt-in and is allowed only after signing, notarization, Gatekeeper verification, and final asset readback all pass in the release environment. Preview releases continue to use prerelease SemVer and select either unsigned or signed-notarized assets according to what was actually produced.
+Stable and preview are product release channels. macOS trust is recorded separately as `unsigned` or `signed-notarized`. Release builds default to `signed-notarized`: Developer ID signing, Hardened Runtime, secure timestamps, Apple notarization, stapling, and Gatekeeper acceptance must succeed. Configure the named notarization credential profile in Keychain before building; signing private keys stay in Keychain. There is no automatic fallback. Ad-hoc builds require explicit `--distribution unsigned` and user authorization for distribution; their notes must disclose the missing Developer ID/notarization trust and the **Open Anyway** flow. A remote release must also pass independent readback of the tag, Release, asset digests, pinned appcast, and the authorized first-launch/update acceptance. See the [signing and notarization runbook](docs/test/macos-signed-release.md). Preview releases continue to use prerelease SemVer.
 
 Main directories:
 
