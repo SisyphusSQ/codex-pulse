@@ -41,9 +41,15 @@ func (r *Quota) windowQuery(ctx context.Context, q quota_dto.Query, w quota_dto.
 func (r *Quota) Headers(ctx context.Context, q quota_dto.Query, w quota_dto.WindowScope, nowMS, clockSkewMS int64) (out []reporting_do.QuotaObservation, err error) {
 	// 不让未来时间或无效 reset 排挤最后有效值；零值与正用量的首末保留锚点转变。
 	partition := "client_id,local_scope,source,history_origin,validity,resets_at_ms,CASE WHEN used_percent > 0 THEN 1 ELSE 0 END,CASE WHEN observed_at_ms <= ? AND resets_at_ms > observed_at_ms AND resets_at_ms-observed_at_ms <= window_minutes*60000+? THEN 1 ELSE 0 END"
-	selectSQL := fmt.Sprintf("*,ROW_NUMBER() OVER (PARTITION BY %s ORDER BY observed_at_ms,id) AS first_rank,ROW_NUMBER() OVER (PARTITION BY %s ORDER BY observed_at_ms DESC,id DESC) AS last_rank", partition, partition)
+	window := fmt.Sprintf("PARTITION BY %s ORDER BY observed_at_ms,id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING", partition)
+	selectSQL := fmt.Sprintf("id,ROW_NUMBER() OVER (%s) AS first_rank,COUNT(*) OVER (%s) AS group_count", window, window)
 	base := r.windowQuery(ctx, q, w).Select(selectSQL, nowMS+clockSkewMS, clockSkewMS, nowMS+clockSkewMS, clockSkewMS)
-	err = r.engine.DB(ctx).Table("(?) AS headers", base).Where("first_rank=1 OR last_rank=1").Order("observed_at_ms,id").Limit(100001).Find(&out).Error
+	endpoints := r.engine.DB(ctx).Table("(?) AS headers", base).Select("id").Where("first_rank=1 OR first_rank=group_count").Limit(100001)
+	// SeekDB 高估端点数量会选择全扫，用端点驱动主键回读；SQLite 忽略优化器提示。
+	err = r.engine.DB(ctx).Table("(?) AS endpoints", endpoints).
+		Select("/*+ LEADING(endpoints observation) USE_NL(observation) */ observation.*").
+		Joins("JOIN pulse_quota_observations AS observation ON observation.id=endpoints.id").
+		Order("observation.observed_at_ms,observation.id").Limit(100001).Find(&out).Error
 	if len(out) > 100000 {
 		return nil, utils.ErrRequestBudget
 	}

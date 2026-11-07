@@ -116,20 +116,44 @@ func (r *Reporting) setPayloadOwner(ctx context.Context, id, payload string) err
 // CollectVersions 仅回收无发布指针的派生版本；处理租约期间不碰正在构建的数据。
 func (r *Reporting) CollectVersions(ctx context.Context) error {
 	db := r.engine.DB(ctx)
-	active := db.Model(&reporting_do.PublicationJob{}).Select("id").Where("lease_until_ms > ?", time.Now().UnixMilli())
-	var rows []reporting_do.UsageVersion
-	if err := db.Where("generation NOT IN (SELECT generation FROM pulse_session_publications)").Where("NOT EXISTS (?)", active).Limit(250).Find(&rows).Error; err != nil {
-		return err
+	unleased := func(db *gorm.DB) *gorm.DB {
+		active := r.engine.DB(ctx).Model(&reporting_do.PublicationJob{}).Select("id").Where("lease_until_ms > ?", time.Now().UnixMilli())
+		return db.Where("NOT EXISTS (?)", active)
 	}
-	if len(rows) > 0 {
-		return db.Where("NOT EXISTS (?)", active).Delete(&rows).Error
+	unpublished := func(db *gorm.DB) *gorm.DB {
+		return unleased(db).Where("generation NOT IN (SELECT generation FROM pulse_session_publications)")
+	}
+	// 有积压时在本轮预算内继续清理，空闲时只扫描一次。
+	for {
+		var rows []reporting_do.UsageVersion
+		if err := db.Scopes(unpublished).Select("generation,session_key,contribution_id").Limit(250).Find(&rows).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			break
+		}
+		result := db.Scopes(unpublished).Delete(&rows)
+		if result.Error != nil || result.RowsAffected == 0 {
+			return result.Error
+		}
+		if len(rows) < 250 {
+			break
+		}
 	}
 	var parts []reporting_do.PayloadPart
-	if err := db.Select("payload_key,part_index").Where("created_at_ms < ?", time.Now().Add(-time.Hour).UnixMilli()).Where("payload_key NOT IN (SELECT payload_key FROM pulse_payload_owners)").Where("NOT EXISTS (?)", active).Limit(16).Find(&parts).Error; err != nil {
-		return err
+	unowned := func(db *gorm.DB) *gorm.DB {
+		return unleased(db).Where("payload_key NOT IN (SELECT payload_key FROM pulse_payload_owners)")
 	}
-	if len(parts) > 0 {
-		return db.Where("payload_key NOT IN (SELECT payload_key FROM pulse_payload_owners)").Where("NOT EXISTS (?)", active).Delete(&parts).Error
+	for {
+		if err := db.Scopes(unowned).Select("payload_key,part_index").Where("created_at_ms < ?", time.Now().Add(-time.Hour).UnixMilli()).Limit(16).Find(&parts).Error; err != nil {
+			return err
+		}
+		if len(parts) == 0 {
+			return nil
+		}
+		result := db.Scopes(unowned).Delete(&parts)
+		if result.Error != nil || result.RowsAffected == 0 || len(parts) < 16 {
+			return result.Error
+		}
 	}
-	return nil
 }

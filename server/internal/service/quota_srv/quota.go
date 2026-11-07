@@ -2,6 +2,7 @@ package quota_srv
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -40,6 +41,10 @@ func windowKey(row reporting_do.QuotaObservation) string {
 	return reportingv1.Key(row.Provider, ownerKey(row.AccountKey, row.ClientID, row.LocalScope), row.LimitID, row.WindowKind, minutes)
 }
 func (s *Quota) Current(ctx context.Context, principal access_dto.Principal, q quota_dto.Query) (out quota_vo.Response, err error) {
+	return s.current(ctx, principal, q, false)
+}
+
+func (s *Quota) current(ctx context.Context, principal access_dto.Principal, q quota_dto.Query, pace bool) (out quota_vo.Response, err error) {
 	if err = access_srv.RequireAdmin(principal); err != nil {
 		return
 	}
@@ -52,13 +57,15 @@ func (s *Quota) Current(ctx context.Context, principal access_dto.Principal, q q
 		for _, a := range accounts {
 			out.Accounts = append(out.Accounts, quota_vo.Account{Key: a.ID, Provider: a.Provider, RawID: a.AccountID, Email: a.Email, Plan: a.Plan, CollectedAtMS: a.CollectedAtMS})
 		}
-		clients, err := s.repository.Clients(ctx)
-		if err != nil {
-			return err
-		}
 		names := map[string]string{}
-		for _, c := range clients {
-			names[c.ID] = c.Name
+		if !pace && q.View != "summary" {
+			clients, err := s.repository.Clients(ctx)
+			if err != nil {
+				return err
+			}
+			for _, c := range clients {
+				names[c.ID] = c.Name
+			}
 		}
 		windows, err := s.repository.Windows(ctx, q)
 		if err != nil {
@@ -83,9 +90,7 @@ func (s *Quota) Current(ctx context.Context, principal access_dto.Principal, q q
 			if err != nil {
 				return err
 			}
-			resets := retainedResets(header)
 			if q.View == "summary" {
-				header = retainedWindow(header)
 				if err := s.withAccountTokens(ctx, q, &header, out.EvaluatedAtMS); err != nil {
 					return err
 				}
@@ -94,7 +99,7 @@ func (s *Quota) Current(ctx context.Context, principal access_dto.Principal, q q
 				out.Windows = append(out.Windows, header)
 				continue
 			}
-			rows, err := s.repository.WindowObservations(ctx, q, scope, resets)
+			rows, err := s.repository.WindowObservations(ctx, q, scope, retainedResets(header))
 			if err != nil {
 				return err
 			}
@@ -106,8 +111,10 @@ func (s *Quota) Current(ctx context.Context, principal access_dto.Principal, q q
 				return err
 			}
 			window = retainedWindow(window)
-			if err := s.withAccountTokens(ctx, q, &window, out.EvaluatedAtMS); err != nil {
-				return err
+			if !pace {
+				if err := s.withAccountTokens(ctx, q, &window, out.EvaluatedAtMS); err != nil {
+					return err
+				}
 			}
 			window.ObservationCount = int64(len(window.Observations))
 			if q.View == "evidence" {
@@ -133,6 +140,9 @@ func (s *Quota) Current(ctx context.Context, principal access_dto.Principal, q q
 			out.Windows = append(out.Windows, window)
 		}
 		slices.SortFunc(out.Windows, func(a, b quota_vo.Window) int { return strings.Compare(a.Key, b.Key) })
+		if pace {
+			return nil
+		}
 		credits, err := s.repository.Credits(ctx, q, out.EvaluatedAtMS+store.DefaultQuotaArbitrationRule().MaxClockSkewMS)
 		if err != nil {
 			return err
@@ -173,9 +183,7 @@ func buildWindow(key string, rows []reporting_do.QuotaObservation, names map[str
 		out.IdentityState = "confirmed"
 	}
 	normal, linked := []store.QuotaObservation{}, []store.QuotaObservation{}
-	byID := map[string]reporting_do.QuotaObservation{}
 	for _, row := range rows {
-		byID[row.ID] = row
 		if row.HistoryOrigin == "linked_history" || row.HistoryOrigin == "legacy_unassigned" {
 			linked = append(linked, nativeObservation(row, "linked:"+key))
 		} else {
@@ -199,11 +207,13 @@ func buildWindow(key string, rows []reporting_do.QuotaObservation, names map[str
 		if c.ResetsAtMS != nil && c.WindowMinutes != nil {
 			out.Current.WindowStartAtMS = new(*c.ResetsAtMS - *c.WindowMinutes*60000)
 			if c.ObservationID != nil {
-				selected := byID[*c.ObservationID]
-				out.Current.SelectedClientID = new(selected.ClientID)
-				out.Current.Source = new(selected.Source)
-				if selected.WindowStartAtMS != nil {
-					out.Current.WindowStartAtMS = selected.WindowStartAtMS
+				if i := slices.IndexFunc(rows, func(row reporting_do.QuotaObservation) bool { return row.ID == *c.ObservationID }); i >= 0 {
+					selected := rows[i]
+					out.Current.SelectedClientID = new(selected.ClientID)
+					out.Current.Source = new(selected.Source)
+					if selected.WindowStartAtMS != nil {
+						out.Current.WindowStartAtMS = selected.WindowStartAtMS
+					}
 				}
 			}
 		}
@@ -260,19 +270,15 @@ func buildCycles(window *quota_vo.Window) {
 	if window.WindowMinutes == nil {
 		return
 	}
-	resets := []int64{}
 	sources := map[int64]store.QuotaSource{}
 	for _, o := range window.Observations {
 		if o.CanonicalResetAtMS != nil {
-			resets = append(resets, *o.CanonicalResetAtMS)
 			source := quotaSource(o.Source)
 			if _, found := sources[*o.CanonicalResetAtMS]; !found || source == store.QuotaSourceAppServer || source == store.QuotaSourceWham {
 				sources[*o.CanonicalResetAtMS] = source
 			}
 		}
 	}
-	slices.Sort(resets)
-	resets = slices.Compact(resets)
 	aliases := map[int64]int64{}
 	anchor, canonical := int64(-1), int64(-1)
 	pending := []int64{}
@@ -282,7 +288,7 @@ func buildCycles(window *quota_vo.Window) {
 		}
 		pending = nil
 	}
-	for _, reset := range resets {
+	for _, reset := range slices.Sorted(maps.Keys(sources)) {
 		source := sources[reset]
 		if sources[anchor] == store.QuotaSourceAppServer || sources[anchor] == store.QuotaSourceWham {
 			source = sources[anchor]
@@ -302,14 +308,13 @@ func buildCycles(window *quota_vo.Window) {
 			continue
 		}
 		reset := aliases[*o.CanonicalResetAtMS]
-		id := reportingv1.Key("center-cycle", window.Key, strconv.FormatInt(reset, 10))
 		o.CanonicalResetAtMS = new(reset)
-		o.CycleID = new(id)
 		cycle := cycles[reset]
 		if cycle == nil {
-			cycle = &quota_vo.Cycle{ID: id, StartAtMS: reset - *window.WindowMinutes*60000, ResetsAtMS: reset, ObservationIDs: []string{}}
+			cycle = &quota_vo.Cycle{ID: reportingv1.Key("center-cycle", window.Key, strconv.FormatInt(reset, 10)), StartAtMS: reset - *window.WindowMinutes*60000, ResetsAtMS: reset, ObservationIDs: []string{}}
 			cycles[reset] = cycle
 		}
+		o.CycleID = &cycle.ID
 		cycle.ObservationIDs = append(cycle.ObservationIDs, o.ID)
 		cycle.LinkedHistory = cycle.LinkedHistory || o.HistoryOrigin == "linked_history" || o.HistoryOrigin == "legacy_unassigned"
 	}

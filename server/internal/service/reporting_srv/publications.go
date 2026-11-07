@@ -76,6 +76,8 @@ func StartPublications(lifecycle fx.Lifecycle, s *Reporting) {
 			defer close(done)
 			ticker := time.NewTicker(time.Second)
 			defer ticker.Stop()
+			// 版本回收独立于发布轮询，空闲时每分钟最多扫描一次。
+			var nextVersionCollection time.Time
 			for {
 				c, stop := context.WithTimeout(ctx, 4*time.Minute)
 				_, err := s.ProcessPublication(c)
@@ -89,11 +91,14 @@ func StartPublications(lifecycle fx.Lifecycle, s *Reporting) {
 				if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) && ctx.Err() == nil && log.Logger != nil {
 					log.Logger.Errorf("snapshot staging cleanup failed: %T", err)
 				}
-				c, stop = context.WithTimeout(ctx, 5*time.Second)
-				err = s.repository.CollectVersions(c)
-				stop()
-				if err != nil && ctx.Err() == nil && log.Logger != nil {
-					log.Logger.Errorf("snapshot version cleanup failed: %T", err)
+				if ctx.Err() == nil && !time.Now().Before(nextVersionCollection) {
+					c, stop = context.WithTimeout(ctx, 5*time.Second)
+					err = s.repository.CollectVersions(c)
+					stop()
+					nextVersionCollection = time.Now().Add(time.Minute)
+					if err != nil && ctx.Err() == nil && log.Logger != nil {
+						log.Logger.Errorf("snapshot version cleanup failed: %T", err)
+					}
 				}
 				select {
 				case <-ctx.Done():
