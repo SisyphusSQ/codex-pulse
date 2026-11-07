@@ -14,7 +14,7 @@ import (
 
 func (s *Quota) Pace(ctx context.Context, principal access_dto.Principal, q quota_dto.Query) (out quota_vo.PaceResponse, err error) {
 	q.View = ""
-	current, err := s.Current(ctx, principal, q)
+	current, err := s.current(ctx, principal, q, true)
 	if err != nil {
 		return
 	}
