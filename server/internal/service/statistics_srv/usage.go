@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"slices"
 	"strings"
+	"time"
 
 	access_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/access_dto"
 	statistics_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/statistics_dto"
@@ -18,7 +19,7 @@ func (s *Statistics) Usage(ctx context.Context, p access_dto.Principal, q statis
 		return
 	}
 	if s.cache != nil {
-		out, status, err := cachedProjection(ctx, s.cache, "usage", q, s.usage)
+		out, status, err := cachedProjection(ctx, s.cache, "usage", q, s.usage, s.overviewLoader(q))
 		out.Cache = status
 		return out, err
 	}
@@ -31,45 +32,50 @@ func (s *Statistics) usage(ctx context.Context, q statistics_dto.StatisticsQuery
 		if err != nil {
 			return err
 		}
-		known := len(read.providerSeen) > 0
-		totals, _ := read.total.finish(known)
-		out = statistics_vo.UsageResponse{Range: statisticsRange(q), Scope: read.scope(), Totals: totals, Coverage: read.coverage(s.now()), Models: []statistics_vo.UsageModel{}, ModelDays: []statistics_vo.UsageModelDay{}, Trend: read.trend(), Providers: statisticsSlices(read.providers, known), CursorPools: statisticsSlices(read.cursorPools, known)}
-		cacheProvider := q.Provider
-		if cacheProvider == "" && len(read.providerSeen) == 1 && (read.providerSeen["codex"] || read.providerSeen["dsh"]) {
-			if read.providerSeen["dsh"] {
-				cacheProvider = "dsh"
-			} else {
-				cacheProvider = "codex"
-			}
-		}
-		out.CacheHitRate = rangeCacheHitRate(read.total, cacheProvider)
-		sum := new(big.Int)
-		for key, group := range read.modelTotals {
-			parts := strings.Split(key, "\x00")
-			t, _ := group.finish(false)
-			out.Models = append(out.Models, statistics_vo.UsageModel{Provider: parts[0], Model: parts[1], Totals: t, CacheHitRate: rangeCacheHitRate(group, parts[0])})
-			if t.CostMicroUSD != nil {
-				v, _ := new(big.Int).SetString(*t.CostMicroUSD, 10)
-				sum.Add(sum, v)
-			}
-		}
-		for key, group := range read.modelDays {
-			parts := strings.Split(key, "\x00")
-			t, _ := group.finish(false)
-			out.ModelDays = append(out.ModelDays, statistics_vo.UsageModelDay{Provider: parts[0], Model: parts[1], Date: parts[2], Totals: t})
-		}
-		if totals.CostMicroUSD != nil {
-			v, _ := new(big.Int).SetString(*totals.CostMicroUSD, 10)
-			out.ModelCostRoundingDeltaMicroUSD = new(v.Sub(v, sum).String())
-		}
-		out.TrendCostRoundingDeltaMicroUSD = decimalDifference(totals.CostMicroUSD, out.Trend)
-		slices.SortFunc(out.Models, func(a, b statistics_vo.UsageModel) int {
-			return strings.Compare(a.Provider+"\x00"+a.Model, b.Provider+"\x00"+b.Model)
-		})
-		slices.SortFunc(out.ModelDays, func(a, b statistics_vo.UsageModelDay) int {
-			return strings.Compare(a.Date+a.Provider+a.Model, b.Date+b.Provider+b.Model)
-		})
+		out = read.usageView(s.now())
 		return nil
+	})
+	return
+}
+
+func (read *statisticsRead) usageView(now time.Time) (out statistics_vo.UsageResponse) {
+	known := len(read.providerSeen) > 0
+	totals, _ := read.total.finish(known)
+	out = statistics_vo.UsageResponse{Range: statisticsRange(read.q), Scope: read.scope(), Totals: totals, Coverage: read.coverage(now), Models: []statistics_vo.UsageModel{}, ModelDays: []statistics_vo.UsageModelDay{}, Trend: read.trend(), Providers: statisticsSlices(read.providers, known), CursorPools: statisticsSlices(read.cursorPools, known)}
+	cacheProvider := read.q.Provider
+	if cacheProvider == "" && len(read.providerSeen) == 1 && (read.providerSeen["codex"] || read.providerSeen["dsh"]) {
+		if read.providerSeen["dsh"] {
+			cacheProvider = "dsh"
+		} else {
+			cacheProvider = "codex"
+		}
+	}
+	out.CacheHitRate = rangeCacheHitRate(read.total, cacheProvider)
+	sum := new(big.Int)
+	for key, group := range read.modelTotals {
+		parts := strings.Split(key, "\x00")
+		t, _ := group.finish(false)
+		out.Models = append(out.Models, statistics_vo.UsageModel{Provider: parts[0], Model: parts[1], Totals: t, CacheHitRate: rangeCacheHitRate(group, parts[0])})
+		if t.CostMicroUSD != nil {
+			v, _ := new(big.Int).SetString(*t.CostMicroUSD, 10)
+			sum.Add(sum, v)
+		}
+	}
+	for key, group := range read.modelDays {
+		parts := strings.Split(key, "\x00")
+		t, _ := group.finish(false)
+		out.ModelDays = append(out.ModelDays, statistics_vo.UsageModelDay{Provider: parts[0], Model: parts[1], Date: parts[2], Totals: t})
+	}
+	if totals.CostMicroUSD != nil {
+		v, _ := new(big.Int).SetString(*totals.CostMicroUSD, 10)
+		out.ModelCostRoundingDeltaMicroUSD = new(v.Sub(v, sum).String())
+	}
+	out.TrendCostRoundingDeltaMicroUSD = decimalDifference(totals.CostMicroUSD, out.Trend)
+	slices.SortFunc(out.Models, func(a, b statistics_vo.UsageModel) int {
+		return strings.Compare(a.Provider+"\x00"+a.Model, b.Provider+"\x00"+b.Model)
+	})
+	slices.SortFunc(out.ModelDays, func(a, b statistics_vo.UsageModelDay) int {
+		return strings.Compare(a.Date+a.Provider+a.Model, b.Date+b.Provider+b.Model)
 	})
 	return
 }

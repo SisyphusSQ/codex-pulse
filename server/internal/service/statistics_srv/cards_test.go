@@ -74,7 +74,13 @@ func TestListProjectionsKeepLegacyValuesWithoutUnusedGroups(t *testing.T) {
 				t.Fatal("projection changed totals or coverage", kind)
 			}
 			if kind == "sessions" || kind == "session" || kind == "project" {
-				if !reflect.DeepEqual(full.sessionList(), read.sessionList()) {
+				items := read.sessionList()
+				if kind != "session" {
+					if err := stats.attachPageSources(t.Context(), q, items.Items, read); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if !reflect.DeepEqual(full.sessionList(), items) {
 					t.Fatal("projection changed session list", kind)
 				}
 			}

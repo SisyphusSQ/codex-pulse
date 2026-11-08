@@ -23,7 +23,10 @@ func (r *Statistics) Snapshot(ctx context.Context, fn func(context.Context) erro
 	return r.engine.ReadSnapshot(ctx, fn)
 }
 func (r *Statistics) sessionQuery(ctx context.Context, q statistics_dto.StatisticsQuery) *gorm.DB {
-	db := r.engine.DB(ctx).Table("pulse_sessions AS s").Select("s.*").Where("s.deleted = ?", false)
+	return r.sessionFilter(q, r.engine.DB(ctx).Table("pulse_sessions AS s").Select("s.*"))
+}
+func (r *Statistics) sessionFilter(q statistics_dto.StatisticsQuery, db *gorm.DB) *gorm.DB {
+	db = db.Where("s.deleted = ?", false)
 	if q.Provider != "" {
 		db = db.Where("s.provider = ?", q.Provider)
 	}
@@ -172,11 +175,18 @@ func (r *Statistics) StreamInvocations(ctx context.Context, q statistics_dto.Sta
 
 // StreamSources 在同一有序流中读取内联来源及已发布分片；分片校验不再查询数据库。
 func (r *Statistics) StreamSources(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.SessionSource) error) error {
-	db := r.engine.DB(ctx).Table("pulse_session_sources AS src").
-		Select("src.id,src.session_key,src.client_id,src.home_id,src.source_kind,src.revision,src.collected_at_ms,src.digest,src.payload,part.part_index,part.body").
+	columns := "src.id,src.session_key,src.client_id,src.home_id,src.source_kind,src.revision,src.collected_at_ms,src.digest,src.payload,part.part_index,part.body"
+	db := r.engine.DB(ctx).Table("pulse_session_sources AS src")
+	if q.ClientID == "" && q.SessionKey == "" && q.ProjectID == "" {
+		// 宽范围保持来源索引顺序，仅排序单个来源的分片，避免全局排序大正文。
+		columns = "/*+ LEADING(src s owner part) USE_NL(s owner part) INDEX(src idx_session_sources_session) */ " + columns
+		db = r.sessionFilter(q, db.Joins("JOIN pulse_sessions AS s ON s.id=src.session_key"))
+	} else {
+		db = db.Where("src.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+	}
+	db = db.Select(columns).
 		Joins("LEFT JOIN pulse_payload_owners owner ON owner.id=CONCAT('source:',src.id)").
-		Joins("LEFT JOIN pulse_payload_parts part ON part.payload_key=owner.payload_key").
-		Where("src.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+		Joins("LEFT JOIN pulse_payload_parts part ON part.payload_key=owner.payload_key")
 	if q.ClientID != "" {
 		db = db.Where("src.client_id = ?", q.ClientID)
 	}

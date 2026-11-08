@@ -15,6 +15,35 @@ import (
 	reporting_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/reporting_do"
 )
 
+func TestVersionCollectionIdleBackoffAndPublicationWake(t *testing.T) {
+	now := time.Unix(1000, 0)
+	s := versionCollectionSchedule{interval: 5 * time.Minute}
+	if now.Before(s.next) {
+		t.Fatal("startup collection delayed")
+	}
+	for _, delay := range []time.Duration{5, 10, 20, 30, 30} {
+		s.completed(now, nil)
+		if s.next.Sub(now) != delay*time.Minute {
+			t.Fatal("idle delay", s.next.Sub(now))
+		}
+		now = s.next
+	}
+	s.completed(now, nil)
+	s.published(now.Add(time.Second))
+	want := now.Add(time.Second + 5*time.Minute)
+	if !s.next.Equal(want) {
+		t.Fatal("publication did not restore collection deadline")
+	}
+	s.published(now.Add(2 * time.Second))
+	if !s.next.Equal(want) {
+		t.Fatal("continuous publications postponed cleanup")
+	}
+	s.completed(want, errors.New("synthetic timeout"))
+	if !s.next.Equal(want.Add(time.Minute)) || s.interval != 5*time.Minute {
+		t.Fatal("failure retry changed")
+	}
+}
+
 func TestVersionCollectionDrainsBacklogAndPreservesLiveLeasedAndRecentData(t *testing.T) {
 	s, db, _ := reportingFixture(t)
 	rows := make([]reporting_do.UsageVersion, 503)

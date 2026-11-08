@@ -99,7 +99,7 @@ func (s *Reporting) runPublications(ctx context.Context) {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 	interval := time.Second
-	var nextVersionCollection time.Time
+	collection := versionCollectionSchedule{interval: 5 * time.Minute}
 	for {
 		select {
 		case <-ctx.Done():
@@ -115,24 +115,43 @@ func (s *Reporting) runPublications(ctx context.Context) {
 		}
 		if processed {
 			interval = time.Second
+			collection.published(time.Now())
 		} else {
 			interval = min(2*interval, 5*time.Second)
 		}
-		if ctx.Err() == nil && !time.Now().Before(nextVersionCollection) {
+		if ctx.Err() == nil && !time.Now().Before(collection.next) {
 			c, stop = context.WithTimeout(ctx, 5*time.Second)
 			err = s.repository.CollectVersions(c)
 			stop()
-			delay := 5 * time.Minute
-			if err != nil {
-				delay = time.Minute
-			}
-			nextVersionCollection = time.Now().Add(delay)
+			collection.completed(time.Now(), err)
 			if err != nil && ctx.Err() == nil && log.Logger != nil {
 				log.Logger.Errorf("snapshot version cleanup failed: %T", err)
 			}
 		}
 		timer.Reset(interval)
 	}
+}
+
+// 仅无本机发布的空闲期减少历史探测；跨实例及重启遗留仍由最长半小时兜底。
+type versionCollectionSchedule struct {
+	next     time.Time
+	interval time.Duration
+}
+
+func (s *versionCollectionSchedule) published(now time.Time) {
+	s.interval = 5 * time.Minute
+	if s.next.After(now.Add(s.interval)) {
+		s.next = now.Add(s.interval)
+	}
+}
+
+func (s *versionCollectionSchedule) completed(now time.Time, err error) {
+	if err != nil {
+		s.next, s.interval = now.Add(time.Minute), 5*time.Minute
+		return
+	}
+	s.next = now.Add(s.interval)
+	s.interval = min(2*s.interval, 30*time.Minute)
 }
 
 // 分片清理独立于发布；版本回收保持与构建串行，避免本进程复用版本时交叉删除。
