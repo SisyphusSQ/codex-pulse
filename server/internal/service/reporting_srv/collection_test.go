@@ -3,6 +3,7 @@ package reporting_srv
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -122,9 +123,9 @@ func TestPublicationPollingDoesNotRepeatIdleVersionScan(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	deadline := time.NewTimer(5 * time.Second)
+	deadline := time.NewTimer(9 * time.Second)
 	defer deadline.Stop()
-	for range 5 {
+	for range 4 {
 		select {
 		case <-polls:
 		case <-deadline.C:
@@ -133,5 +134,77 @@ func TestPublicationPollingDoesNotRepeatIdleVersionScan(t *testing.T) {
 	}
 	if got := scans.Load(); got != 1 {
 		t.Fatalf("idle version scans during second-by-second polling: %d", got)
+	}
+}
+
+func TestPublicationCleanupBatchesAndPreservesPendingAndFailed(t *testing.T) {
+	s, db, _ := reportingFixture(t)
+	for _, state := range []string{"published", "pending", "failed"} {
+		job := reporting_do.PublicationJob{ID: state, ClientID: "client", SourceKey: state, Revision: 1, State: state, Body: "retained until cleaned"}
+		if err := db.Create(&job).Error; err != nil {
+			t.Fatal(err)
+		}
+		for i := range 256 {
+			part := reporting_do.SnapshotChunk{ClientID: "client", SourceKey: state, Revision: 1, ChunkIndex: i, Payload: "{}", PayloadBytes: 2}
+			if err := db.Create(&part).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for range 2 {
+		if err := s.repository.CleanupPublication(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, state := range []string{"published", "pending", "failed"} {
+		var count int64
+		if err := db.Model(&reporting_do.SnapshotChunk{}).Where("source_key = ?", state).Count(&count).Error; err != nil {
+			t.Fatal(err)
+		}
+		expected := int64(256)
+		if state == "published" {
+			expected = 0
+		}
+		if count != expected {
+			t.Fatalf("%s chunks=%d", state, count)
+		}
+	}
+	var job reporting_do.PublicationJob
+	if err := db.Where("id = ?", "published").Take(&job).Error; err != nil || job.State != "completed" || job.Body != "" {
+		t.Fatal("completion", job.State, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := s.repository.CleanupPublication(ctx); err == nil {
+		t.Fatal("cancellation ignored")
+	}
+}
+
+func TestPublicationWakeInterruptsIdleWait(t *testing.T) {
+	s, db, _ := reportingFixture(t)
+	polls := make(chan struct{}, 8)
+	if err := db.Callback().Query().After("gorm:query").Register("test-wake-poll", func(tx *gorm.DB) {
+		if tx.Statement.Table == "pulse_publication_jobs" && strings.Contains(tx.Statement.SQL.String(), "next_attempt_at_ms <=") {
+			polls <- struct{}{}
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	go func() { defer close(done); s.runPublications(ctx) }()
+	t.Cleanup(func() { cancel(); <-done })
+	for range 2 {
+		select {
+		case <-polls:
+		case <-time.After(4 * time.Second):
+			t.Fatal("idle poll missing")
+		}
+	}
+	s.publicationWake <- struct{}{}
+	select {
+	case <-polls:
+	case <-time.After(time.Second):
+		t.Fatal("commit wake waited for idle timer")
 	}
 }

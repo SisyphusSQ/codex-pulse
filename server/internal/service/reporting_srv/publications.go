@@ -6,6 +6,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"sync"
 	"time"
 
 	"go.uber.org/fx"
@@ -74,38 +75,10 @@ func StartPublications(lifecycle fx.Lifecycle, s *Reporting) {
 		ctx, cancel = context.WithCancel(context.Background())
 		go func() {
 			defer close(done)
-			ticker := time.NewTicker(time.Second)
-			defer ticker.Stop()
-			// 版本回收独立于发布轮询，空闲时每分钟最多扫描一次。
-			var nextVersionCollection time.Time
-			for {
-				c, stop := context.WithTimeout(ctx, 4*time.Minute)
-				_, err := s.ProcessPublication(c)
-				stop()
-				if err != nil && ctx.Err() == nil && log.Logger != nil {
-					log.Logger.Errorf("snapshot publication failed: %T", err)
-				}
-				c, stop = context.WithTimeout(ctx, 5*time.Second)
-				err = s.repository.CleanupPublication(c)
-				stop()
-				if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) && ctx.Err() == nil && log.Logger != nil {
-					log.Logger.Errorf("snapshot staging cleanup failed: %T", err)
-				}
-				if ctx.Err() == nil && !time.Now().Before(nextVersionCollection) {
-					c, stop = context.WithTimeout(ctx, 5*time.Second)
-					err = s.repository.CollectVersions(c)
-					stop()
-					nextVersionCollection = time.Now().Add(time.Minute)
-					if err != nil && ctx.Err() == nil && log.Logger != nil {
-						log.Logger.Errorf("snapshot version cleanup failed: %T", err)
-					}
-				}
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-				}
-			}
+			var workers sync.WaitGroup
+			workers.Go(func() { s.runPublications(ctx) })
+			workers.Go(func() { s.runPublicationCleanup(ctx) })
+			workers.Wait()
 		}()
 		return nil
 	}, OnStop: func(ctx context.Context) error {
@@ -119,6 +92,67 @@ func StartPublications(lifecycle fx.Lifecycle, s *Reporting) {
 			return ctx.Err()
 		}
 	}})
+}
+
+// runPublications 仅空闲时退避；提交后的唤醒与跨实例轮询共同保证恢复。
+func (s *Reporting) runPublications(ctx context.Context) {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	interval := time.Second
+	var nextVersionCollection time.Time
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.publicationWake:
+		case <-timer.C:
+		}
+		c, stop := context.WithTimeout(ctx, 4*time.Minute)
+		processed, err := s.ProcessPublication(c)
+		stop()
+		if err != nil && ctx.Err() == nil && log.Logger != nil {
+			log.Logger.Errorf("snapshot publication failed: %T", err)
+		}
+		if processed {
+			interval = time.Second
+		} else {
+			interval = min(2*interval, 5*time.Second)
+		}
+		if ctx.Err() == nil && !time.Now().Before(nextVersionCollection) {
+			c, stop = context.WithTimeout(ctx, 5*time.Second)
+			err = s.repository.CollectVersions(c)
+			stop()
+			delay := 5 * time.Minute
+			if err != nil {
+				delay = time.Minute
+			}
+			nextVersionCollection = time.Now().Add(delay)
+			if err != nil && ctx.Err() == nil && log.Logger != nil {
+				log.Logger.Errorf("snapshot version cleanup failed: %T", err)
+			}
+		}
+		timer.Reset(interval)
+	}
+}
+
+// 分片清理独立于发布；版本回收保持与构建串行，避免本进程复用版本时交叉删除。
+func (s *Reporting) runPublicationCleanup(ctx context.Context) {
+	timer := time.NewTicker(15 * time.Second)
+	defer timer.Stop()
+	for {
+		c, stop := context.WithTimeout(ctx, 5*time.Second)
+		err := s.repository.CleanupPublication(c)
+		stop()
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) && ctx.Err() == nil && log.Logger != nil {
+			log.Logger.Errorf("snapshot staging cleanup failed: %T", err)
+		}
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+	}
 }
 
 // ProcessPublication 完整校验和仲裁复用正式逻辑；分批构建后最终只提交小记录与指针。

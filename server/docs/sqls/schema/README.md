@@ -1,6 +1,6 @@
 # 中心数据库结构
 
-结构版本为 5，SQL 为唯一事实源，运行时直接嵌入这些文件。
+结构版本为 7，SQL 为唯一事实源，运行时直接嵌入这些文件。
 
 - [MySQL 8.x 结构](center_mysql.sql)：InnoDB、utf8mb4，身份字段区分大小写；目标实例版本、SQL mode 和排序规则在真实联调前读回。
 - [SQLite 开发结构](center_sqlite.sql)：与 MySQL 相同业务字段和唯一性契约，独立于本机 App 的 SQLite。
@@ -25,3 +25,9 @@ SQLite 只证明开发测试结果；SeekDB 的 MySQL 协议连接、DDL 和备�
 ## v6 后台发布
 
 TOO-582 追加 [MySQL v6](v6_mysql.sql) / [SQLite v6](v6_sqlite.sql)。v1..v5 已登记摘要可自动升级；不 ALTER、回填或删除旧表。新表记录最终待确认批次、不可见 usage 版本、原子发布指针及分段快照引用。新版本不可直接降级运行旧二进制；恢复须使用一致数据库备份，不能仅回切旧程序。未发布 SQL 与执行证据见 [unreleased](../unreleased/README.md)。
+
+## v7 查询索引
+
+[MySQL v7](v7_mysql.sql) / [SQLite v7](v7_sqlite.sql) 仅增加发布任务租约、清理排序、来源过滤与发布 generation 索引，不回填或删除事实。启动迁移器接受既有 v1..v6 登记摘要，以及现场确认的 MySQL v6 CRLF 摘要；旧 SQL 字节不改写。CREATE INDEX 的重入由迁移器检查并读回名称、列序及非唯一属性完成，不能直接重复执行原始 DDL。未知摘要、同名错误索引或当前结构漂移拒绝启动。MySQL DDL 可能持锁与占用空间，失败不提交标记，修复后可重启续行；SQLite 保持事务。
+
+升级前保存一致备份与旧发行目录；schema 7 不可直接回切 schema 6 程序。原始验收证据仅存私有目录，脱敏结果见 [TOO-697](../../test/too-697-server-sql-scheduling.md)。
