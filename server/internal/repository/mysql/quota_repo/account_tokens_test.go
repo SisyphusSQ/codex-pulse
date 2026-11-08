@@ -7,6 +7,8 @@ import (
 	"math/big"
 	"testing"
 
+	"gorm.io/gorm"
+
 	reporting_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/reporting_do"
 	quota_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/quota_dto"
 	centerfixture "github.com/SisyphusSQ/codex-pulse/server/internal/testsupport/center"
@@ -30,10 +32,21 @@ func TestAccountTokenTotalPreservesPrecisionAndFactBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	queries := 0
+	if err := db.Callback().Row().After("gorm:row").Register("count-token-total", func(tx *gorm.DB) {
+		if !tx.DryRun {
+			queries++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
 	want := new(big.Int).Mul(big.NewInt(math.MaxInt64), big.NewInt(accountTokenFactLimit)).String()
 	total, available, err := repository.AccountTokenTotal(t.Context(), quota_dto.Query{}, "account", 0, 1000, 500)
 	if err != nil || !available || total != want {
 		t.Fatalf("exact total at budget: %s %v %v, want %s", total, available, err, want)
+	}
+	if queries != 1 {
+		t.Fatalf("token total queries: %d", queries)
 	}
 	extra := reporting_do.AccountTokenFact{ID: "extra", AccountKey: "account", Provider: "codex", ObservedAtMS: 100, TotalTokens: 1}
 	if err := db.Create(&extra).Error; err != nil {
@@ -41,5 +54,13 @@ func TestAccountTokenTotalPreservesPrecisionAndFactBudget(t *testing.T) {
 	}
 	if _, _, err := repository.AccountTokenTotal(t.Context(), quota_dto.Query{}, "account", 0, 1000, 500); !errors.Is(err, utils.ErrRequestBudget) {
 		t.Fatalf("fact budget not enforced: %v", err)
+	}
+}
+
+func TestAccountTokensUnavailableRemainsUnknown(t *testing.T) {
+	engine := centerfixture.Engine(t)
+	total, available, err := NewQuota(engine).AccountTokenTotal(t.Context(), quota_dto.Query{}, "missing", 0, 1000, 500)
+	if err != nil || available || total != "" {
+		t.Fatalf("unknown became zero: %q %v %v", total, available, err)
 	}
 }

@@ -21,3 +21,5 @@
 开发验证：server 的 `go test ./internal/service/quota_srv ./internal/http ./internal/architecture ./app/cmd`；根模块 `go test ./internal/store -run '^TestQuotaArbiter' -count=1`。覆盖三机副本不累加、同邮箱不同 raw ID、下降、迟到、reset 抖动/换代、过期 LKG、legacy 不刷新、未关联/空库、Credits 去重/到期/失败，以及 HTTP 权限和参数拒绝。SQLite 开发通过不代表真实 MySQL 或三机验收。
 
 TOO-524：普通 Windows/Headers/Observations 在SQL层排除 account_key=NULL，并按Codex账号套餐限定 codex/10080 或 Plus codex/300+10080；Credits在排名前排除NULL账号。RawHistory只供内部四周期维护扫描，不通过HTTP解析设置。摘要、节奏和后台诊断投影共用同一过滤规则，历史事实不删除。Web移除来源证据入口，保留节奏与历史；已知套餐缺失窗口显示未取得。
+
+TOO-701：Credits 的 DENSE_RANK 仅投影 ID，按原有效性分区选取两档时间及全部并列记录，再在同一 SQL 主键回读完整库存与到期明细。没有把两档排名替换为两条物理记录。账号周期 Token 在一条 SQL 内检查能力可用性并按整数商/余数汇总；未知返回不可用，已记录空范围返回零，200000 事实预算与机器来源筛选不变。真实结果与计划见 [TOO-701](../../../test/too-701-server-sql.md)。

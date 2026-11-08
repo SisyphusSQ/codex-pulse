@@ -114,6 +114,9 @@ func (s *Statistics) Sessions(ctx context.Context, p access_dto.Principal, q sta
 		}
 		result = read.sessionList()
 		result.Coverage = read.coverage(s.now())
+		if err := s.attachPageSources(ctx, q, result.Items, read); err != nil {
+			return err
+		}
 		_, err = s.attachThroughput(ctx, q, result.Items, read.metadata, false)
 		return err
 	})
@@ -259,6 +262,9 @@ func (s *Statistics) Project(ctx context.Context, p access_dto.Principal, q stat
 		}
 		sessions := read.sessionList()
 		sessions.Coverage = read.coverage(s.now())
+		if err := s.attachPageSources(ctx, q, sessions.Items, read); err != nil {
+			return err
+		}
 		if _, err := s.attachThroughput(ctx, q, sessions.Items, read.metadata, false); err != nil {
 			return err
 		}
@@ -267,6 +273,29 @@ func (s *Statistics) Project(ctx context.Context, p access_dto.Principal, q stat
 		return nil
 	})
 	return
+}
+
+// attachPageSources 只延迟列表展示元数据；统计候选、总量和机器范围仲裁仍完整计算。
+func (s *Statistics) attachPageSources(ctx context.Context, q statistics_dto.StatisticsQuery, items []statistics_vo.StatisticsSession, read *statisticsRead) error {
+	if q.ClientID != "" || len(items) == 0 {
+		return nil
+	}
+	q.MatchedSessionKeys = make([]string, 0, len(items))
+	positions := make(map[string]int, len(items))
+	for i, item := range items {
+		q.MatchedSessionKeys = append(q.MatchedSessionKeys, item.ID)
+		positions[item.ID] = i
+	}
+	count := 0
+	return s.repository.StreamSourceMetadata(ctx, q, func(row statistics_dto.SourceMetadata) error {
+		count++
+		if count > statistics_dto.MaximumStatisticsSources {
+			return utils.ErrRequestBudget
+		}
+		i := positions[row.SessionKey]
+		items[i].Sources = append(items[i].Sources, statistics_vo.StatisticsSource{ID: row.ID, ClientID: row.ClientID, ClientName: read.clients[row.ClientID].Name, CollectedAtMS: row.CollectedAtMS, Revision: row.Revision, SourceKind: row.SourceKind, Complete: row.Complete, Deleted: row.Deleted})
+		return nil
+	})
 }
 func (s *Statistics) Devices(ctx context.Context, p access_dto.Principal) (out []statistics_vo.StatisticsDevice, err error) {
 	out = []statistics_vo.StatisticsDevice{}

@@ -17,22 +17,20 @@ func (r *Quota) AccountTokenTotal(ctx context.Context, q quota_dto.Query, accoun
 	if q.ClientID != "" {
 		periods = periods.Where("client_id = ?", q.ClientID)
 	}
-	var available bool
-	if err := db.Raw("SELECT EXISTS (?)", periods.Select("1")).Row().Scan(&available); err != nil || !available {
-		return "", false, err
-	}
+	periods = periods.Select("1")
 	facts := db.Where("account_key = ? AND provider = 'codex' AND observed_at_ms >= ? AND observed_at_ms < ? AND observed_at_ms <= ?", account, start, end, now)
 	if q.ClientID != "" {
 		facts = facts.Where("EXISTS (SELECT 1 FROM pulse_account_token_sources s WHERE s.fact_id = pulse_account_token_facts.id AND s.client_id = ?)", q.ClientID)
 	}
 	// 限额内分别累加整数商与余数，两部分都能放入 int64，兼容 SQLite 的整数 SUM。
 	const base = 1000000
-	bounded := facts.Model(&reporting_do.AccountTokenFact{}).Select("total_tokens").Limit(accountTokenFactLimit + 1)
+	bounded := facts.Model(&reporting_do.AccountTokenFact{}).Select("total_tokens").Where("EXISTS (?)", periods).Limit(accountTokenFactLimit + 1)
+	var available bool
 	var count, high, low int64
 	err := db.Table("(?) AS facts", bounded).
-		Select("COUNT(*), COALESCE(SUM(CAST((total_tokens - total_tokens % ?) / ? AS SIGNED)), 0), COALESCE(SUM(total_tokens % ?), 0)", base, base, base).
-		Row().Scan(&count, &high, &low)
-	if err != nil {
+		Select("EXISTS (?), COUNT(*), COALESCE(SUM(CAST((total_tokens - total_tokens % ?) / ? AS SIGNED)), 0), COALESCE(SUM(total_tokens % ?), 0)", periods, base, base, base).
+		Row().Scan(&available, &count, &high, &low)
+	if err != nil || !available {
 		return "", false, err
 	}
 	if count > accountTokenFactLimit {

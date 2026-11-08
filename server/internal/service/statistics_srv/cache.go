@@ -28,7 +28,14 @@ type statisticsCacheKey struct {
 	kind, zone, provider, model, session, client, project, search, annualDay string
 	start, end                                                               int64
 }
+type statisticsCacheResult struct {
+	body []byte
+	err  error
+}
+type overviewLoader func(context.Context) map[string]statisticsCacheResult
+
 type statisticsCacheEntry struct {
+	pair                      overviewLoader
 	kind                      string
 	load                      func(context.Context) ([]byte, error)
 	body                      []byte
@@ -52,7 +59,7 @@ func newStatisticsCache(ctx context.Context, timeout time.Duration) *statisticsC
 	return &statisticsCache{entries: make(map[statisticsCacheKey]*statisticsCacheEntry), ctx: ctx, wake: make(chan struct{}, 1), done: make(chan struct{}), now: time.Now, timeout: timeout}
 }
 
-// StartCache 由 Fx 托管，后台一次只计算一个投影；请求取消不会中断其他请求共享的刷新。
+// StartCache 由 Fx 托管，后台一次只执行一轮刷新；请求取消不会中断其他请求共享的刷新。
 func StartCache(lifecycle fx.Lifecycle, cfg config.Config, s *Statistics) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := newStatisticsCache(ctx, cfg.ContextTimeout)
@@ -89,11 +96,11 @@ func projectionLoader[T any](q statistics_dto.StatisticsQuery, load func(context
 	}
 }
 
-func cachedProjection[T any](ctx context.Context, c *statisticsCache, kind string, q statistics_dto.StatisticsQuery, load func(context.Context, statistics_dto.StatisticsQuery) (T, error)) (out T, status *statistics_vo.StatisticsCache, err error) {
+func cachedProjection[T any](ctx context.Context, c *statisticsCache, kind string, q statistics_dto.StatisticsQuery, load func(context.Context, statistics_dto.StatisticsQuery) (T, error), pair ...overviewLoader) (out T, status *statistics_vo.StatisticsCache, err error) {
 	if err = ctx.Err(); err != nil {
 		return
 	}
-	body, status, err := c.get(ctx, c.key(kind, q), projectionLoader(q, load))
+	body, status, err := c.get(ctx, c.key(kind, q), projectionLoader(q, load), pair...)
 	if err != nil {
 		return out, status, err
 	}
@@ -101,7 +108,7 @@ func cachedProjection[T any](ctx context.Context, c *statisticsCache, kind strin
 	return
 }
 
-func (c *statisticsCache) get(ctx context.Context, key statisticsCacheKey, load func(context.Context) ([]byte, error)) ([]byte, *statistics_vo.StatisticsCache, error) {
+func (c *statisticsCache) get(ctx context.Context, key statisticsCacheKey, load func(context.Context) ([]byte, error), pair ...overviewLoader) ([]byte, *statistics_vo.StatisticsCache, error) {
 	c.mu.Lock()
 	if err := c.ctx.Err(); err != nil {
 		c.mu.Unlock()
@@ -115,6 +122,9 @@ func (c *statisticsCache) get(ctx context.Context, key statisticsCacheKey, load 
 		}
 		e = &statisticsCacheEntry{kind: key.kind, load: load, ready: make(chan struct{})}
 		c.entries[key] = e
+	}
+	if e.pair == nil && len(pair) != 0 {
+		e.pair = pair[0]
 	}
 	e.used = c.now()
 	if e.body != nil {
@@ -200,26 +210,58 @@ func (c *statisticsCache) refresh() bool {
 	c.mu.Lock()
 	now := c.now()
 	var chosen *statisticsCacheEntry
-	for _, e := range c.entries {
-		if e.running || (e.ready == nil && now.Sub(e.used) > statisticsIdle) || (!e.attempted.IsZero() && now.Sub(e.attempted) < e.refreshInterval()) {
+	var chosenKey statisticsCacheKey
+	for key, e := range c.entries {
+		if !e.due(now) {
 			continue
 		}
 		if chosen == nil || (e.attempted.IsZero() && !chosen.attempted.IsZero()) || (e.attempted.IsZero() == chosen.attempted.IsZero() && e.attempted.Before(chosen.attempted)) {
 			chosen = e
+			chosenKey = key
 		}
 	}
 	if chosen == nil {
 		c.mu.Unlock()
 		return false
 	}
-	e := chosen
-	e.running = true
-	e.attempted = now
+	batch := []*statisticsCacheEntry{chosen}
+	peerKey := chosenKey
+	if chosenKey.kind == "usage" {
+		peerKey.kind = "current"
+	} else {
+		peerKey.kind = "usage"
+	}
+	if peer := c.entries[peerKey]; chosen.pair != nil && peer != nil && peer.pair != nil && peer.due(now) {
+		batch = append(batch, peer)
+	}
+	for _, e := range batch {
+		e.running, e.attempted = true, now
+	}
 	c.mu.Unlock()
 	ctx, cancel := context.WithTimeout(c.ctx, c.timeout)
-	body, err := e.load(ctx)
+	var results map[string]statisticsCacheResult
+	if len(batch) == 2 {
+		results = chosen.pair(ctx)
+	} else {
+		body, err := chosen.load(ctx)
+		results = map[string]statisticsCacheResult{chosen.kind: {body: body, err: err}}
+	}
 	cancel()
 	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, e := range batch {
+		result := results[e.kind]
+		c.finish(e, result.body, result.err, now)
+	}
+	return true
+}
+
+func (e *statisticsCacheEntry) due(now time.Time) bool {
+	return !e.running && (e.ready != nil || now.Sub(e.used) <= statisticsIdle) && (e.attempted.IsZero() || now.Sub(e.attempted) >= e.refreshInterval())
+}
+
+// finish 在锁内独立更新结果；任一卡失败仍保留自己的上一份成功快照。
+func (c *statisticsCache) finish(e *statisticsCacheEntry, body []byte, err error, now time.Time) {
 	if err == nil && len(body) > statisticsCacheBytes {
 		err = utils.ErrRequestBudget
 	}
@@ -242,11 +284,9 @@ func (c *statisticsCache) refresh() bool {
 		close(e.ready)
 		e.ready = nil
 	}
-	c.mu.Unlock()
 	if err != nil && c.ctx.Err() == nil && log.Logger != nil {
 		log.Logger.Errorf("statistics cache refresh failed: %T", err)
 	}
-	return true
 }
 
 func (c *statisticsCache) warm(s *Statistics) {
@@ -271,7 +311,7 @@ func (c *statisticsCache) warm(s *Statistics) {
 		if len(c.entries) >= statisticsCacheEntries && !c.evict(nil) {
 			continue
 		}
-		c.entries[key] = &statisticsCacheEntry{kind: kind, load: load, ready: make(chan struct{}), used: now}
+		c.entries[key] = &statisticsCacheEntry{kind: kind, load: load, pair: s.overviewLoader(q), ready: make(chan struct{}), used: now}
 	}
 }
 
