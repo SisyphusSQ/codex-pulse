@@ -57,7 +57,8 @@ func (s *Statistics) sourceUsage(ctx context.Context, q statistics_dto.Statistic
 			}
 			cq := q
 			cq.ClientID = c.ID
-			readers[c.ID] = &statisticsRead{q: cq, projects: projectMap, metadata: map[string]reporting_do.Session{}, total: newStatisticsAggregate(), providerSeen: map[string]bool{}, days: map[string]*statisticsAggregate{}, heatmapOnly: true}
+			// 来源接口只返回总量及覆盖；保留按日计价，但不重复构建未使用的日桶。
+			readers[c.ID] = &statisticsRead{q: cq, projects: projectMap, metadata: map[string]reporting_do.Session{}, total: newStatisticsAggregate(), providerSeen: map[string]bool{}, projection: "source-usage"}
 		}
 		status, e := s.repository.Status(ctx, q)
 		if e != nil {
