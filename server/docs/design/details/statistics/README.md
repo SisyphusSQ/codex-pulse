@@ -37,3 +37,5 @@ TOO-526 面向全部中心路由与仓库 SQL：降低首屏等待，同时保�
 年度改为访问期间每五分钟刷新；机器来源维持访问期间一分钟。两者取消无浏览预热，超过五分钟无访问暂停；默认今日 usage/current 继续一分钟预热。缓存 metadata 按实际间隔设置 refresh_after_ms，超过两倍间隔标记 stale；失败仍保留最后成功快照。额度 Web 自动读取改为一分钟，手动刷新入口保留。首次访问年度/来源仍需真实冷计算。
 
 本轮 schema v7 为发布租约、清理排序、来源任务和 generation 判断增加四个有实际调用方的索引，不能据此声称年度计算或版本回收不再扫描存量。旧 TOO-526 的无新增索引结论只描述当时范围。验收见 [TOO-697](../../../test/too-697-server-sql-scheduling.md)。
+
+TOO-698 继续审查年度与来源历史读取，保留上述精确业务口径；实际优化集中在积压回收的重复历史候选查找，无新增统计 SQL 或 DDL。见 [回收策略](../../../../../docs/design/details/multi-machine-reporting/center-query-performance.md#too-698-历史回收扫描)与 [验收](../../../test/too-698-history-scan.md)。

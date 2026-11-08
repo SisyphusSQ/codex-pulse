@@ -123,7 +123,7 @@ func (r *Reporting) CollectVersions(ctx context.Context) error {
 	unpublished := func(db *gorm.DB) *gorm.DB {
 		return unleased(db).Where("generation NOT IN (SELECT generation FROM pulse_session_publications)")
 	}
-	// 有积压时在本轮预算内继续清理，空闲时只扫描一次。
+	// 保留跨代际批次；满批后沿末行的主键前缀继续，避免反复扫描历史。
 	for {
 		var rows []reporting_do.UsageVersion
 		if err := db.Scopes(unpublished).Select("generation,session_key,contribution_id").Limit(250).Find(&rows).Error; err != nil {
@@ -138,6 +138,24 @@ func (r *Reporting) CollectVersions(ctx context.Context) error {
 		}
 		if len(rows) < 250 {
 			break
+		}
+		last := rows[len(rows)-1]
+		for {
+			var ids []string
+			batch := db.Model(&reporting_do.UsageVersion{}).Where("generation = ? AND session_key = ?", last.Generation, last.SessionKey)
+			if err := batch.Scopes(unpublished).Limit(250).Pluck("contribution_id", &ids).Error; err != nil {
+				return err
+			}
+			if len(ids) == 0 {
+				break
+			}
+			result := db.Where("generation = ? AND session_key = ? AND contribution_id IN ?", last.Generation, last.SessionKey, ids).Scopes(unpublished).Delete(&reporting_do.UsageVersion{})
+			if result.Error != nil || result.RowsAffected == 0 {
+				return result.Error
+			}
+			if len(ids) < 250 {
+				break
+			}
 		}
 	}
 	var parts []reporting_do.PayloadPart
