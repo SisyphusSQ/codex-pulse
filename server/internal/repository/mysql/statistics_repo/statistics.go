@@ -98,7 +98,8 @@ func (r *Statistics) usageFilter(ctx context.Context, q statistics_dto.Statistic
 }
 
 func (r *Statistics) streamUsage(ctx context.Context, q statistics_dto.StatisticsQuery, heatmap bool, visit func(reporting_do.Usage) error) error {
-	columns := "u.session_key,u.contribution_id,u.position,u.observed_at_ms,u.model,u.input_tokens,u.cached_tokens,u.cache_write_tokens,u.output_tokens,u.reasoning_tokens,u.total_tokens,u.cost_micro_usd,u.reported_charge_micro_usd,u.pricing_version,u.pricing_mode,u.input_price,u.cached_price,u.cache_write_price,u.output_price,u.cost_status"
+	// 统计只消费数值及归属；贡献身份与位置不参与聚合，避免随全年事实重复传输。
+	columns := "u.session_key,u.observed_at_ms,u.model,u.input_tokens,u.cached_tokens,u.cache_write_tokens,u.output_tokens,u.reasoning_tokens,u.total_tokens,u.cost_micro_usd,u.reported_charge_micro_usd,u.pricing_version,u.pricing_mode,u.input_price,u.cached_price,u.cache_write_price,u.output_price,u.cost_status"
 	if heatmap {
 		columns = "/*+ USE_HASH(u) */ " + columns
 	}
@@ -121,7 +122,7 @@ func (r *Statistics) streamUsage(ctx context.Context, q statistics_dto.Statistic
 				return err
 			}
 			var row reporting_do.Usage
-			if err := rows.Scan(&row.SessionKey, &row.ContributionID, &row.Position, &row.ObservedAtMS, &row.Model, &row.InputTokens, &row.CachedTokens, &row.CacheWriteTokens, &row.OutputTokens, &row.ReasoningTokens, &row.TotalTokens, &row.CostMicroUSD, &row.ReportedChargeMicroUSD, &row.PricingVersion, &row.PricingMode, &row.InputPrice, &row.CachedPrice, &row.CacheWritePrice, &row.OutputPrice, &row.CostStatus); err != nil {
+			if err := rows.Scan(&row.SessionKey, &row.ObservedAtMS, &row.Model, &row.InputTokens, &row.CachedTokens, &row.CacheWriteTokens, &row.OutputTokens, &row.ReasoningTokens, &row.TotalTokens, &row.CostMicroUSD, &row.ReportedChargeMicroUSD, &row.PricingVersion, &row.PricingMode, &row.InputPrice, &row.CachedPrice, &row.CacheWritePrice, &row.OutputPrice, &row.CostStatus); err != nil {
 				rows.Close()
 				return err
 			}
@@ -227,7 +228,7 @@ func (r *Statistics) StreamSources(ctx context.Context, q statistics_dto.Statist
 }
 
 func (r *Statistics) StreamUntimed(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Usage) error) error {
-	db := r.usageFilter(ctx, q, r.engine.DB(ctx).Table(reporting_repo.PublishedUsage).Select("u.session_key,u.contribution_id,u.model").Where("u.observed_at_ms IS NULL"))
+	db := r.usageFilter(ctx, q, r.engine.DB(ctx).Table(reporting_repo.PublishedUsage).Select("u.session_key,u.model").Where("u.observed_at_ms IS NULL"))
 	rows, err := db.Rows()
 	if err != nil {
 		return err
@@ -238,7 +239,7 @@ func (r *Statistics) StreamUntimed(ctx context.Context, q statistics_dto.Statist
 			return err
 		}
 		var row reporting_do.Usage
-		if err := rows.Scan(&row.SessionKey, &row.ContributionID, &row.Model); err != nil {
+		if err := rows.Scan(&row.SessionKey, &row.Model); err != nil {
 			return err
 		}
 		if err := visit(row); err != nil {

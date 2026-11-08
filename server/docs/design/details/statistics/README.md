@@ -39,3 +39,9 @@ TOO-526 面向全部中心路由与仓库 SQL：降低首屏等待，同时保�
 本轮 schema v7 为发布租约、清理排序、来源任务和 generation 判断增加四个有实际调用方的索引，不能据此声称年度计算或版本回收不再扫描存量。旧 TOO-526 的无新增索引结论只描述当时范围。验收见 [TOO-697](../../../test/too-697-server-sql-scheduling.md)。
 
 TOO-698 继续审查年度与来源历史读取，保留上述精确业务口径；实际优化集中在积压回收的重复历史候选查找，无新增统计 SQL 或 DDL。见 [回收策略](../../../../../docs/design/details/multi-machine-reporting/center-query-performance.md#too-698-历史回收扫描)与 [验收](../../../test/too-698-history-scan.md)。
+
+## TOO-699 统计投影精简
+
+年度及其他结构化统计流只读取聚合消费的数值、定价与归属字段，不再传输 contribution_id/position；无时间事实只读取 session_key/model。没有 DISTINCT、提前截断或改变版本筛选，数值相同的不同事实仍逐条计数，NULL/零和精确整数口径不变。宽年度范围仍可选择全扫描，精简的是返回列与 Go 扫描开销，不承诺消除必要历史读取。
+
+机器来源总量复用现有 projection 聚合，仅累计总量与覆盖，不建立未返回的日桶。总量内部仍以当地自然日、模型、历史费率分组计价，不能把删除日桶误解为跨日合并舍入。全部 Home 的有序读取、分片校验与 DecideSnapshot 仲裁不变，缓存刷新和失效策略不变。实测见 [TOO-699](../../../test/too-699-statistics-history.md)。
