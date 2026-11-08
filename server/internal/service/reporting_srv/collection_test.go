@@ -2,6 +2,7 @@ package reporting_srv
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -74,9 +75,9 @@ func TestVersionCollectionRechecksPublicationBeforeDelete(t *testing.T) {
 	if err := db.Create(&row).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Callback().Query().After("gorm:query").Register("test-publish-before-delete", func(tx *gorm.DB) {
+	if err := db.Callback().Delete().Before("gorm:delete").Register("test-publish-before-delete", func(tx *gorm.DB) {
 		if tx.Statement.Table == "pulse_usage_versions" {
-			if err := db.Create(&reporting_do.SessionPublication{SessionKey: "session", Generation: "pending"}).Error; err != nil {
+			if err := tx.Session(&gorm.Session{NewDB: true}).Create(&reporting_do.SessionPublication{SessionKey: "session", Generation: "pending"}).Error; err != nil {
 				tx.AddError(err)
 			}
 		}
@@ -86,12 +87,146 @@ func TestVersionCollectionRechecksPublicationBeforeDelete(t *testing.T) {
 	if err := s.repository.CollectVersions(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Callback().Query().Remove("test-publish-before-delete"); err != nil {
+	if err := db.Callback().Delete().Remove("test-publish-before-delete"); err != nil {
 		t.Fatal(err)
 	}
 	var count int64
 	if err := db.Model(&row).Count(&count).Error; err != nil || count != 1 {
 		t.Fatalf("published version was removed: %d %v", count, err)
+	}
+}
+
+func TestVersionCollectionRechecksLeaseBeforeDelete(t *testing.T) {
+	s, db, _ := reportingFixture(t)
+	row := reporting_do.UsageVersion{Generation: "building", Usage: reporting_do.Usage{SessionKey: "session", ContributionID: "fact"}}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Callback().Delete().Before("gorm:delete").Register("test-lease-before-delete", func(tx *gorm.DB) {
+		if tx.Statement.Table == "pulse_usage_versions" {
+			tx.AddError(tx.Session(&gorm.Session{NewDB: true}).Create(&reporting_do.PublicationJob{ID: "new-lease", LeaseUntilMS: time.Now().Add(time.Minute).UnixMilli()}).Error)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.repository.CollectVersions(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	var count int64
+	if err := db.Model(&row).Count(&count).Error; err != nil || count != 1 {
+		t.Fatalf("leased version removed: %d %v", count, err)
+	}
+}
+
+func TestVersionCollectionDoesNotRescanHistoryForEveryBatch(t *testing.T) {
+	s, db, _ := reportingFixture(t)
+	for _, session := range []string{"one", "two"} {
+		rows := make([]reporting_do.UsageVersion, 751)
+		for i := range rows {
+			rows[i] = reporting_do.UsageVersion{Generation: "shared", Usage: reporting_do.Usage{SessionKey: session, ContributionID: fmt.Sprint(i), Position: int64(i)}}
+		}
+		if err := db.CreateInBatches(rows, 100).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	var historyScans atomic.Int64
+	if err := db.Callback().Query().After("gorm:query").Register("test-history-scans", func(tx *gorm.DB) {
+		if tx.Statement.Table == "pulse_usage_versions" && !strings.Contains(tx.Statement.SQL.String(), "generation = ? AND session_key = ?") {
+			historyScans.Add(1)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.repository.CollectVersions(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	var count int64
+	if err := db.Model(&reporting_do.UsageVersion{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("backlog remains: %d %v", count, err)
+	}
+	// 两组候选与一次终止探测；不随八个删除批次重复扫描历史。
+	if scans := historyScans.Load(); scans > 4 {
+		t.Fatalf("repeated historical scans: %d", scans)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := s.repository.CollectVersions(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatal("cancellation lost", err)
+	}
+}
+
+func TestVersionCollectionKeepsSparseGenerationsBatched(t *testing.T) {
+	s, db, _ := reportingFixture(t)
+	rows := make([]reporting_do.UsageVersion, 503)
+	for i := range rows {
+		rows[i] = reporting_do.UsageVersion{Generation: fmt.Sprint(i), Usage: reporting_do.Usage{SessionKey: "session", ContributionID: "one"}}
+	}
+	if err := db.CreateInBatches(rows, 100).Error; err != nil {
+		t.Fatal(err)
+	}
+	var historyScans atomic.Int64
+	if err := db.Callback().Query().After("gorm:query").Register("test-sparse-scans", func(tx *gorm.DB) {
+		if tx.Statement.Table == "pulse_usage_versions" && !strings.Contains(tx.Statement.SQL.String(), "generation = ? AND session_key = ?") {
+			historyScans.Add(1)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.repository.CollectVersions(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if scans := historyScans.Load(); scans > 3 {
+		t.Fatalf("sparse generations scanned individually: %d", scans)
+	}
+	var count int64
+	if err := db.Model(&reporting_do.UsageVersion{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatal("sparse backlog retained", count, err)
+	}
+}
+
+func TestVersionCollectionStopsTargetedBatchWhenProtectedOrCanceled(t *testing.T) {
+	for _, protection := range []string{"publication", "lease", "cancel"} {
+		t.Run(protection, func(t *testing.T) {
+			s, db, _ := reportingFixture(t)
+			rows := make([]reporting_do.UsageVersion, 501)
+			for i := range rows {
+				rows[i] = reporting_do.UsageVersion{Generation: "candidate", Usage: reporting_do.Usage{SessionKey: "session", ContributionID: fmt.Sprint(i), Position: int64(i)}}
+			}
+			if err := db.CreateInBatches(rows, 100).Error; err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			var deletes atomic.Int64
+			if err := db.Callback().Delete().Before("gorm:delete").Register("test-protect-targeted", func(tx *gorm.DB) {
+				if tx.Statement.Table != "pulse_usage_versions" || deletes.Add(1) != 2 {
+					return
+				}
+				write := tx.Session(&gorm.Session{NewDB: true})
+				switch protection {
+				case "publication":
+					tx.AddError(write.Create(&reporting_do.SessionPublication{SessionKey: "session", Generation: "candidate"}).Error)
+				case "lease":
+					tx.AddError(write.Create(&reporting_do.PublicationJob{ID: "lease", LeaseUntilMS: time.Now().Add(time.Minute).UnixMilli()}).Error)
+				case "cancel":
+					cancel()
+				}
+			}); err != nil {
+				t.Fatal(err)
+			}
+			err := s.repository.CollectVersions(ctx)
+			if protection == "cancel" {
+				if err == nil {
+					t.Fatal("canceled targeted delete succeeded")
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			var count int64
+			if err := db.Model(&reporting_do.UsageVersion{}).Count(&count).Error; err != nil || count != 251 {
+				t.Fatalf("targeted batch lost protected rows: %d %v", count, err)
+			}
+		})
 	}
 }
 
