@@ -187,7 +187,7 @@ func (s *Statistics) readProjection(ctx context.Context, q statistics_dto.Statis
 				key = row.SessionKey
 			}
 			var snapshot reportingv1.SessionSnapshot
-			if err := json.Unmarshal([]byte(row.Payload), &snapshot, json.RejectUnknownMembers(true)); err != nil {
+			if err := json.UnmarshalRead(strings.NewReader(row.Payload), &snapshot, json.RejectUnknownMembers(true)); err != nil {
 				return err
 			}
 			snapshot.Invocations = nil

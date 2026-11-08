@@ -126,7 +126,7 @@ func (s *Statistics) sourceUsage(ctx context.Context, q statistics_dto.Statistic
 				return utils.ErrRequestBudget
 			}
 			var snap reportingv1.SessionSnapshot
-			if e := json.Unmarshal([]byte(row.Payload), &snap, json.RejectUnknownMembers(true)); e != nil {
+			if e := json.UnmarshalRead(strings.NewReader(row.Payload), &snap, json.RejectUnknownMembers(true)); e != nil {
 				return e
 			}
 			snap.Invocations = nil
