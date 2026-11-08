@@ -23,3 +23,4 @@
 - [source-usage 来源扫描回归修复：2026-10-13](source-usage-regression-2026-10-13.md)
 
 - [TOO-699 年度与来源统计投影优化](too-699-statistics-history.md)
+- [TOO-700 目录事实口径与窄范围用量查询](too-700-catalog-usage-query.md)

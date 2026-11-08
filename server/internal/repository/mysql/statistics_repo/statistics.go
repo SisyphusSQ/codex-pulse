@@ -3,6 +3,7 @@ package statistics_repo
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -105,12 +106,17 @@ func (r *Statistics) streamUsage(ctx context.Context, q statistics_dto.Statistic
 	}
 	for _, physical := range []string{"pulse_usage AS u", "pulse_usage_versions AS u"} {
 		base := r.engine.DB(ctx).Table(physical)
+		projection := columns
 		if physical == "pulse_usage AS u" {
 			base = base.Where("NOT EXISTS (SELECT 1 FROM pulse_session_publications p WHERE p.session_key=u.session_key)")
 		} else {
 			base = base.Joins("JOIN pulse_session_publications p ON p.session_key=u.session_key AND p.generation=u.generation")
+			// SeekDB 窄日期从现有时间索引取数；年度与按会话/项目/搜索的选择路径保持原样。
+			if !heatmap && q.EndAtMS > q.StartAtMS && q.EndAtMS-q.StartAtMS <= (7*24*time.Hour).Milliseconds() && q.SessionKey == "" && q.ProjectID == "" && q.ClientID == "" && q.Search == "" && q.MatchedSessionKeys == nil {
+				projection = "/*+ INDEX(u idx_usage_versions_time) */ " + columns
+			}
 		}
-		db := r.usageFilter(ctx, q, base.Select(columns).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS))
+		db := r.usageFilter(ctx, q, base.Select(projection).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS))
 		rows, err := db.Rows()
 		if err != nil {
 			return err
