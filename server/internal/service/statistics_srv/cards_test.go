@@ -120,14 +120,14 @@ func TestCacheWorkerWarmRefreshAndStop(t *testing.T) {
 	}
 }
 
-func TestDefaultCardsStayActiveWithoutBrowserTraffic(t *testing.T) {
+func TestLightDefaultCardsStayActiveWithoutBrowserTraffic(t *testing.T) {
 	stats, _, _, _ := statisticsFixture(t)
 	c := newStatisticsCache(t.Context(), time.Second)
 	now := stats.now()
 	c.now = func() time.Time { return now }
 	c.warm(stats)
 	c.mu.Lock()
-	if len(c.entries) != 4 {
+	if len(c.entries) != 2 {
 		t.Fatalf("default projections: %d", len(c.entries))
 	}
 	for _, e := range c.entries {

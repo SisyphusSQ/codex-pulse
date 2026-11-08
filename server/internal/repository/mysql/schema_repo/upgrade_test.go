@@ -145,3 +145,43 @@ func TestV5PublicationUpgradePreservesPendingChunksAndReceipts(t *testing.T) {
 		t.Fatal("v6 structure incomplete")
 	}
 }
+
+func TestV6QueryIndexesUpgradeReentryAndDrift(t *testing.T) {
+	s, engine, _ := openTestDatabase(t, filepath.Join(t.TempDir(), "private", "center.sqlite"))
+	if err := s.Init(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	db := engine.DB(t.Context())
+	if err := db.Exec("INSERT INTO pulse_batches VALUES('device','retained-v6','digest',1)").Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"idx_publication_jobs_lease", "idx_publication_jobs_cleanup"} {
+		if err := db.Migrator().DropIndex("pulse_publication_jobs", name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Model(&schema_do.SchemaVersion{}).Where("id = ?", 1).Updates(map[string]any{"version": 6, "checksum": "65d89e7629f95edc6d80967b2f9839b80a792da91b166720fd247567f2c8f096"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := s.Migrate(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Check(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	var n int64
+	if err := db.Table("pulse_batches").Count(&n).Error; err != nil || n != 1 {
+		t.Fatal("receipt changed", n, err)
+	}
+	if err := db.Migrator().DropIndex("pulse_publication_jobs", "idx_publication_jobs_lease"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("CREATE INDEX idx_publication_jobs_lease ON pulse_publication_jobs(state)").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Migrate(t.Context()); !errors.Is(err, ErrSchemaIncompatible) {
+		t.Fatal("index drift accepted", err)
+	}
+}

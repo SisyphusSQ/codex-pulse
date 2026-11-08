@@ -29,6 +29,7 @@ type statisticsCacheKey struct {
 	start, end                                                               int64
 }
 type statisticsCacheEntry struct {
+	kind                      string
 	load                      func(context.Context) ([]byte, error)
 	body                      []byte
 	ready                     chan struct{}
@@ -112,7 +113,7 @@ func (c *statisticsCache) get(ctx context.Context, key statisticsCacheKey, load 
 			c.mu.Unlock()
 			return nil, nil, utils.ErrRequestBudget
 		}
-		e = &statisticsCacheEntry{load: load, ready: make(chan struct{})}
+		e = &statisticsCacheEntry{kind: key.kind, load: load, ready: make(chan struct{})}
 		c.entries[key] = e
 	}
 	e.used = c.now()
@@ -148,6 +149,13 @@ func (c *statisticsCache) get(ctx context.Context, key statisticsCacheKey, load 
 	return body, status, err
 }
 
+func (e *statisticsCacheEntry) refreshInterval() time.Duration {
+	if e.kind == "annual" {
+		return 5 * time.Minute
+	}
+	return statisticsRefresh
+}
+
 func (c *statisticsCache) status(e *statisticsCacheEntry) *statistics_vo.StatisticsCache {
 	age := max(int64(0), c.now().Sub(e.computed).Milliseconds())
 	state := "ready"
@@ -156,7 +164,8 @@ func (c *statisticsCache) status(e *statisticsCacheEntry) *statistics_vo.Statist
 	} else if e.err != nil {
 		state = "refresh_failed"
 	}
-	return &statistics_vo.StatisticsCache{ComputedAtMS: e.computed.UnixMilli(), RefreshAfterMS: statisticsRefresh.Milliseconds(), AgeMS: age, Stale: age > int64(2*time.Minute/time.Millisecond), State: state}
+	interval := e.refreshInterval()
+	return &statistics_vo.StatisticsCache{ComputedAtMS: e.computed.UnixMilli(), RefreshAfterMS: interval.Milliseconds(), AgeMS: age, Stale: age > (2 * interval).Milliseconds(), State: state}
 }
 
 func (c *statisticsCache) signal() {
@@ -192,7 +201,7 @@ func (c *statisticsCache) refresh() bool {
 	now := c.now()
 	var chosen *statisticsCacheEntry
 	for _, e := range c.entries {
-		if e.running || (e.ready == nil && now.Sub(e.used) > statisticsIdle) || (!e.attempted.IsZero() && now.Sub(e.attempted) < statisticsRefresh) {
+		if e.running || (e.ready == nil && now.Sub(e.used) > statisticsIdle) || (!e.attempted.IsZero() && now.Sub(e.attempted) < e.refreshInterval()) {
 			continue
 		}
 		if chosen == nil || (e.attempted.IsZero() && !chosen.attempted.IsZero()) || (e.attempted.IsZero() == chosen.attempted.IsZero() && e.attempted.Before(chosen.attempted)) {
@@ -251,12 +260,9 @@ func (c *statisticsCache) warm(s *Statistics) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for kind, load := range map[string]func(context.Context) ([]byte, error){"annual": projectionLoader(s.annualQuery(q), s.annual), "usage": projectionLoader(q, s.usage), "current": projectionLoader(q, s.current), "source-usage": projectionLoader(q, s.sourceUsage)} {
-		query := q
-		if kind == "annual" {
-			query = s.annualQuery(q)
-		}
-		key := c.key(kind, query)
+	// 年度与来源快照只在访问后刷新，避免空闲时反复扫描历史。
+	for kind, load := range map[string]func(context.Context) ([]byte, error){"usage": projectionLoader(q, s.usage), "current": projectionLoader(q, s.current)} {
+		key := c.key(kind, q)
 		if e := c.entries[key]; e != nil {
 			// 默认首屏即使无人浏览也保持后台刷新，避免下次打开读到超过两分钟的旧值。
 			e.used = now
@@ -265,7 +271,7 @@ func (c *statisticsCache) warm(s *Statistics) {
 		if len(c.entries) >= statisticsCacheEntries && !c.evict(nil) {
 			continue
 		}
-		c.entries[key] = &statisticsCacheEntry{load: load, ready: make(chan struct{}), used: now}
+		c.entries[key] = &statisticsCacheEntry{kind: kind, load: load, ready: make(chan struct{}), used: now}
 	}
 }
 

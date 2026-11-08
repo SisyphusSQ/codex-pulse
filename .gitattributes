@@ -1,0 +1,2 @@
+# SQL 字节参与 schema 摘要，所有平台检出时固定为 LF。
+server/docs/sqls/**/*.sql text eol=lf
