@@ -7,6 +7,7 @@ import (
 	"slices"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
+	"github.com/SisyphusSQ/codex-pulse/internal/creditbalance"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -50,7 +51,9 @@ func (service *Service) List(
 		return Snapshot{}, err
 	}
 	quotaByDetectedID := make(map[string][]store.QuotaCurrent, len(records.Accounts))
+	creditsByDetectedID := make(map[string][]creditbalance.View, len(records.Accounts))
 	for _, account := range records.Accounts {
+		creditsByDetectedID[account.DetectedAccountID] = account.PaidCredits
 		quotaByDetectedID[account.DetectedAccountID] = account.Windows
 	}
 	accounts := make([]Account, 0, len(records.Accounts))
@@ -59,10 +62,11 @@ func (service *Service) List(
 			continue
 		}
 		windows := projectWindows(quotaByDetectedID[*subscription.DetectedAccountID])
-		if !subscription.Current && len(windows) == 0 {
+		if !subscription.Current && len(windows) == 0 && len(creditsByDetectedID[*subscription.DetectedAccountID]) == 0 {
 			continue
 		}
 		accounts = append(accounts, Account{
+			PaidCredits:       creditsByDetectedID[*subscription.DetectedAccountID],
 			Subscription:      subscription,
 			Windows:           windows,
 			LastCollectedAtMS: latestCollectedAt(windows),

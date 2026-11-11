@@ -7,6 +7,8 @@ import {reviewCatalog,reviewClients,reviewDevices,reviewNow,reviewPace,reviewPro
 export function installReviewApi(scenario:ReviewScenario) {
  const previous=window.fetch;
  const clients=structuredClone(reviewClients);
+ let signedIn=scenario!=='anonymous';
+ const session=()=>({client_id:'story-browser',name:'Storybook · 合成管理浏览器',purpose:'admin',csrf:'synthetic-story-only',expires_at_ms:null});
  const subscriptions=new Map<string,ReturnType<typeof reviewSubscription>>();
  function response(data:unknown,status=200) {return new Response(JSON.stringify({code:status,data}),{status,headers:{'Content-Type':'application/json'}});}
  const mock:typeof fetch=async(input,init)=>{
@@ -17,33 +19,48 @@ export function installReviewApi(scenario:ReviewScenario) {
   if(signal?.aborted)throw new DOMException('Aborted','AbortError');
   const path=url.pathname,method=init?.method??(input instanceof Request?input.method:'GET');
   const filter={...initialFilter(),...Object.fromEntries(url.searchParams)} as StatsFilter;
-  const summary=()=>reviewSummary(filter),usage=()=>reviewUsage(filter);
+  const summary=()=>{
+   const v=reviewSummary(filter);
+   if(scenario==='empty'){
+    const unknown={...v.totals,input_tokens:null,cached_tokens:null,cache_write_tokens:null,output_tokens:null,reasoning_tokens:null,total_tokens:null,cost_micro_usd:null,reported_charge_micro_usd:null,cost_status:'unknown',sessions:0,invocations:0};
+    v.totals=unknown;v.heatmap_totals=unknown;
+    v.providers=[];v.models=[];v.devices=[];v.trend=[];v.tools=[];v.skills=[];v.top_sessions=[];
+    v.activity_timeline=v.activity_timeline.map(r=>({...r,tokens:null,sessions:null}));
+    v.weekday_hours=v.weekday_hours.map(r=>({...r,tokens:null,sessions:0,session_count:null}));
+    v.heatmap=v.heatmap.map(r=>({...r,totals:unknown}));
+    v.heatmap_activity={total_tokens:null,peak_daily_tokens:null,active_days:null,current_streak_days:null,longest_streak_days:null,observed_days:0,unknown_days:v.heatmap.length};
+   }
+   return v;
+  },usage=()=>reviewUsage(filter);
   const recordPage=<T,>(items:T[])=>({range:summary().range,scope:'synthetic-design-fixture',page:{page:1,limit:50,total:items.length},items,totals:summary().totals,coverage:summary().coverage});
+  if(path==='/api/v1/session')return signedIn?response(session()):response(null,401);
+  if(method==='POST'&&path==='/api/v1/pair'){signedIn=true;return response(session());}
+  if(method==='POST'&&path==='/api/v1/logout'){signedIn=false;return response({applied:true});}
   if(method==='GET'){
-   if(scenario==='error'&&path.startsWith('/api/v1/statistics/'))return response(null,503);
-   if(path==='/api/v1/session')return response({client_id:'story-browser',name:'设计预览 · 合成数据',purpose:'admin',csrf:'synthetic-story-only',expires_at_ms:null});
-   if(path==='/api/v1/version')return response({version:'设计预览',commit:'合成样本',built_at:'',reporting_protocol:1,throughput_capsule:1,schema:3});
+   if(scenario==='error'&&path!=='/api/v1/version')return response(null,503);
+   if(path==='/api/v1/version')return response({version:'设计预览',commit:'合成样本',built_at:'',reporting_protocol:1,throughput_capsule:1,schema:7});
    if(path==='/api/v1/catalog')return response(reviewCatalog);
-   if(['/api/v1/statistics/summary','/api/v1/statistics/annual','/api/v1/statistics/totals','/api/v1/statistics/activity','/api/v1/statistics/top-sessions','/api/v1/statistics/providers','/api/v1/statistics/models'].includes(path)){const v=summary();if(scenario==='empty'){v.totals={...v.totals,total_tokens:null};v.activity_timeline=v.activity_timeline.map(r=>({...r,tokens:null,sessions:null}));v.top_sessions=[];v.weekday_hours=v.weekday_hours.map(r=>({...r,tokens:null,sessions:0,session_count:null}));}return response(v);}
+   if(['/api/v1/statistics/summary','/api/v1/statistics/annual','/api/v1/statistics/totals','/api/v1/statistics/activity','/api/v1/statistics/top-sessions','/api/v1/statistics/providers','/api/v1/statistics/models'].includes(path))return response(summary());
    if(path==='/api/v1/statistics/source-usage')return response(scenario==='empty'?{...reviewSourceUsage(filter),items:[]}:reviewSourceUsage(filter));
-   if(path==='/api/v1/statistics/usage')return response(usage());
-   if(path==='/api/v1/devices/status')return response(reviewDevices);
-   if(path==='/api/v1/clients')return response({clients});
+   if(path==='/api/v1/statistics/usage'){const v=usage();if(scenario==='empty'){v.models=[];v.model_days=[];v.trend=[];v.providers=[];v.totals={...v.totals,total_tokens:null,cost_micro_usd:null,cost_status:'unknown'};}return response(v);}
+   if(path==='/api/v1/devices/status')return response(scenario==='empty'?[]:reviewDevices);
+   if(path==='/api/v1/clients')return response({clients:scenario==='empty'?[]:clients});
    if(path==='/api/v1/quotas'||path==='/api/v1/quotas/pace'||path==='/api/v1/quotas/accounts'){
     const data=path.endsWith('/pace')?reviewPace(scenario):reviewQuota(scenario);
     const match=(a:{provider:string;account_key:string|null})=>(!filter.provider||a.provider===filter.provider)&&(!url.searchParams.get('account_key')||a.account_key===url.searchParams.get('account_key'));
     const matchWindow=(w:{provider:string;account_key:string|null;key:string})=>match(w)&&(!url.searchParams.get('window_key')||w.key===url.searchParams.get('window_key'));
-    if('credits' in data){data.windows=data.windows.filter(matchWindow);data.credits=data.credits.filter(match);}
+    if('credits' in data){data.windows=data.windows.filter(matchWindow);data.credits=data.credits.filter(match);data.paid_credits=data.paid_credits?.filter(c=>match({provider:'codex',account_key:c.account_key}));}
     else data.windows=data.windows.filter(matchWindow);
     data.accounts=data.accounts.filter(a=>(!filter.provider||a.provider===filter.provider)&&(!url.searchParams.get('account_key')||a.key===url.searchParams.get('account_key')));
     if('credits' in data){
      if(path.endsWith('/accounts')){data.windows=[];data.credits=[];}
      for(const w of data.windows){w.observation_count=w.observations.length;if(url.searchParams.get('view')==='summary'){delete w.observation_count;w.observations=[];w.cycles=[];}else if(url.searchParams.get('view')==='evidence'){const page=Number(url.searchParams.get('page')??1),limit=Number(url.searchParams.get('limit')??20);w.observations=w.observations.slice((page-1)*limit,page*limit);}}
     }
+    if(scenario==='empty'){data.accounts=[];data.windows=[];if('credits' in data){data.credits=[];data.paid_credits=[];}}
     return response(data);
    }
-   if(path==='/api/v1/sessions')return response(recordPage(reviewSessions));
-   if(path==='/api/v1/projects')return response(recordPage(reviewProjects));
+   if(path==='/api/v1/sessions')return response(recordPage(scenario==='empty'?[]:reviewSessions));
+   if(path==='/api/v1/projects')return response(recordPage(scenario==='empty'?[]:reviewProjects));
    if(path.startsWith('/api/v1/sessions/')){const session=reviewSessions.find(s=>s.id===decodeURIComponent(path.split('/').pop()??''));return session?response({session,range:summary().range,trend:summary().trend,tools:summary().tools,skills:summary().skills,coverage:summary().coverage}):response(null,404);}
    if(path.startsWith('/api/v1/projects/')){const project=reviewProjects.find(p=>p.id===decodeURIComponent(path.split('/').pop()??''));return project?response({project,sessions:recordPage(reviewSessions.filter(s=>s.project_id===project.id)),trend:summary().trend,models:summary().models}):response(null,404);}
   }

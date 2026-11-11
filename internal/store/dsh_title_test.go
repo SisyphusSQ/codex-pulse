@@ -71,7 +71,7 @@ func TestDSHTitleMigrationPreservesV36FactsAndChecksum(t *testing.T) {
 	}
 	runner := dshTitleUpgradeRunner(database)
 	report, err := runner.run(t.Context())
-	if err != nil || !equalInts(report.AppliedVersions, []int{37, 38}) {
+	if err != nil || !equalInts(report.AppliedVersions, []int{37, 38, 39}) {
 		t.Fatal("title migration failed", report, err)
 	}
 	after, err := r.DSHSnapshot(t.Context())

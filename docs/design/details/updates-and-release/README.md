@@ -23,7 +23,7 @@ Sparkle 下载后使用当前 App
 2. 上传 DMG、ZIP、校验和与 Release Notes，并将版本 Release 公开；
 3. 从该 exact ZIP 生成 Ed25519 enclosure 签名；
 4. 合并 stable/prerelease 历史，生成新的 appcast；
-5. 最后原子更新固定 appcast 资产，并从远端读回内容。
+5. 最后更新固定 appcast 资产，并从远端读回内容。当前 GitHub Release asset 的 `--clobber` 是先删后传，不具备原子覆盖；必须先保留旧 feed，替换失败时恢复，详见[上线流程](../../../test/credits-rollout.md)。
 
 在 ZIP 可公开下载前不得让 appcast 指向它；否则已经安装的客户端会先看到一个
 不可下载的更新。

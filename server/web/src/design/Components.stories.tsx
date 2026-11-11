@@ -1,15 +1,29 @@
-import { useState } from 'react';
-import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Card } from 'antd';
-import { CreditsDesign, designPaceOption, PaceContent } from './analytics';
-import { DesignToolbar, ForecastStatus, initialDesignFilter } from './components';
+import type {Meta,StoryObj} from '@storybook/react-vite';
+import {Card,Space,Button} from 'antd';
+import {ReviewApp} from './ReviewApp';
+import {reviewQuota,reviewPace,reviewDevices} from './reviewFixtures';
+import {CreditsCard,PacePanel} from '../components/QuotaViews';
+import {PaidCreditsCard} from '../components/PaidCreditsCard';
+import {EmptyState,ErrorState,LoadingState} from '../components/QueryState';
+import {EvidenceIcon} from '../components/EvidenceIcon';
+import {SourceTable} from '../components/SourceTable';
+import {ThroughputCell} from '../components/Throughput';
+import {UsageCost} from '../components/UsageCost';
+import {OperationNotifications,useOperationNotifications} from '../components/OperationNotifications';
+import {ApiError} from '../api/client';
 
-function ToolbarPreview() { const [value, setValue] = useState(initialDesignFilter); return <div className="ds-component-preview"><DesignToolbar page="overview" value={value} onChange={setValue} onRefresh={() => setValue(initialDesignFilter)} /><Card title="当前筛选"><p>平台：{value.provider} · 来源：{value.source}</p><p>{value.start} — {value.end} · {value.zone}</p></Card></div>; }
-const meta = { title: '公共组件', component: ToolbarPreview, parameters: { layout: 'padded' } } satisfies Meta<typeof ToolbarPreview>;
+const meta={title:'公共组件',parameters:{layout:'fullscreen'},decorators:[Story=><div className="storybook-component"><Story/></div>]} satisfies Meta;
 export default meta;
-type Story = StoryObj<typeof meta>;
-export const Toolbar: Story = { name: '01 紧凑筛选与日期' };
-export const Credits: Story = { name: '02 Credits 与到期明细', render: () => <Card className="ds-component-preview"><CreditsDesign /></Card> };
-export const UnknownCredits: Story = { name: '03 Credits 库存未知', render: () => <Card className="ds-component-preview"><CreditsDesign scenario="stale" /></Card> };
-export const PaceHelp: Story = { name: '04 节奏受限说明图标', render: () => <Card className="ds-component-preview"><ForecastStatus scenario="stale" /><p className="ds-muted">点击或悬停标题旁的图标查看原因。</p></Card> };
-export const DensePace: Story = { name: '05 密集额度采样曲线', render: () => <Card className="ds-component-preview"><PaceContent scenario="normal" chart={designPaceOption} /></Card> };
+type Story=StoryObj<typeof meta>;
+function ResetPreview({unknown=false}:{unknown?:boolean}){const q=reviewQuota(unknown?'unknown':'current');return <Card><CreditsCard credits={q.credits[0]} account={q.accounts[0]} devices={reviewDevices}/></Card>;}
+function NotificationActions(){const notify=useOperationNotifications();return <Space wrap><Button onClick={()=>notify.success('订阅设置已保存到中心')}>保存成功</Button><Button onClick={()=>notify.error('操作未完成','请刷新后重试。',()=>notify.success('已重新读取'))}>失败与重试</Button></Space>;}
+export const Toolbar:Story={name:'01 当前页面筛选与日期',render:()=> <ReviewApp/>};
+export const Credits:Story={name:'02 Reset Credits 与到期明细',render:()=> <ResetPreview/>};
+export const UnknownCredits:Story={name:'03 Reset Credits 库存未知',render:()=> <ResetPreview unknown/>};
+export const PaceHelp:Story={name:'04 说明图标',render:()=> <Card><EvidenceIcon label="数据说明"><p>显示实际页面的说明样式；未知值不补成零。</p></EvidenceIcon></Card>};
+export const DensePace:Story={name:'05 当前节奏与历史',render:()=> <Card><PacePanel window={reviewPace('current').windows[0]} evaluatedAt={reviewPace('current').evaluated_at_ms}/></Card>};
+export const PaidCredits:Story={name:'06 计费 Credits 余额',render:()=> <Card><PaidCreditsCard value={reviewQuota('current').paid_credits![0]}/></Card>};
+export const QueryStates:Story={name:'07 加载、空数据与权限错误',render:()=> <Space orientation="vertical" style={{width:'100%'}}><Card><LoadingState/></Card><Card><EmptyState/></Card><Card><ErrorState error={new ApiError(403)}/></Card></Space>};
+export const Devices:Story={name:'08 采集来源表格',render:()=> <Card><SourceTable devices={reviewDevices} zone="Asia/Shanghai"/></Card>};
+export const UnknownMetrics:Story={name:'09 费用与 TPS 未知值',render:()=> <Card><Space><UsageCost value={null}/><ThroughputCell/></Space></Card>};
+export const Notifications:Story={name:'10 操作通知',render:()=> <OperationNotifications><Card><NotificationActions/></Card></OperationNotifications>};

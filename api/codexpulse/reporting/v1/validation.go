@@ -40,13 +40,23 @@ func ValidateSnapshot(s SessionSnapshot) error {
 	return (Batch{Version: Version, ID: "00000000-0000-0000-0000-000000000000", Sessions: []SessionSnapshot{s}}).validate(MaxSnapshotFacts)
 }
 func (b Batch) validate(factBudget int) error {
+	if len(b.PaidCredits) > 100 {
+		return ErrInvalid
+	}
+	creditIDs := map[string]bool{}
+	for _, c := range b.PaidCredits {
+		if !c.Valid() || creditIDs[c.ID] {
+			return ErrInvalid
+		}
+		creditIDs[c.ID] = true
+	}
 	if b.Version != Version {
 		return ErrVersion
 	}
 	if !identifier(b.ID, 36) || len(b.ID) != 36 || len(b.Sessions) > 32 || len(b.Accounts) > 32 || len(b.Bindings) > 32 || len(b.Quotas) > 1000 || len(b.Credits) > 100 || len(b.Status) > 4 || len(b.AccountUsage) > 32 {
 		return ErrInvalid
 	}
-	if len(b.Sessions)+len(b.Accounts)+len(b.Bindings)+len(b.Quotas)+len(b.Credits)+len(b.Status)+len(b.AccountUsage) == 0 {
+	if len(b.Sessions)+len(b.Accounts)+len(b.Bindings)+len(b.Quotas)+len(b.Credits)+len(b.Status)+len(b.AccountUsage)+len(b.PaidCredits) == 0 {
 		return ErrInvalid
 	}
 	usageFacts := 0

@@ -786,6 +786,27 @@ message CurrentQuota {
   CurrentResetCredits reset_credits = 7;
   CurrentRefresh refresh = 8;
   optional CodexAccountBinding binding = 9;
+  repeated PaidCredits paid_credits = 10;
+}
+
+// Official billing-credit balance; earned reset inventory remains separate.
+message PaidCredits {
+  string limit_id = 1;
+  string state = 2;
+  optional string balance = 3;
+  optional bool has_credits = 4;
+  optional bool unlimited = 5;
+  int64 observed_at_ms = 6;
+  string freshness = 7;
+  int64 checked_at_ms = 8;
+  string consumption_state = 9;
+  repeated PaidCreditPoint history = 10;
+}
+
+message PaidCreditPoint {
+  int64 observed_at_ms = 1;
+  optional string balance = 2;
+  bool unlimited = 3;
 }
 
 message QuotaCurrentResponse {
@@ -1612,6 +1633,7 @@ message CodexAccountQuota {
   CodexSubscriptionAccount account = 1;
   repeated CodexAccountQuotaWindow windows = 2;
   optional int64 last_collected_at_ms = 3;
+  repeated PaidCredits paid_credits = 4;
 }
 
 message CodexAccountQuotasResponse {
@@ -1629,6 +1651,7 @@ message CodexAccountQuotaHistoryClearReceipt {
   int64 window_count = 2;
   int64 observation_count = 3;
   int64 reset_snapshot_count = 4;
+  int64 paid_credit_count = 5;
 }
 
 message CodexSubscriptionManualFields {

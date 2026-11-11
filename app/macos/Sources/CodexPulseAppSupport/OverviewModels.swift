@@ -2510,6 +2510,7 @@ public struct OverviewInvocationProfilePresentation: Equatable, Sendable {
 }
 
 public struct OverviewPresentation: Equatable, Sendable {
+    public let paidCredits: [Codexpulse_Core_V1_PaidCredits]
     private static let maximumSessionRows = 5
     private static let maximumProjectRows = 5
 
@@ -2583,6 +2584,7 @@ public struct OverviewPresentation: Equatable, Sendable {
         self.accountSnapshot = responses.account
         self.codexAccountContextKey = responses.codexAccountContextKey
         self.quotaWindows = responses.quota.current.windows.map(QuotaWindowPresentation.init)
+        self.paidCredits = responses.quota.current.paidCredits
 		self.quotaRefreshNotice = QuotaRefreshPresentation.notice(responses.quota.current.refresh)
         self.quotaPaceWindows = responses.quotaPace.pace.windows.map {
             QuotaPaceWindowPresentation(

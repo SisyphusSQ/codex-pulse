@@ -4764,11 +4764,97 @@ public nonisolated struct Codexpulse_Core_V1_CurrentQuota: @unchecked Sendable {
   /// Clears the value of `binding`. Subsequent reads from it will return its default value.
   public mutating func clearBinding() {_uniqueStorage()._binding = nil}
 
+  public var paidCredits: [Codexpulse_Core_V1_PaidCredits] {
+    get {_storage._paidCredits}
+    set {_uniqueStorage()._paidCredits = newValue}
+  }
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
 
   fileprivate var _storage = _StorageClass.defaultInstance
+}
+
+/// Official billing-credit balance; earned reset inventory remains separate.
+public nonisolated struct Codexpulse_Core_V1_PaidCredits: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var limitID: String = String()
+
+  public var state: String = String()
+
+  public var balance: String {
+    get {_balance ?? String()}
+    set {_balance = newValue}
+  }
+  /// Returns true if `balance` has been explicitly set.
+  public var hasBalance: Bool {self._balance != nil}
+  /// Clears the value of `balance`. Subsequent reads from it will return its default value.
+  public mutating func clearBalance() {self._balance = nil}
+
+  public var hasCredits_p: Bool {
+    get {_hasCredits_p ?? false}
+    set {_hasCredits_p = newValue}
+  }
+  /// Returns true if `hasCredits_p` has been explicitly set.
+  public var hasHasCredits_p: Bool {self._hasCredits_p != nil}
+  /// Clears the value of `hasCredits_p`. Subsequent reads from it will return its default value.
+  public mutating func clearHasCredits_p() {self._hasCredits_p = nil}
+
+  public var unlimited: Bool {
+    get {_unlimited ?? false}
+    set {_unlimited = newValue}
+  }
+  /// Returns true if `unlimited` has been explicitly set.
+  public var hasUnlimited: Bool {self._unlimited != nil}
+  /// Clears the value of `unlimited`. Subsequent reads from it will return its default value.
+  public mutating func clearUnlimited() {self._unlimited = nil}
+
+  public var observedAtMs: Int64 = 0
+
+  public var freshness: String = String()
+
+  public var checkedAtMs: Int64 = 0
+
+  public var consumptionState: String = String()
+
+  public var history: [Codexpulse_Core_V1_PaidCreditPoint] = []
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _balance: String? = nil
+  fileprivate var _hasCredits_p: Bool? = nil
+  fileprivate var _unlimited: Bool? = nil
+}
+
+public nonisolated struct Codexpulse_Core_V1_PaidCreditPoint: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  public var observedAtMs: Int64 = 0
+
+  public var balance: String {
+    get {_balance ?? String()}
+    set {_balance = newValue}
+  }
+  /// Returns true if `balance` has been explicitly set.
+  public var hasBalance: Bool {self._balance != nil}
+  /// Clears the value of `balance`. Subsequent reads from it will return its default value.
+  public mutating func clearBalance() {self._balance = nil}
+
+  public var unlimited: Bool = false
+
+  public var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  public init() {}
+
+  fileprivate var _balance: String? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_QuotaCurrentResponse: Sendable {
@@ -8546,6 +8632,8 @@ public nonisolated struct Codexpulse_Core_V1_CodexAccountQuota: Sendable {
   /// Clears the value of `lastCollectedAtMs`. Subsequent reads from it will return its default value.
   public mutating func clearLastCollectedAtMs() {self._lastCollectedAtMs = nil}
 
+  public var paidCredits: [Codexpulse_Core_V1_PaidCredits] = []
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -8605,6 +8693,8 @@ public nonisolated struct Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceip
   public var observationCount: Int64 = 0
 
   public var resetSnapshotCount: Int64 = 0
+
+  public var paidCreditCount: Int64 = 0
 
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -15205,7 +15295,7 @@ nonisolated extension Codexpulse_Core_V1_CurrentRefreshRuntime: SwiftProtobuf.Me
 
 nonisolated extension Codexpulse_Core_V1_CurrentQuota: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CurrentQuota"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}account_scope\0\u{3}evaluated_at_ms\0\u{1}windows\0\u{1}sources\0\u{3}next_reset\0\u{3}reset_credits\0\u{1}refresh\0\u{1}binding\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}version\0\u{3}account_scope\0\u{3}evaluated_at_ms\0\u{1}windows\0\u{1}sources\0\u{3}next_reset\0\u{3}reset_credits\0\u{1}refresh\0\u{1}binding\0\u{3}paid_credits\0")
 
   fileprivate class _StorageClass {
     var _version: String = String()
@@ -15217,6 +15307,7 @@ nonisolated extension Codexpulse_Core_V1_CurrentQuota: SwiftProtobuf.Message, Sw
     var _resetCredits: Codexpulse_Core_V1_CurrentResetCredits? = nil
     var _refresh: Codexpulse_Core_V1_CurrentRefresh? = nil
     var _binding: Codexpulse_Core_V1_CodexAccountBinding? = nil
+    var _paidCredits: [Codexpulse_Core_V1_PaidCredits] = []
 
       // This property is used as the initial default value for new instances of the type.
       // The type itself is protecting the reference to its storage via CoW semantics.
@@ -15236,6 +15327,7 @@ nonisolated extension Codexpulse_Core_V1_CurrentQuota: SwiftProtobuf.Message, Sw
       _resetCredits = source._resetCredits
       _refresh = source._refresh
       _binding = source._binding
+      _paidCredits = source._paidCredits
     }
   }
 
@@ -15263,6 +15355,7 @@ nonisolated extension Codexpulse_Core_V1_CurrentQuota: SwiftProtobuf.Message, Sw
         case 7: try { try decoder.decodeSingularMessageField(value: &_storage._resetCredits) }()
         case 8: try { try decoder.decodeSingularMessageField(value: &_storage._refresh) }()
         case 9: try { try decoder.decodeSingularMessageField(value: &_storage._binding) }()
+        case 10: try { try decoder.decodeRepeatedMessageField(value: &_storage._paidCredits) }()
         default: break
         }
       }
@@ -15302,6 +15395,9 @@ nonisolated extension Codexpulse_Core_V1_CurrentQuota: SwiftProtobuf.Message, Sw
       try { if let v = _storage._binding {
         try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
       } }()
+      if !_storage._paidCredits.isEmpty {
+        try visitor.visitRepeatedMessageField(value: _storage._paidCredits, fieldNumber: 10)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -15320,10 +15416,134 @@ nonisolated extension Codexpulse_Core_V1_CurrentQuota: SwiftProtobuf.Message, Sw
         if _storage._resetCredits != rhs_storage._resetCredits {return false}
         if _storage._refresh != rhs_storage._refresh {return false}
         if _storage._binding != rhs_storage._binding {return false}
+        if _storage._paidCredits != rhs_storage._paidCredits {return false}
         return true
       }
       if !storagesAreEqual {return false}
     }
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_PaidCredits: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PaidCredits"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}limit_id\0\u{1}state\0\u{1}balance\0\u{3}has_credits\0\u{1}unlimited\0\u{3}observed_at_ms\0\u{1}freshness\0\u{3}checked_at_ms\0\u{3}consumption_state\0\u{1}history\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.limitID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.state) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self._balance) }()
+      case 4: try { try decoder.decodeSingularBoolField(value: &self._hasCredits_p) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self._unlimited) }()
+      case 6: try { try decoder.decodeSingularInt64Field(value: &self.observedAtMs) }()
+      case 7: try { try decoder.decodeSingularStringField(value: &self.freshness) }()
+      case 8: try { try decoder.decodeSingularInt64Field(value: &self.checkedAtMs) }()
+      case 9: try { try decoder.decodeSingularStringField(value: &self.consumptionState) }()
+      case 10: try { try decoder.decodeRepeatedMessageField(value: &self.history) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.limitID.isEmpty {
+      try visitor.visitSingularStringField(value: self.limitID, fieldNumber: 1)
+    }
+    if !self.state.isEmpty {
+      try visitor.visitSingularStringField(value: self.state, fieldNumber: 2)
+    }
+    try { if let v = self._balance {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 3)
+    } }()
+    try { if let v = self._hasCredits_p {
+      try visitor.visitSingularBoolField(value: v, fieldNumber: 4)
+    } }()
+    try { if let v = self._unlimited {
+      try visitor.visitSingularBoolField(value: v, fieldNumber: 5)
+    } }()
+    if self.observedAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.observedAtMs, fieldNumber: 6)
+    }
+    if !self.freshness.isEmpty {
+      try visitor.visitSingularStringField(value: self.freshness, fieldNumber: 7)
+    }
+    if self.checkedAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.checkedAtMs, fieldNumber: 8)
+    }
+    if !self.consumptionState.isEmpty {
+      try visitor.visitSingularStringField(value: self.consumptionState, fieldNumber: 9)
+    }
+    if !self.history.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.history, fieldNumber: 10)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_PaidCredits, rhs: Codexpulse_Core_V1_PaidCredits) -> Bool {
+    if lhs.limitID != rhs.limitID {return false}
+    if lhs.state != rhs.state {return false}
+    if lhs._balance != rhs._balance {return false}
+    if lhs._hasCredits_p != rhs._hasCredits_p {return false}
+    if lhs._unlimited != rhs._unlimited {return false}
+    if lhs.observedAtMs != rhs.observedAtMs {return false}
+    if lhs.freshness != rhs.freshness {return false}
+    if lhs.checkedAtMs != rhs.checkedAtMs {return false}
+    if lhs.consumptionState != rhs.consumptionState {return false}
+    if lhs.history != rhs.history {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+nonisolated extension Codexpulse_Core_V1_PaidCreditPoint: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  public static let protoMessageName: String = _protobuf_package + ".PaidCreditPoint"
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}observed_at_ms\0\u{1}balance\0\u{1}unlimited\0")
+
+  public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularInt64Field(value: &self.observedAtMs) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self._balance) }()
+      case 3: try { try decoder.decodeSingularBoolField(value: &self.unlimited) }()
+      default: break
+      }
+    }
+  }
+
+  public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if self.observedAtMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.observedAtMs, fieldNumber: 1)
+    }
+    try { if let v = self._balance {
+      try visitor.visitSingularStringField(value: v, fieldNumber: 2)
+    } }()
+    if self.unlimited != false {
+      try visitor.visitSingularBoolField(value: self.unlimited, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  public static func ==(lhs: Codexpulse_Core_V1_PaidCreditPoint, rhs: Codexpulse_Core_V1_PaidCreditPoint) -> Bool {
+    if lhs.observedAtMs != rhs.observedAtMs {return false}
+    if lhs._balance != rhs._balance {return false}
+    if lhs.unlimited != rhs.unlimited {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -21206,7 +21426,7 @@ nonisolated extension Codexpulse_Core_V1_CodexAccountQuotaWindow: SwiftProtobuf.
 
 nonisolated extension Codexpulse_Core_V1_CodexAccountQuota: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CodexAccountQuota"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}account\0\u{1}windows\0\u{3}last_collected_at_ms\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{1}account\0\u{1}windows\0\u{3}last_collected_at_ms\0\u{3}paid_credits\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -21217,6 +21437,7 @@ nonisolated extension Codexpulse_Core_V1_CodexAccountQuota: SwiftProtobuf.Messag
       case 1: try { try decoder.decodeSingularMessageField(value: &self._account) }()
       case 2: try { try decoder.decodeRepeatedMessageField(value: &self.windows) }()
       case 3: try { try decoder.decodeSingularInt64Field(value: &self._lastCollectedAtMs) }()
+      case 4: try { try decoder.decodeRepeatedMessageField(value: &self.paidCredits) }()
       default: break
       }
     }
@@ -21236,6 +21457,9 @@ nonisolated extension Codexpulse_Core_V1_CodexAccountQuota: SwiftProtobuf.Messag
     try { if let v = self._lastCollectedAtMs {
       try visitor.visitSingularInt64Field(value: v, fieldNumber: 3)
     } }()
+    if !self.paidCredits.isEmpty {
+      try visitor.visitRepeatedMessageField(value: self.paidCredits, fieldNumber: 4)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -21243,6 +21467,7 @@ nonisolated extension Codexpulse_Core_V1_CodexAccountQuota: SwiftProtobuf.Messag
     if lhs._account != rhs._account {return false}
     if lhs.windows != rhs.windows {return false}
     if lhs._lastCollectedAtMs != rhs._lastCollectedAtMs {return false}
+    if lhs.paidCredits != rhs.paidCredits {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -21323,7 +21548,7 @@ nonisolated extension Codexpulse_Core_V1_ClearCodexAccountQuotaHistoryRequest: S
 
 nonisolated extension Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".CodexAccountQuotaHistoryClearReceipt"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}account_count\0\u{3}window_count\0\u{3}observation_count\0\u{3}reset_snapshot_count\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}account_count\0\u{3}window_count\0\u{3}observation_count\0\u{3}reset_snapshot_count\0\u{3}paid_credit_count\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -21335,6 +21560,7 @@ nonisolated extension Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt: S
       case 2: try { try decoder.decodeSingularInt64Field(value: &self.windowCount) }()
       case 3: try { try decoder.decodeSingularInt64Field(value: &self.observationCount) }()
       case 4: try { try decoder.decodeSingularInt64Field(value: &self.resetSnapshotCount) }()
+      case 5: try { try decoder.decodeSingularInt64Field(value: &self.paidCreditCount) }()
       default: break
       }
     }
@@ -21353,6 +21579,9 @@ nonisolated extension Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt: S
     if self.resetSnapshotCount != 0 {
       try visitor.visitSingularInt64Field(value: self.resetSnapshotCount, fieldNumber: 4)
     }
+    if self.paidCreditCount != 0 {
+      try visitor.visitSingularInt64Field(value: self.paidCreditCount, fieldNumber: 5)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -21361,6 +21590,7 @@ nonisolated extension Codexpulse_Core_V1_CodexAccountQuotaHistoryClearReceipt: S
     if lhs.windowCount != rhs.windowCount {return false}
     if lhs.observationCount != rhs.observationCount {return false}
     if lhs.resetSnapshotCount != rhs.resetSnapshotCount {return false}
+    if lhs.paidCreditCount != rhs.paidCreditCount {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

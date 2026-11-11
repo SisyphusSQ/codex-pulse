@@ -101,7 +101,11 @@ func NewClient(input string, allowHTTP bool) (*Client, error) {
 }
 func (c *Client) Close() { c.http.CloseIdleConnections() }
 func (c *Client) request(ctx context.Context, path, credential string, body []byte, target any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpoint+path, bytes.NewReader(body))
+	return c.requestMethod(ctx, http.MethodPost, path, credential, body, target)
+}
+
+func (c *Client) requestMethod(ctx context.Context, method, path, credential string, body []byte, target any) error {
+	req, err := http.NewRequestWithContext(ctx, method, c.endpoint+path, bytes.NewReader(body))
 	if err != nil {
 		return ErrSettings
 	}

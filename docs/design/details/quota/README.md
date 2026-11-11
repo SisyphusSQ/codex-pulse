@@ -318,3 +318,15 @@ RPC deadline 会关闭当前会话的读写 pipe；子进程使用 context 取�
 一个由 Helper root context 拥有的独立观察任务，根据已校验 `FreshUntilMS + 1`、reset 和库存到期时间触发 `quota_codex` 失效；提交新记录时重新安排。它只读现有 Store，不调用上游、不改仲裁、不依赖刷新 worker 存活；关闭先取消并等待退出。菜单栏与页面通过同一查询重算 freshness，保留最后可信百分比并解释停止原因。健康查询把实时 worker 停止组合到 online_quota degraded，保留其他组件和更高优先级的存储保护。
 
 诊断和验收入口见 [刷新可靠性 runbook](../../../test/quota-refresh-reliability.md)。
+
+## 计费 Credits（TOO-702）
+
+本轮只处理官方计费 Credits 的余额与消耗语义。复用同一次 `account/rateLimits/read` 的 `credits.balance`、`hasCredits`、`unlimited`，按已确认账号和 limit bucket 保存；不增加私有请求、充值、购买、余额告警或 Token 到 Credits 的换算。Reset Credits 保留既有独立合同。
+
+Go Helper 是唯一业务事实源：`internal/creditbalance` 校验有界精确十进制字符串、保留零/缺失/无限额；非法可选 Credits 不破坏合法配额窗口。账号 sandwich、Home/generation fence 和请求事务覆盖新增余额事实；切换中的账号不显示其他账号余额。失败保留最后成功值及原时间，十分钟以上标记 stale，同一时刻不同余额标记 conflict 而不任选或相加。历史为最近 30 天每天最后一次有效 UTC 观测，缺口不补值；同时间冲突点保持未知。历史清理与账号保留策略同时覆盖 Credits。
+
+本机 SQLite 结构 v39 追加 `codex_paid_credits`；CoreService 增量字段 `paid_credits` 给当前额度及已检测账号。Swift/C# 只格式化与展示，不直接读取数据库或重新计算口径。中心 schema v7 追加 `pulse_paid_credits`，通过既有配对、认证、outbox、receipt 与账号关系上传；新事实先探测鉴权 `/api/v1/sync` 的 `paid_credits` 能力，旧中心不接收新字段，既有上报继续工作。已入队批次不改写。中心按账号与 bucket 选最新原观测，多机不求和，设备筛选在聚合前生效。
+
+消耗合同当前为 `consumption_state=source_unavailable`，今日/7天/30天显示未知。2026-11-11 核对 Codex CLI 0.167.1：公开 schema 中 `account/usage/read` 的 `estimatedUsageCreditsMicros` 仍明确为估算；没有可验证的账号实际扣费流水。未来接入实际流水须保留扣费/充值/退款/调整的类型、单位、发生时间及稳定事件 ID，以幂等事件聚合周期消耗；不能使用余额差分、请求接收时间或 Token 价格冒充它。此后才能开放对应消耗数值。
+
+验证入口与已执行范围见[Credits 验收](../../../test/paid-credits.md)。

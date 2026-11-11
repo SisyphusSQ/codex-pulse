@@ -360,3 +360,20 @@ func sensitiveLeakText(value any) string {
 		return ""
 	}
 }
+
+func TestPaidCreditsDecodeDoesNotInvalidateQuotaWindows(t *testing.T) {
+	for _, test := range []struct{ raw, state string }{
+		{`{"balance":"62500.0000000000","hasCredits":true,"unlimited":false}`, "known"},
+		{`{"balance":62500,"hasCredits":true,"unlimited":false}`, "invalid"},
+		{`null`, "unavailable"},
+	} {
+		raw := []byte(`{"accountId":"acct-synthetic","rateLimits":{"primary":{"usedPercent":12,"windowDurationMins":300},"credits":` + test.raw + `}}`)
+		snapshot, err := normalizeAccountRateLimits(raw, true, false)
+		if err != nil || snapshot.RateLimits.Primary == nil || snapshot.RateLimits.Primary.UsedPercent != 12 || snapshot.RateLimits.PaidCredits.State != test.state {
+			t.Fatalf("state=%s snapshot=%+v error=%v", test.state, snapshot.RateLimits, err)
+		}
+		if test.state == "known" && (snapshot.RateLimits.PaidCredits.Balance == nil || *snapshot.RateLimits.PaidCredits.Balance != "62500") {
+			t.Fatal("official balance lost")
+		}
+	}
+}

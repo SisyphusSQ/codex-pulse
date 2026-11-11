@@ -1,4 +1,6 @@
 import AppKit
+import CodexPulseCoreClient
+import CodexPulseProtocolGenerated
 import CodexPulseAppSupport
 import CodexPulseUpdater
 import Combine
@@ -54,6 +56,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if configuration.creditsSmoke {
+            NSApp.setActivationPolicy(.prohibited)
+            Task { await runCreditsSmoke() }
+            return
+        }
         if configuration.smokeMode {
             if configuration.nativeSurfaceSmoke {
                 NSApp.setActivationPolicy(.regular)
@@ -387,11 +394,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                         do {
                             let renderedPageCount = await renderPrimaryPagesForSmoke()
                             let pages = try await model.runPrimaryPagesSmoke()
+                            let creditsSummary = try renderCreditsForSmoke()
                             let pagesStatus = pages.unavailableSteps.isEmpty ? "loaded" : "partial"
                             let rendered = renderedPageCount == AppFeature.allCases.count
                             finishSmoke(
                                 success: surfaces.passed && rendered,
-                                summary: "app smoke \(surfaces.passed && rendered ? "passed" : "failed"): overview=loaded quota_windows=\(overview.quotaWindows.count) sessions=\(overview.sessions.count) trend_points=\(overview.trend.count) activity=\(activityAvailability) activity_timeline=\(overview.activityDistribution.timeline.count) activity_heatmap=\(overview.activityDistribution.heatmap.count) health=\(health) primary_pages=\(pagesStatus) \(pages.stableDescription) ui_pages=\(renderedPageCount) native_surfaces=\(surfaces.summary) lifecycle=not_executed"
+                                summary: "app smoke \(surfaces.passed && rendered ? "passed" : "failed"): overview=loaded quota_windows=\(overview.quotaWindows.count) sessions=\(overview.sessions.count) trend_points=\(overview.trend.count) activity=\(activityAvailability) activity_timeline=\(overview.activityDistribution.timeline.count) activity_heatmap=\(overview.activityDistribution.heatmap.count) health=\(health) primary_pages=\(pagesStatus) \(pages.stableDescription) ui_pages=\(renderedPageCount) native_surfaces=\(surfaces.summary) \(creditsSummary) lifecycle=not_executed"
                             )
                         } catch {
                             let step = (error as? PrimaryPagesSmokeError)?.step ?? "unknown"
@@ -437,6 +445,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             FileHandle.standardOutput.write(Data(output.utf8))
             NSApp.terminate(nil)
         }
+    }
+
+    private func runCreditsSmoke() async {
+        let supervisor = HelperSupervisor(configuration: .init(
+            executablePath: configuration.helperExecutablePath,
+            runtimeDirectory: configuration.runtimeDirectory
+        ))
+        var client: CoreClient?
+        var passed = false
+        do {
+            let helper = try await supervisor.start()
+            let connected = try CoreClient(socketPath: helper.socketPath, bearerToken: helper.bearerToken)
+            client = connected
+            _ = try await connected.handshake(clientVersion: configuration.clientVersion)
+            _ = try await connected.bootstrap()
+            var request = Codexpulse_Core_V1_QuotaCurrentRequest()
+            request.provider.provider = "codex"
+            request.evaluatedAtMs = Int64(Date().timeIntervalSince1970 * 1_000)
+            let response = try await connected.quotaCurrent(request)
+            guard let credit = response.current.paidCredits.first(where: { $0.limitID == "codex" }),
+                  credit.hasBalance || (credit.hasUnlimited && credit.unlimited),
+                  !credit.history.isEmpty, credit.consumptionState == "source_unavailable"
+            else { throw AppRuntimeError.unavailable }
+            let summary = try renderCreditsForSmoke(credit)
+            try await connected.shutdown()
+            _ = try await supervisor.waitForExit()
+            print("credits smoke passed: authenticated=true \(summary) shutdown=clean")
+            passed = true
+        } catch {
+            print("credits smoke failed: code=\(Self.safeToken(AppNotice.from(error).code))")
+        }
+        await client?.closeTransport()
+        if !passed { await supervisor.stop(mode: .terminate) }
+        shutdownComplete = true
+        exitCode = passed ? 0 : 1
+        NSApp.terminate(nil)
+    }
+
+    private func renderCreditsForSmoke() throws -> String {
+        guard let credit = model.quotaState.value?.current.paidCredits.first(where: { $0.limitID == "codex" }) else {
+            return "credits_balance=unknown credits_render=not_loaded"
+        }
+        return try renderCreditsForSmoke(credit)
+    }
+
+    private func renderCreditsForSmoke(_ credit: Codexpulse_Core_V1_PaidCredits) throws -> String {
+        let hosting = NSHostingView(rootView: PaidCreditsCard(credit: credit, localization: model.localization).padding(20))
+        hosting.frame = NSRect(x: 0, y: 0, width: 720, height: 320)
+        hosting.layoutSubtreeIfNeeded()
+        guard let bitmap = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+        guard let png = bitmap.representation(using: .png, properties: [:]) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        let path = URL(fileURLWithPath: configuration.runtimeDirectory).appendingPathComponent("credits-smoke.png")
+        try png.write(to: path, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path.path)
+        let state = credit.hasUnlimited && credit.unlimited ? "unlimited" : credit.hasBalance ? "known" : "unknown"
+        return "credits_balance=\(state) credits_history=\(credit.history.count) credits_render=captured credits_consumption=\(Self.safeToken(credit.consumptionState))"
     }
 
     private func nativeSurfaceSmokeSummary(

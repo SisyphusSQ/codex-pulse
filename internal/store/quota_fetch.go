@@ -33,6 +33,9 @@ func (repository *Repository) RecordQuotaFetch(ctx context.Context, record Quota
 			if err := validateQuotaFetchReplay(database, record); err != nil {
 				return err
 			}
+			if err := recordPaidCredits(database, record, true); err != nil {
+				return err
+			}
 			for _, observation := range record.Observations {
 				if err := upsertQuotaObservation(ctx, database, observation); err != nil {
 					return err
@@ -73,6 +76,9 @@ func (repository *Repository) RecordQuotaFetch(ctx context.Context, record Quota
 			}
 		}
 		attemptModel := sourceAttemptModelFromDomain(record.Attempt)
+		if err := recordPaidCredits(database, record, false); err != nil {
+			return err
+		}
 		if err := database.Create(&attemptModel).Error; err != nil {
 			return err
 		}
@@ -105,7 +111,7 @@ func validateQuotaFetchRecord(record QuotaFetchRecord) error {
 	if err := validateSourceAttempt(record.Attempt); err != nil {
 		return err
 	}
-	if len(record.Observations) > 100 {
+	if len(record.Observations) > 100 || len(record.PaidCredits) > 100 {
 		return invalidRecord("quota fetch has too many observations")
 	}
 	seen := make(map[string]struct{}, len(record.Observations))

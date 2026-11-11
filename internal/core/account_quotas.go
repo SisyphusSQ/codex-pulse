@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/accountquota"
+	"github.com/SisyphusSQ/codex-pulse/internal/creditbalance"
 	basequery "github.com/SisyphusSQ/codex-pulse/internal/query"
 )
 
@@ -25,6 +26,7 @@ type CodexAccountQuotaWindowView struct {
 }
 
 type CodexAccountQuotaView struct {
+	PaidCredits       []creditbalance.View          `json:"paidCredits,omitempty"`
 	Account           codexSubscriptionAccountWire  `json:"account"`
 	Windows           []CodexAccountQuotaWindowView `json:"windows"`
 	LastCollectedAtMS *int64                        `json:"lastCollectedAtMs,omitempty"`
@@ -75,7 +77,7 @@ func (service *Service) ListCodexAccountQuotas(
 				})
 			}
 			accounts = append(accounts, CodexAccountQuotaView{
-				Account: *wire, Windows: windows, LastCollectedAtMS: account.LastCollectedAtMS,
+				Account: *wire, Windows: windows, LastCollectedAtMS: account.LastCollectedAtMS, PaidCredits: account.PaidCredits,
 			})
 		}
 		return CodexAccountQuotasView{

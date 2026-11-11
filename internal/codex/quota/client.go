@@ -91,6 +91,18 @@ func (client *Client) Fetch(ctx context.Context, request BoundRefreshRequest) (R
 		return result, nil
 	}
 	finishedAtMS := client.finishedAtMS(result.StartedAtMS)
+	for _, bucket := range rateLimitBuckets(snapshot) {
+		if bucket.LimitID == nil {
+			continue
+		}
+		credit := bucket.PaidCredits
+		if credit.State == "" {
+			continue
+		}
+		credit.LimitID = *bucket.LimitID
+		credit.ObservedAtMS = finishedAtMS
+		result.PaidCredits = append(result.PaidCredits, credit)
+	}
 	observations, partial := observationsFromRateLimits(snapshot, request, finishedAtMS)
 	result.Observations = observations
 	digest := quotaTypedDigest(request, finishedAtMS, observations)

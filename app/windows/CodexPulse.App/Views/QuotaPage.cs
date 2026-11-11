@@ -125,6 +125,17 @@ internal sealed class QuotaPage:FeaturePage
             windows.Add(row);
         }
         var quotaWindows=PresentationControls.Columns(windows,280);
+        if(provider=="codex")foreach(var credit in response.Current.PaidCredits)
+        {
+            var content=new StackPanel {Spacing=8};
+            content.Children.Add(PresentationControls.Heading(credit.LimitId=="codex"?"Credits":"Credits · "+credit.LimitId));
+            content.Children.Add(Text(PaidCreditsPresentation.Balance(credit,L),"TitleTextBlockStyle"));
+            content.Children.Add(PresentationControls.Caption(L.Text("最后观测 ","Last observed ")+L.Timestamp(credit.ObservedAtMs>0?credit.ObservedAtMs:null)+" · "+QuotaPresentation.Freshness(credit.Freshness,L)));
+            content.Children.Add(PresentationControls.Caption(L.Text("今日 / 近7天 / 近30天消耗：—","Today / 7-day / 30-day consumption: —")));
+            content.Children.Add(PresentationControls.Caption(L.Text("官方暂未提供实际消耗统计，余额变化不等于实际扣费。","Actual consumption is not provided by the source. Balance changes are not charges.")));
+            if(credit.History.Count>0)content.Children.Add(PresentationControls.DataButton(L.Text("近30天余额历史（UTC每日最后观测）","30-day balance history (last observation per UTC day)"),PresentationControls.Table([L.Text("观测时间","Observed"),"Credits"],credit.History.Select(point=>new[]{L.Timestamp(point.ObservedAtMs),PaidCreditsPresentation.Amount(point.HasBalance?point.Balance:null,point.Unlimited,L)}))));
+            current.Children.Add(PresentationControls.Card(content));
+        }
         if(provider=="codex" && response.Current.ResetCredits is {} credits)
         {
             var inventory=new StackPanel {Spacing=8};

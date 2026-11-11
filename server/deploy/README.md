@@ -50,3 +50,5 @@ python3 scripts/macos-service.py start --environment production
 安装先复制到新的版本目录再切换 `current`；拒绝覆盖已有 release-id。更新仍保留数据库、配置和旧版本目录，结构兼容时可停服务后将 `current` 切回保留的旧目录再启动；结构不兼容须按恢复流程处理。`remove` 只卸载 LaunchAgent，保留发行文件和数据，不删除数据库。用户登录后自动启动、异常退出自动重启；没有登录的机器不会由用户 LaunchAgent 启动。`status` 的进程状态不等于 ready，启动后读回实际监听、`/ready`、版本和数据库。
 
 生产 `log.output: file` 使用自身有界轮转；LaunchAgent stdout/stderr 用于启动诊断。私有日志不提交。数据库备份工具需要本机已有 MySQL 8.0+ 客户端及 GNU timeout 或 Python 3；数据恢复只允许新的空库，不能覆盖活动库。
+
+客户端与中心一起升级时，按[完整上线流程](../../docs/test/credits-rollout.md)安排备份、中心优先、客户端替换及 tag/Release；公开安装包不代表本服务已经部署。

@@ -102,3 +102,11 @@ schema v6 只追加任务、usage 版本、发布指针、payload 分段及引�
 Helper schema v4 追加每批重试时间/有限状态。先提取并发送当前 quota/Credits，再导出账号用量、历史和 Session；Session 传输失败、处理中或永久校验失败仅推迟该批次，不阻塞其他批次。当前事实保留独立 64 批/16 MiB 容量，普通新队列保留 1,984 批/240 MiB 上限。升级前已满的 2,048 批/256 MiB 旧队列保留，仍可使用当前事实的独立 reserve，因此兼容期总上限可达 2,112 批/272 MiB。quota 不额外触发来源刷新，旧账号事实不改绑。
 
 部署先升级中心再升级 Helper；迁移、接收确认、后台发布、统计与真实额度更新分别验收。完整补传仅在所有不可变批次获得最终确认后完成。
+
+## 计费 Credits 余额扩展（TOO-702）
+
+鉴权 `GET /api/v1/sync` 返回 `paid_credits: true` 表示支持本扩展；缺失/false 时 Helper 不发送新字段，不能因为升级 Helper 破坏旧中心。可选 `Batch.paid_credits` 每批最多 100 条，与 Reset Credits 的 `credits` 独立。每条包含稳定 `id`、`provider=codex`、已确认的 `account_id`、非 default 的 `local_scope` 和 `snapshot`。
+
+snapshot 包含 `limitId`、`state=known|unavailable|invalid`、可空十进制字符串 `balance`、可空 `hasCredits` / `unlimited`、原始 UTC 毫秒 `observedAtMs`。已知余额最多 30 位整数、18 位小数，规范化尾零；0 与缺失不同。未知/非法状态不携带数值或布尔值。账号必须匹配同 collector 的已确认关系；相同事实 ID 内容不能改变，receipt 重放不刷新观测或接收时间。导出最近 30 天每日每 bucket/状态最后观测，独立于 Session cursor，超预算明确失败。
+
+中心按账号/bucket 合并原观测，不相加设备余额。同时间冲突保留未知。没有实际扣费事件，不新增消耗数字或美元换算；`estimatedUsageCreditsMicros` 不进入实际消耗合同。

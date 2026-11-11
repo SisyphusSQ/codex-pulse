@@ -999,3 +999,24 @@
 
 "缓存命中率" = "Cache hit rate";
 "缓存输入 Token ÷ 全部输入 Token；按当前已索引的会话累计用量计算。" = "Cached input tokens ÷ all input tokens, using the currently indexed session totals.";
+
+"无限额" = "Unlimited";
+
+"可用余额" = "Available balance";
+
+"最后观测" = "Last observed";
+
+"余额暂未更新，保留最后成功观测。" = "Balance has not updated; showing the last successful observation.";
+
+"今日 / 近7天 / 近30天消耗" = "Today / 7-day / 30-day consumption";
+
+"官方暂未提供实际消耗统计，余额变化不等于实际扣费。" = "Actual consumption is not provided by the source. Balance changes are not charges.";
+
+"近30天余额历史" = "30-day balance history";
+
+"每天保留最后一次有效观测（UTC），采集空档不补值。" = "Last valid observation per UTC day; collection gaps remain empty.";
+
+"尚未取得官方余额。" = "No official balance has been received.";
+
+"同一时刻的余额来源冲突，余额保持未知。" = "Balance sources conflict at the same time; the balance is unknown.";
+"Credits（最后观测）" = "Credits (last observed)";

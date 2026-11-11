@@ -1,6 +1,6 @@
 # 中心数据库结构
 
-结构版本为 5，SQL 为唯一事实源，运行时直接嵌入这些文件。
+当前结构版本为 7（既有 v1..v6 SQL 字节保留），SQL 为唯一事实源，运行时直接嵌入这些文件。
 
 - [MySQL 8.x 结构](center_mysql.sql)：InnoDB、utf8mb4，身份字段区分大小写；目标实例版本、SQL mode 和排序规则在真实联调前读回。
 - [SQLite 开发结构](center_sqlite.sql)：与 MySQL 相同业务字段和唯一性契约，独立于本机 App 的 SQLite。
@@ -25,3 +25,7 @@ SQLite 只证明开发测试结果；SeekDB 的 MySQL 协议连接、DDL 和备�
 ## v6 后台发布
 
 TOO-582 追加 [MySQL v6](v6_mysql.sql) / [SQLite v6](v6_sqlite.sql)。v1..v5 已登记摘要可自动升级；不 ALTER、回填或删除旧表。新表记录最终待确认批次、不可见 usage 版本、原子发布指针及分段快照引用。新版本不可直接降级运行旧二进制；恢复须使用一致数据库备份，不能仅回切旧程序。未发布 SQL 与执行证据见 [unreleased](../unreleased/README.md)。
+
+## v7 计费 Credits
+
+TOO-702 追加 [MySQL v7](v7_mysql.sql) / [SQLite v7](v7_sqlite.sql)，仅新增 `pulse_paid_credits` 和索引，精确余额保存字符串；不 ALTER、删除或回填旧事实。空库和已登记摘要的 v1..v6 由既有启动迁移器执行，所有结构读回成功后更新版本；未知摘要仍拒绝。先升级中心，再启用采集扩展，Helper 通过 `/api/v1/sync` 能力探测兼容旧中心。降级须恢复匹配二进制的一致备份，不使用旧库覆盖更新后的账目。SQLite v6→v7、重入和历史保留已验证；MySQL 本次未执行，见[验收](../../../../docs/test/paid-credits.md)。

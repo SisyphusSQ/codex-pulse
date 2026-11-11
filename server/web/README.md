@@ -2,7 +2,7 @@
 
 React 19 / TypeScript 7 / Vite 8 / AntD 6 / ECharts 6。依赖固定在 package.json 与 package-lock.json，Node 要求 >=22.22.2；标准安装使用 npm ci。React Router HashRouter 的深链接只请求静态壳，数据走同源 v1 API。
 
-独立设计评审入口：`npm --prefix server/web run storybook`（仓库根目录），只监听`http://127.0.0.1:6007/`。含全部9页、8个关键状态与5个公共组件；无需Server/数据库，所有资料和操作均为合成内存预览。2026-10-03用户批准后，相应设计已接入下述业务页面；业务入口不导入设计目录或样本。详见[全站设计稿](../../docs/design/details/multi-machine-reporting/storybook-design.md)。静态构建用`npm run build-storybook -- --output-dir ../../.artifacts/storybook`，默认`storybook-static`也已忽略。
+当前页面预览入口：`npm --prefix server/web run storybook`（仓库根目录），仅监听 [127.0.0.1:6007](http://127.0.0.1:6007/?path=/story/全站设计--overview)。全站设计、关键状态、公共组件及历史功能入口均复用当前业务组件、`pulseTheme` 和 `styles.css`；不再加载旧 `ds-*` 页面外壳及设计稿样式。全部数据为隔离合成样本，无需 Server/数据库，不连接真实中心。详情见[Storybook 对齐说明](../../docs/design/details/multi-machine-reporting/storybook-design.md)。静态构建用 `npm run build-storybook -- --output-dir ../../.artifacts/storybook/build`。
 
 正式 Web 与 Go Server 一起部署：在 `server/` 执行 `make web-install` 后运行 `make build-center`，先生成 `web/dist` 再通过 Go `embed` 编入 Server。按 [中心说明](../README.md)运行 `make run-center`，启动自动准备表结构，直接打开 `http://127.0.0.1:8080/`。运行机器无需 Node、Vite 或 Web 目录；页面与 `/api/v1` 使用同一入口。只运行 `npm run build` 不会更新已构建的 Server，页面变更需要重新构建二进制并重启。
 
@@ -95,11 +95,11 @@ Credits 以最后观测库存为主；观测时可用数量与最近到期由中
 公共日期工具条直接提供7/30/90天，自定义内含报告时区，来源在筛选浮层；已应用平台/来源/日期/模型/搜索可逐项清除。清除全部恢复30天范围并清除模型/搜索，保留报告时区；筛选变动重置记录页码与选择，分页本身保留详情。账号、来源只显示观测筛选，价格使用平台与目录条件。
 
 模型页显示Codex范围及单模型缓存命中率，来自Server可选`cache_hit_rate`，basis为`range_cached_input`。全范围所有已接受桶计数已知才计算cached/input，其他平台/混合范围/部分未知/零输入仍未知；不会用部分已知计数冒充整段比例。会话生命周期`lifetime_cached_input`保持独立。两者均共享Go精确算法，Web只格式化一位小数。
-## TOO-523 Storybook 追加预览
+## TOO-523 Storybook 追加预览（历史记录）
 
 本轮优化已追加到独立Storybook：正式页面组件配合成API样本，覆盖操作通知、年度总量/成本与模型柱状图、账号最后有效更新与异常状态、设备同步、价目排序；原生全量补传、Prometheus与SVG另列说明。订阅分类样稿参考官方购买页，按Codex/Cursor/Grok及个人/团队分类，尚未替换正式订阅页。
 
-旧6007已停止；当前分支启动 `npm --prefix server/web run storybook -- --port 6008`（仓库根目录），打开 `http://127.0.0.1:6008/?path=/story/subscription-plans--codex`。价目表保留“模型价格 / 订阅与额度”两个主标签，平台分类仅位于订阅内；模型入口为 `/?path=/story/subscription-plans--model-prices`。全部改动目录为 `/?path=/story/too-523-updates--index`。39条故事中新增17条；样本和改名/订阅演示只在当前iframe内存生效，所有API由合成适配器拦截，不连接真实中心。
+以下为 2026-10-03 的历史操作记录，当前端口与入口以前文为准。当时启动 `npm --prefix server/web run storybook -- --port 6008`（仓库根目录），打开 `http://127.0.0.1:6008/?path=/story/subscription-plans--codex`。价目表保留“模型价格 / 订阅与额度”两个主标签，平台分类仅位于订阅内；模型入口为 `/?path=/story/subscription-plans--model-prices`。全部改动目录为 `/?path=/story/too-523-updates--index`。39条故事中新增17条；样本和改名/订阅演示只在当前iframe内存生效，所有API由合成适配器拦截，不连接真实中心。
 
 ## TOO-530 查询与操作反馈
 

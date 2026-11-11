@@ -7,6 +7,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/creditbalance"
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 )
 
@@ -25,6 +26,7 @@ type QuotaCurrentWindowSnapshot struct {
 // QuotaCurrentSnapshot is the read-only fact boundary for the M5 quota query.
 // Every field is loaded from one explicit SQLite read transaction.
 type QuotaCurrentSnapshot struct {
+	PaidCredits         []creditbalance.View
 	Binding             CodexAccountBinding
 	AccountScope        string
 	BindingGeneration   int64
@@ -73,6 +75,10 @@ func (repository *Repository) QuotaCurrentSnapshot(
 				return invalidRecord("quota current snapshot input is invalid")
 			}
 			snapshot.AccountScope = scope
+			snapshot.PaidCredits, err = readPaidCredits(ctx, transaction, scope, evaluatedAtMS)
+			if err != nil {
+				return err
+			}
 			associatedHistoryScope, err := quotaAssociatedHistoryScope(ctx, transaction, scope)
 			if err != nil {
 				return err

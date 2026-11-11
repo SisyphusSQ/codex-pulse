@@ -21,3 +21,5 @@
 
 - [TOO-582 分片续传与额度上报验收](reporting-publications-2026-10-13.md)
 - [source-usage 来源扫描回归修复：2026-10-13](source-usage-regression-2026-10-13.md)
+
+- [Credits 客户端、中心与版本上线流程](../../../docs/test/credits-rollout.md)

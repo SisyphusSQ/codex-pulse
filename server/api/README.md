@@ -55,3 +55,5 @@ Web 配对码只在弹窗内存显示；关闭/撤销即时卸载，过期清空
 管理浏览器 GET `/api/v1/version` 返回 version、commit、built_at、reporting_protocol、throughput_capsule 和 schema。需要管理员授权，collector 不可读取；不返回环境、数据库、路径或仓库 URL。正常启动自动初始化/升级已登记结构并读回，HTTP 在成功之后监听；备份/恢复通过受控 db CLI，详见 [运行说明](../docs/test/operations.md)。
 
 - [模型价目、订阅设置与用量成本](catalog-subscriptions.md)
+
+TOO-702：`GET /api/v1/sync` 增加 `paid_credits: true` 能力；可选批次 `paid_credits` 为官方计费余额观测，最多 100 条。中心账号页的余额与实际消耗状态见[配额 API](quotas.md)，结构 v7 为追加表，旧字段和凭证用途不变。

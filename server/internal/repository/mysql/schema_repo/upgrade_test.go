@@ -145,3 +145,36 @@ func TestV5PublicationUpgradePreservesPendingChunksAndReceipts(t *testing.T) {
 		t.Fatal("v6 structure incomplete")
 	}
 }
+
+func TestV6PaidCreditsUpgradePreservesExistingFacts(t *testing.T) {
+	s, engine, _ := openTestDatabase(t, filepath.Join(t.TempDir(), "private", "center.sqlite"))
+	if err := s.Init(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	db := engine.DB(t.Context())
+	if err := db.Exec("INSERT INTO pulse_batches VALUES('device','before-credits','digest',1000)").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrator().DropTable("pulse_paid_credits"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&schema_do.SchemaVersion{}).Where("id = ?", 1).Updates(map[string]any{"version": 6, "checksum": "65d89e7629f95edc6d80967b2f9839b80a792da91b166720fd247567f2c8f096"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Upgrade(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Upgrade(t.Context()); err != nil {
+		t.Fatal("reentrant", err)
+	}
+	var n int64
+	if err := db.Table("pulse_batches").Where("batch_id = ?", "before-credits").Count(&n).Error; err != nil || n != 1 {
+		t.Fatal("existing fact changed", n, err)
+	}
+	if !db.Migrator().HasTable("pulse_paid_credits") {
+		t.Fatal("credits table absent")
+	}
+	if err := s.Check(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+}
