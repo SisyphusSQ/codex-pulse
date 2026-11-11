@@ -20,7 +20,7 @@ export function StatisticsCacheFooter() {
   const { background, failures } = JSON.parse(state) as { background: string; failures: string[] };
   const failed = queries.findAll({ type: 'active' }).filter(query => failures.includes(query.queryHash));
   return <span className="statistics-cache-footer" role={background === 'ready' && !failed.length ? undefined : 'status'}>
-    用量统计每分钟后台更新，可能延迟 1–2 分钟。
+    活跃用量统计每分钟后台更新，年度统计每5分钟更新；长时间未访问时，先显示已有结果并在后台刷新。
     {background === 'failed' && ' 部分统计后台更新失败，当前保留上次成功结果。'}
     {background === 'stale' && ' 部分统计更新延迟，当前显示缓存数据。'}
     {failed.length > 0 && <Popover trigger="click" title="当前页面读取状态" content={<div className="query-failure-details">{failed.map(query => <div key={query.queryHash}><strong>{querySubject(query)}</strong><p>{queryFailure(query)}</p><Button size="small" onClick={() => void refreshQueriesWithFeedback(client, { queryKey: query.queryKey, exact: true, type: 'active' })}>重新读取{querySubject(query)}</Button></div>)}</div>}><Button type="link" size="small">{failed.length} 项读取失败 · 查看并重试</Button></Popover>}

@@ -10,7 +10,7 @@ import (
 	schema_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/schema_do"
 )
 
-// Upgrade 只接受已确认 v1/v2/v3/v4 定义，新增已登记结构后读回字段，最后提交版本标记。
+// Upgrade 只接受已确认 v1..v7 定义，新增已登记结构后读回字段，最后提交版本标记。
 func (s *Schema) Upgrade(ctx context.Context) error {
 	return s.withMigrationLock(ctx, s.upgrade)
 }
@@ -29,8 +29,10 @@ func (s *Schema) upgrade(ctx context.Context) error {
 	v3 := map[string]string{"mysql": "c90a79f74c9d2f31987233f7cb335b3a11e74f01858ac9bf64e3e4ef76cb6e0b", "sqlite": "a796cb171ecdf6edbf40fccc9543c1ed2b0012d95248dcdf9da472b3eaf51565"}
 	v4 := map[string]string{"mysql": "c4f4d1e7418f259444a44eadfd9416f41033e6351c94f2db82b37ebf6f7e8450", "sqlite": "ade85380eeb8f7c01b25432092d582d170e6462e3e4f0739f134e6247dae1b9a"}
 	v5 := map[string]string{"mysql": "98d2c4f152659193b3233a790ab9971b69140bd0cc664b3e2ba64e9f89aabddd", "sqlite": "1f476adc4fb3cc1d2f6318073589b48042decd39beb8359710db3f38186f8784"}
+	// 既有 Windows 构建的 v6 CRLF 摘要已在开发库确认；仅接受这一个已知等价定义。
 	v6 := map[string]string{"mysql": "695cb3cbd3fbdfd19f809dfce688e6c0f5352b4bd96e9adeb7945c2f88f90e0c", "sqlite": "65d89e7629f95edc6d80967b2f9839b80a792da91b166720fd247567f2c8f096"}
-	if schema.Version != 7 || !((marker.Version == 6 && marker.Checksum == v6[db.Dialector.Name()]) || (marker.Version == 5 && marker.Checksum == v5[db.Dialector.Name()]) || (marker.Version == 4 && marker.Checksum == v4[db.Dialector.Name()]) || (marker.Version == 3 && marker.Checksum == v3[db.Dialector.Name()]) || (marker.Version == 1 && marker.Checksum == legacy[db.Dialector.Name()]) || (marker.Version == 2 && marker.Checksum == v2[db.Dialector.Name()])) {
+	v7 := map[string]string{"mysql": "ec2e64d187cb542d1f9c0a7c45212bf9749c3b7b0c13597e6baab2474ba1aca8", "sqlite": "8a862017f2fc8963bce363e6c4f261d155a66671111affb95e412d2864165f7b"}
+	if schema.Version != 8 || !((marker.Version == 7 && marker.Checksum == v7[db.Dialector.Name()]) || (marker.Version == 6 && (marker.Checksum == v6[db.Dialector.Name()] || (db.Dialector.Name() == "mysql" && marker.Checksum == "7f4c7f80de583a8e268c527cf5d3e6404b25edbe723345838607097bf17812d7"))) || (marker.Version == 5 && marker.Checksum == v5[db.Dialector.Name()]) || (marker.Version == 4 && marker.Checksum == v4[db.Dialector.Name()]) || (marker.Version == 3 && marker.Checksum == v3[db.Dialector.Name()]) || (marker.Version == 1 && marker.Checksum == legacy[db.Dialector.Name()]) || (marker.Version == 2 && marker.Checksum == v2[db.Dialector.Name()])) {
 		return ErrSchemaIncompatible
 	}
 	statements, checksum, _, err := schema.Definition(db.Dialector.Name())
@@ -39,11 +41,17 @@ func (s *Schema) upgrade(ctx context.Context) error {
 	}
 	upgrade := func(ctx context.Context) error {
 		for _, ddl := range statements {
+			if strings.HasPrefix(ddl, "CREATE INDEX idx_") {
+				continue
+			}
 			if strings.Contains(ddl, "pulse_paid_credits ") || strings.Contains(ddl, "idx_paid_credits_") || strings.Contains(ddl, "idx_publication_jobs_ready ") || strings.Contains(ddl, "idx_payload_parts_age ") || strings.Contains(ddl, "pulse_payload_owners ") || strings.Contains(ddl, "idx_payload_owners_key ") || strings.Contains(ddl, "idx_usage_versions_time ") || strings.Contains(ddl, "pulse_publication_jobs ") || strings.Contains(ddl, "pulse_session_publications ") || strings.Contains(ddl, "pulse_payload_parts ") || strings.Contains(ddl, "pulse_usage_versions ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_account_token_") || strings.HasPrefix(ddl, "CREATE INDEX IF NOT EXISTS idx_account_tokens_") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_account_settings ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_snapshot_chunks ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_device_sync ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_retired_observations ") || strings.HasPrefix(ddl, "CREATE TABLE IF NOT EXISTS pulse_session_capsules ") || strings.HasPrefix(ddl, "CREATE INDEX IF NOT EXISTS idx_capsules_session ") {
 				if err := s.engine.DB(ctx).Exec(ddl).Error; err != nil {
 					return fmt.Errorf("upgrade center structure: %w", err)
 				}
 			}
+		}
+		if err := s.queryIndexes(ctx, true); err != nil {
+			return err
 		}
 		if err := s.checkColumns(ctx); err != nil {
 			return err

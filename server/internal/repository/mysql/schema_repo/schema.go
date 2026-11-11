@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -42,7 +43,10 @@ func (s *Schema) Check(ctx context.Context) error {
 	if current.Version != schema.Version || current.Checksum != checksum {
 		return ErrSchemaIncompatible
 	}
-	return s.checkColumns(ctx)
+	if err := s.checkColumns(ctx); err != nil {
+		return err
+	}
+	return s.queryIndexes(ctx, false)
 }
 
 func (s *Schema) checkColumns(ctx context.Context) error {
@@ -100,9 +104,15 @@ func (s *Schema) init(ctx context.Context) error {
 	}
 	initialize := func(ctx context.Context) error {
 		for _, statement := range statements {
+			if strings.HasPrefix(statement, "CREATE INDEX idx_") {
+				continue
+			}
 			if err := s.engine.DB(ctx).Exec(statement).Error; err != nil {
 				return fmt.Errorf("initialize center structure: %w", err)
 			}
+		}
+		if err := s.queryIndexes(ctx, true); err != nil {
+			return err
 		}
 		if err := s.checkColumns(ctx); err != nil {
 			return err

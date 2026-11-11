@@ -70,7 +70,7 @@ func (s *Statistics) readFor(ctx context.Context, q statistics_dto.StatisticsQue
 func (s *Statistics) readProjection(ctx context.Context, q statistics_dto.StatisticsQuery, include, heatmapOnly bool, projection string) (*statisticsRead, error) {
 	out := &statisticsRead{q: q, projects: map[string]reporting_do.Project{}, metadata: map[string]reporting_do.Session{}, sources: map[string][]statistics_vo.StatisticsSource{}, clients: map[string]access_do.Client{}, total: newStatisticsAggregate(), providers: map[string]*statisticsAggregate{}, models: map[string]*statisticsAggregate{}, days: map[string]*statisticsAggregate{}, sessions: map[string]*statisticsAggregate{}, hours: map[string]*statisticsAggregate{}, projectGroups: map[string]*statisticsAggregate{}, timeline: map[string]*statisticsAggregate{}, providerSeen: map[string]bool{}}
 	out.heatmapOnly = heatmapOnly
-	out.usageOnly = include
+	out.usageOnly = include && projection != "overview"
 	out.projection = projection
 	if include {
 		out.modelDays = map[string]*statisticsAggregate{}
@@ -157,14 +157,14 @@ func (s *Statistics) readProjection(ctx context.Context, q statistics_dto.Statis
 				return utils.ErrRequestBudget
 			}
 			out.usage(usageFromContribution(key, c))
-			if out.modelTrendExceeded {
+			if out.modelTrendExceeded && projection != "overview" {
 				return utils.ErrRequestBudget
 			}
 		}
 		return nil
 	}
 	if q.ClientID == "" {
-		if !heatmapOnly && !include && projection != "projects" {
+		if !heatmapOnly && !include && projection != "projects" && projection != "sessions" && projection != "project" {
 			err = s.repository.StreamSourceMetadata(ctx, q, func(row statistics_dto.SourceMetadata) error {
 				sourceRows++
 				if sourceRows > statistics_dto.MaximumStatisticsSources {
@@ -187,7 +187,7 @@ func (s *Statistics) readProjection(ctx context.Context, q statistics_dto.Statis
 				key = row.SessionKey
 			}
 			var snapshot reportingv1.SessionSnapshot
-			if err := json.Unmarshal([]byte(row.Payload), &snapshot, json.RejectUnknownMembers(true)); err != nil {
+			if err := json.UnmarshalRead(strings.NewReader(row.Payload), &snapshot, json.RejectUnknownMembers(true)); err != nil {
 				return err
 			}
 			snapshot.Invocations = nil
@@ -233,7 +233,7 @@ func (s *Statistics) readProjection(ctx context.Context, q statistics_dto.Statis
 				return utils.ErrRequestBudget
 			}
 			out.usage(row)
-			if out.modelTrendExceeded {
+			if out.modelTrendExceeded && projection != "overview" {
 				return utils.ErrRequestBudget
 			}
 			return nil
@@ -299,12 +299,16 @@ func (o *statisticsRead) usage(row reporting_do.Usage) {
 		key := strings.Join([]string{m.Provider, model, day}, "\x00")
 		if _, exists := o.modelDays[key]; !exists && len(o.modelDays) >= 20000 {
 			o.modelTrendExceeded = true
-			return
-		}
-		aggregateFor(o.modelDays, key).usage(row, day, m.Provider)
-		aggregateFor(o.modelTotals, m.Provider+"\x00"+model).usage(row, day, m.Provider)
-		if m.Provider == "cursor" {
-			aggregateFor(o.cursorPools, pricing.CursorUsagePoolForModel(model, at)).usage(row, day, m.Provider)
+			if o.projection != "overview" {
+				return
+			}
+			o.modelDays, o.modelTotals, o.cursorPools = nil, nil, nil
+		} else {
+			aggregateFor(o.modelDays, key).usage(row, day, m.Provider)
+			aggregateFor(o.modelTotals, m.Provider+"\x00"+model).usage(row, day, m.Provider)
+			if m.Provider == "cursor" {
+				aggregateFor(o.cursorPools, pricing.CursorUsagePoolForModel(model, at)).usage(row, day, m.Provider)
+			}
 		}
 	}
 
@@ -320,19 +324,19 @@ func (o *statisticsRead) usage(row reporting_do.Usage) {
 		return
 	}
 	groups := []*statisticsAggregate{o.total}
-	if o.projection == "all" || o.projection == "sessions" || o.projection == "session" || o.projection == "project" {
+	if o.projection == "all" || o.projection == "overview" || o.projection == "sessions" || o.projection == "session" || o.projection == "project" {
 		groups = append(groups, sessionAggregate(o.sessions, row.SessionKey))
 	}
-	if o.projection == "all" || o.projection == "session" || o.projection == "project" {
+	if o.projection == "all" || o.projection == "overview" || o.projection == "session" || o.projection == "project" {
 		groups = append(groups, aggregateFor(o.days, day))
 	}
-	if o.projection == "all" || o.projection == "project" {
+	if o.projection == "all" || o.projection == "overview" || o.projection == "project" {
 		groups = append(groups, aggregateFor(o.models, valueString(row.Model, "unknown")))
 	}
-	if o.projection == "all" || o.projection == "projects" || o.projection == "project" {
+	if o.projection == "all" || o.projection == "overview" || o.projection == "projects" || o.projection == "project" {
 		groups = append(groups, aggregateFor(o.projectGroups, o.projects[m.ProjectID].GroupID))
 	}
-	if o.projection == "all" {
+	if o.projection == "all" || o.projection == "overview" {
 		local := time.UnixMilli(at).In(o.q.Location)
 		groups = append(groups, aggregateFor(o.providers, m.Provider), aggregateFor(o.hours, local.Format("Mon-15")), aggregateFor(o.timeline, statisticsHourKey(at, o.q.Location)))
 	}

@@ -116,20 +116,62 @@ func (r *Reporting) setPayloadOwner(ctx context.Context, id, payload string) err
 // CollectVersions 仅回收无发布指针的派生版本；处理租约期间不碰正在构建的数据。
 func (r *Reporting) CollectVersions(ctx context.Context) error {
 	db := r.engine.DB(ctx)
-	active := db.Model(&reporting_do.PublicationJob{}).Select("id").Where("lease_until_ms > ?", time.Now().UnixMilli())
-	var rows []reporting_do.UsageVersion
-	if err := db.Where("generation NOT IN (SELECT generation FROM pulse_session_publications)").Where("NOT EXISTS (?)", active).Limit(250).Find(&rows).Error; err != nil {
-		return err
+	unleased := func(db *gorm.DB) *gorm.DB {
+		active := r.engine.DB(ctx).Model(&reporting_do.PublicationJob{}).Select("id").Where("lease_until_ms > ?", time.Now().UnixMilli())
+		return db.Where("NOT EXISTS (?)", active)
 	}
-	if len(rows) > 0 {
-		return db.Where("NOT EXISTS (?)", active).Delete(&rows).Error
+	unpublished := func(db *gorm.DB) *gorm.DB {
+		return unleased(db).Where("generation NOT IN (SELECT generation FROM pulse_session_publications)")
+	}
+	// 保留跨代际批次；满批后沿末行的主键前缀继续，避免反复扫描历史。
+	for {
+		var rows []reporting_do.UsageVersion
+		if err := db.Scopes(unpublished).Select("generation,session_key,contribution_id").Limit(250).Find(&rows).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			break
+		}
+		result := db.Scopes(unpublished).Delete(&rows)
+		if result.Error != nil || result.RowsAffected == 0 {
+			return result.Error
+		}
+		if len(rows) < 250 {
+			break
+		}
+		last := rows[len(rows)-1]
+		for {
+			var ids []string
+			batch := db.Model(&reporting_do.UsageVersion{}).Where("generation = ? AND session_key = ?", last.Generation, last.SessionKey)
+			if err := batch.Scopes(unpublished).Limit(250).Pluck("contribution_id", &ids).Error; err != nil {
+				return err
+			}
+			if len(ids) == 0 {
+				break
+			}
+			result := db.Where("generation = ? AND session_key = ? AND contribution_id IN ?", last.Generation, last.SessionKey, ids).Scopes(unpublished).Delete(&reporting_do.UsageVersion{})
+			if result.Error != nil || result.RowsAffected == 0 {
+				return result.Error
+			}
+			if len(ids) < 250 {
+				break
+			}
+		}
 	}
 	var parts []reporting_do.PayloadPart
-	if err := db.Select("payload_key,part_index").Where("created_at_ms < ?", time.Now().Add(-time.Hour).UnixMilli()).Where("payload_key NOT IN (SELECT payload_key FROM pulse_payload_owners)").Where("NOT EXISTS (?)", active).Limit(16).Find(&parts).Error; err != nil {
-		return err
+	unowned := func(db *gorm.DB) *gorm.DB {
+		return unleased(db).Where("payload_key NOT IN (SELECT payload_key FROM pulse_payload_owners)")
 	}
-	if len(parts) > 0 {
-		return db.Where("payload_key NOT IN (SELECT payload_key FROM pulse_payload_owners)").Where("NOT EXISTS (?)", active).Delete(&parts).Error
+	for {
+		if err := db.Scopes(unowned).Select("payload_key,part_index").Where("created_at_ms < ?", time.Now().Add(-time.Hour).UnixMilli()).Limit(16).Find(&parts).Error; err != nil {
+			return err
+		}
+		if len(parts) == 0 {
+			return nil
+		}
+		result := db.Scopes(unowned).Delete(&parts)
+		if result.Error != nil || result.RowsAffected == 0 || len(parts) < 16 {
+			return result.Error
+		}
 	}
-	return nil
 }

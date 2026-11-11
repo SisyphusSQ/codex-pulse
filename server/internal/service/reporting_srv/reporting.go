@@ -33,12 +33,13 @@ var ErrPublicationFailed = errors.New("reporting publication failed")
 
 // Reporting 接收真实身份的原子批次，仲裁多个采集副本并保留来源证据。
 type Reporting struct {
-	repository *reporting_repo.Reporting
-	now        func() time.Time
+	repository      *reporting_repo.Reporting
+	now             func() time.Time
+	publicationWake chan struct{}
 }
 
 func NewReporting(repository *reporting_repo.Reporting) *Reporting {
-	return &Reporting{repository: repository, now: time.Now}
+	return &Reporting{repository: repository, now: time.Now, publicationWake: make(chan struct{}, 1)}
 }
 func requireCollector(p access_dto.Principal) error {
 	if p.ID == "" || p.Purpose != access_dto.PurposeCollector {
@@ -197,6 +198,10 @@ func (s *Reporting) Accept(ctx context.Context, p access_dto.Principal, batch re
 		return s.repository.CommitBatch(ctx, reporting_do.Batch{ClientID: p.ID, BatchID: batch.ID, Digest: hash, ReceivedAtMS: now})
 	})
 	if err == nil && pending {
+		select {
+		case s.publicationWake <- struct{}{}:
+		default:
+		}
 		err = ErrPublicationPending
 	}
 	return

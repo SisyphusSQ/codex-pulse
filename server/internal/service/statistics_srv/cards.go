@@ -65,7 +65,7 @@ func (s *Statistics) currentCard(ctx context.Context, p access_dto.Principal, q 
 	if s.cache == nil {
 		return s.current(ctx, q)
 	}
-	out, status, err := cachedProjection(ctx, s.cache, "current", q, s.current)
+	out, status, err := cachedProjection(ctx, s.cache, "current", q, s.current, s.overviewLoader(q))
 	out.Cache = status
 	return out, err
 }

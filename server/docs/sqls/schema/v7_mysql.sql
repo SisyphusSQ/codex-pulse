@@ -1,18 +1,7 @@
--- TOO-702 / schema v7: official billing Credits; earned resets remain independent.
-CREATE TABLE IF NOT EXISTS pulse_paid_credits (
-    id CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    client_id VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    provider VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    account_key CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    local_scope VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    limit_id VARCHAR(512) COLLATE utf8mb4_bin NOT NULL,
-    state VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
-    balance VARCHAR(49) CHARACTER SET ascii COLLATE ascii_bin NULL,
-    has_credits BOOLEAN NULL,
-    unlimited BOOLEAN NULL,
-    observed_at_ms BIGINT NOT NULL,
-    received_at_ms BIGINT NOT NULL,
-PRIMARY KEY (id),
-KEY idx_paid_credits_account_time (account_key,limit_id,observed_at_ms),
-KEY idx_paid_credits_client_time (client_id,observed_at_ms)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+-- TOO-697：查询索引，适用于 MySQL 8.x 与已验证的 SeekDB MySQL 协议。
+-- 前置为已登记结构；唯一入口为启动迁移器，先按名称/列序检查再创建，失败不写版本。
+-- 只增加索引，不修改事实；DDL 可能持锁并消耗磁盘，不依赖事务回滚。重入复用已匹配索引。
+CREATE INDEX idx_publication_jobs_lease ON pulse_publication_jobs (lease_until_ms);
+CREATE INDEX idx_publication_jobs_cleanup ON pulse_publication_jobs (state,created_at_ms,id);
+CREATE INDEX idx_publication_jobs_source ON pulse_publication_jobs (client_id,source_key,state,revision);
+CREATE INDEX idx_publications_generation ON pulse_session_publications (generation);

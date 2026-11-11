@@ -22,4 +22,9 @@
 - [TOO-582 分片续传与额度上报验收](reporting-publications-2026-10-13.md)
 - [source-usage 来源扫描回归修复：2026-10-13](source-usage-regression-2026-10-13.md)
 
+- [TOO-699 年度与来源统计投影优化](too-699-statistics-history.md)
+- [TOO-700 目录事实口径与窄范围用量查询](too-700-catalog-usage-query.md)
+
+- [TOO-701 六条 Server 查询与维护链路](too-701-server-sql.md)
+
 - [Credits 客户端、中心与版本上线流程](../../../docs/test/credits-rollout.md)

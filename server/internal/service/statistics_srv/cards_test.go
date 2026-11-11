@@ -74,7 +74,13 @@ func TestListProjectionsKeepLegacyValuesWithoutUnusedGroups(t *testing.T) {
 				t.Fatal("projection changed totals or coverage", kind)
 			}
 			if kind == "sessions" || kind == "session" || kind == "project" {
-				if !reflect.DeepEqual(full.sessionList(), read.sessionList()) {
+				items := read.sessionList()
+				if kind != "session" {
+					if err := stats.attachPageSources(t.Context(), q, items.Items, read); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if !reflect.DeepEqual(full.sessionList(), items) {
 					t.Fatal("projection changed session list", kind)
 				}
 			}
@@ -120,14 +126,14 @@ func TestCacheWorkerWarmRefreshAndStop(t *testing.T) {
 	}
 }
 
-func TestDefaultCardsStayActiveWithoutBrowserTraffic(t *testing.T) {
+func TestLightDefaultCardsStayActiveWithoutBrowserTraffic(t *testing.T) {
 	stats, _, _, _ := statisticsFixture(t)
 	c := newStatisticsCache(t.Context(), time.Second)
 	now := stats.now()
 	c.now = func() time.Time { return now }
 	c.warm(stats)
 	c.mu.Lock()
-	if len(c.entries) != 4 {
+	if len(c.entries) != 2 {
 		t.Fatalf("default projections: %d", len(c.entries))
 	}
 	for _, e := range c.entries {

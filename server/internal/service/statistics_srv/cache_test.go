@@ -198,3 +198,39 @@ func TestStatisticsCacheReturnsIndependentValuesAndChecksAdminOnHit(t *testing.T
 		t.Fatal("cache bypassed admin check", err)
 	}
 }
+
+func TestAnnualRefreshIntervalAndInactiveHeavyProjections(t *testing.T) {
+	s, _, _, _ := statisticsFixture(t)
+	c := newStatisticsCache(t.Context(), time.Second)
+	now := time.Date(2026, 11, 8, 1, 0, 0, 0, time.UTC)
+	c.now = func() time.Time { return now }
+	c.warm(s)
+	for key := range c.entries {
+		if key.kind == "annual" || key.kind == "source-usage" {
+			t.Fatal("heavy projection warmed without a reader")
+		}
+	}
+	key := statisticsCacheKey{kind: "annual"}
+	e := &statisticsCacheEntry{kind: "annual", body: []byte("{}"), computed: now, attempted: now, used: now, load: func(context.Context) ([]byte, error) { return []byte("{}"), nil }}
+	c.entries = map[statisticsCacheKey]*statisticsCacheEntry{key: e}
+	c.bytes = 2
+	now = now.Add(time.Minute)
+	if c.refresh() || c.status(e).RefreshAfterMS != 300000 || c.status(e).Stale {
+		t.Fatal("annual refreshed before its interval")
+	}
+	now = now.Add(4 * time.Minute)
+	if !c.refresh() {
+		t.Fatal("active annual did not refresh")
+	}
+	now = now.Add(6 * time.Minute)
+	if c.refresh() {
+		t.Fatal("inactive annual continued querying")
+	}
+	now = now.Add(5 * time.Minute)
+	if !c.status(e).Stale {
+		t.Fatal("old annual snapshot appeared fresh")
+	}
+	if _, _, err := c.get(t.Context(), key, e.load); err != nil || !c.refresh() {
+		t.Fatal("returning reader did not resume refresh", err)
+	}
+}

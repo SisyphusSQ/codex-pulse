@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -15,6 +16,47 @@ import (
 	reporting_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/reporting_repo"
 	centerfixture "github.com/SisyphusSQ/codex-pulse/server/internal/testsupport/center"
 )
+
+func TestSourceJoinPreservesMembershipAndClientFilters(t *testing.T) {
+	engine := centerfixture.Engine(t)
+	db := engine.DB(t.Context())
+	sessions := []reporting_do.Session{{ID: "a", Provider: "codex", ProjectID: "project"}, {ID: "b", Provider: "codex", Deleted: true}, {ID: "c", Provider: "cursor", ProjectID: "other"}}
+	if err := db.Create(&sessions).Error; err != nil {
+		t.Fatal(err)
+	}
+	projects := []reporting_do.Project{{ID: "project", GroupID: "group"}, {ID: "other", GroupID: "other-group"}}
+	if err := db.Create(&projects).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, session := range []string{"a", "b", "c", "missing"} {
+		for _, client := range []string{"one", "two"} {
+			for _, home := range []string{"first", "second"} {
+				row := reporting_do.SessionSource{ID: client + home + session, SessionKey: session, ClientID: client, HomeID: home, Payload: "{}"}
+				if err := db.Create(&row).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+	}
+	r := NewStatistics(engine)
+	for _, q := range []statistics_dto.StatisticsQuery{{}, {Provider: "codex"}, {ClientID: "one"}, {ProjectID: "group"}, {ProjectID: "group", ClientID: "two"}, {SessionKey: "a"}, {SessionKey: "b"}, {ClientID: "missing"}} {
+		var want []reporting_do.SessionSource
+		old := db.Where("session_key IN (?)", r.sessionQuery(t.Context(), q).Select("s.id"))
+		if q.ClientID != "" {
+			old = old.Where("client_id = ?", q.ClientID)
+		}
+		if err := old.Order("session_key,id").Find(&want).Error; err != nil {
+			t.Fatal(err)
+		}
+		got := []reporting_do.SessionSource{}
+		if err := r.StreamSources(t.Context(), q, func(row reporting_do.SessionSource) error { got = append(got, row); return nil }); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(want, got) {
+			t.Fatalf("source membership changed for %+v", q)
+		}
+	}
+}
 
 func TestStreamSourcesProductionScaleKeepsSessionGroupsAndBoundsQueries(t *testing.T) {
 	engine := centerfixture.Engine(t)

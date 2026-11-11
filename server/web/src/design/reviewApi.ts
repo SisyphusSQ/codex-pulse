@@ -38,7 +38,7 @@ export function installReviewApi(scenario:ReviewScenario) {
   if(method==='POST'&&path==='/api/v1/logout'){signedIn=false;return response({applied:true});}
   if(method==='GET'){
    if(scenario==='error'&&path!=='/api/v1/version')return response(null,503);
-   if(path==='/api/v1/version')return response({version:'设计预览',commit:'合成样本',built_at:'',reporting_protocol:1,throughput_capsule:1,schema:7});
+   if(path==='/api/v1/version')return response({version:'设计预览',commit:'合成样本',built_at:'',reporting_protocol:1,throughput_capsule:1,schema:8});
    if(path==='/api/v1/catalog')return response(reviewCatalog);
    if(['/api/v1/statistics/summary','/api/v1/statistics/annual','/api/v1/statistics/totals','/api/v1/statistics/activity','/api/v1/statistics/top-sessions','/api/v1/statistics/providers','/api/v1/statistics/models'].includes(path))return response(summary());
    if(path==='/api/v1/statistics/source-usage')return response(scenario==='empty'?{...reviewSourceUsage(filter),items:[]}:reviewSourceUsage(filter));

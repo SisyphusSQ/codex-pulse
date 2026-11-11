@@ -116,21 +116,34 @@ func (r *Reporting) Publish(ctx context.Context, session reporting_do.Session, g
 	return db.Save(&reporting_do.SessionPublication{SessionKey: session.ID, Generation: generation}).Error
 }
 
-// CleanupPublication 每轮只清理一批已确认任务的片段；不会触碰待确认分片。
+// CleanupPublication 最多处理 16 批、每批 250 片；只读任务元数据，不加载正文。
 func (r *Reporting) CleanupPublication(ctx context.Context) error {
-	var job reporting_do.PublicationJob
-	err := r.engine.DB(ctx).Where("state = ?", "published").Order("created_at_ms,id").Take(&job).Error
-	if err != nil {
-		return err
-	}
-	var part reporting_do.SnapshotChunk
 	db := r.engine.DB(ctx)
-	err = db.Where("client_id = ? AND source_key = ? AND revision = ?", job.ClientID, job.SourceKey, job.Revision).Order("chunk_index").Take(&part).Error
-	if err == nil {
-		return db.Delete(&part).Error
+	for range 16 {
+		var job reporting_do.PublicationJob
+		err := db.Select("id,client_id,source_key,revision").Where("state = ?", "published").Order("created_at_ms,id").Take(&job).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		var indices []int64
+		parts := db.Model(&reporting_do.SnapshotChunk{}).Where("client_id = ? AND source_key = ? AND revision = ?", job.ClientID, job.SourceKey, job.Revision)
+		if err := parts.Order("chunk_index").Limit(250).Pluck("chunk_index", &indices).Error; err != nil {
+			return err
+		}
+		if len(indices) > 0 {
+			if err := db.Where("client_id = ? AND source_key = ? AND revision = ? AND chunk_index IN ?", job.ClientID, job.SourceKey, job.Revision, indices).
+				Where("EXISTS (SELECT 1 FROM pulse_publication_jobs WHERE id = ? AND state = ?)", job.ID, "published").Delete(&reporting_do.SnapshotChunk{}).Error; err != nil {
+				return err
+			}
+		}
+		if len(indices) < 250 {
+			if err := db.Model(&reporting_do.PublicationJob{}).Where("id = ? AND state = ?", job.ID, "published").Updates(map[string]any{"state": "completed", "body": ""}).Error; err != nil {
+				return err
+			}
+		}
 	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
-	}
-	return db.Model(&reporting_do.PublicationJob{}).Where("id = ? AND state = ?", job.ID, "published").Updates(map[string]any{"state": "completed", "body": ""}).Error
+	return nil
 }

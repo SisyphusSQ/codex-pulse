@@ -162,9 +162,9 @@ Linux 沿用现有 systemd 服务：先正常停止旧服务，换到新版本�
 
 ### 结构与读回
 
-本轮中心 schema 为 **v7**，在 HTTP 监听前按已登记摘要从旧版本追加 `pulse_paid_credits` 及索引；保留旧 SQL 字节与已有事实。迁移失败不会开始监听。MySQL DDL 可能部分提交，不能假设整体回滚；修复实际故障后按迁移器重入，不手改版本标记。
+本轮中心 schema 为 **v8**，在 HTTP 监听前按已登记摘要从旧版本追加 `pulse_paid_credits` 及索引；保留旧 SQL 字节与已有事实。迁移失败不会开始监听。MySQL DDL 可能部分提交，不能假设整体回滚；修复实际故障后按迁移器重入，不手改版本标记。
 
-正常升级保留配对关系，通常不用重新 bootstrap 或让所有客户端重配。需要读回：实际二进制版本/commit、`/health`、`/ready`、同配置 `db check`、管理页面 `/api/v1/version` 的 schema=7、既有账号/用量、Credits 在图下、原有上报是否续传。接口认证沿用现有浏览器/collector，不把凭据拼进 URL 或命令记录。
+正常升级保留配对关系，通常不用重新 bootstrap 或让所有客户端重配。需要读回：实际二进制版本/commit、`/health`、`/ready`、同配置 `db check`、管理页面 `/api/v1/version` 的 schema=8、既有账号/用量、Credits 在图下、原有上报是否续传。接口认证沿用现有浏览器/collector，不把凭据拼进 URL 或命令记录。
 
 `/ready` 只证明依赖就绪，不能代替真实页面和余额验收。新的中心先运行，再发布客户端更新通知。
 
@@ -241,7 +241,7 @@ gh release upload updates "$PULSE_RELEASE_DIR/appcast.xml" --repo "$PULSE_REPO" 
 
 ## 八、失败与回滚
 
-- **只有页面变化、结构兼容**时才考虑回切旧完整服务目录。本轮有本机 v39 / 中心 v7，不能笼统地说“换回旧 App/Server 就能回滚”。
+- **只有页面变化、结构兼容**时才考虑回切旧完整服务目录。本轮有本机 v39 / 中心 v8，不能笼统地说“换回旧 App/Server 就能回滚”。
 - 中心结构不兼容：保留当前库和新产生事实，停止服务，用对应旧备份恢复到新的空库/路径，再与匹配旧二进制成对切换。恢复工具会撤销备份里的旧授权，需要重新配对；备份后的已确认事实要另行对账，不能用旧库覆盖新库冒充无损回退。
 - 客户端结构不兼容：保留当前 runtime 和队列，使用匹配版本的备份及恢复流程；不让旧客户端直接打开未来 schema，也不删真实 Home。Windows 的显式 rollback 会核对数据兼容声明。
 - Release/tag 已公开则不强制改写；需要修复时发布新版本。feed 出错先恢复已保存的旧 feed；不能绕过 ZIP/包签名或换公钥强装。
@@ -250,6 +250,6 @@ gh release upload updates "$PULSE_RELEASE_DIR/appcast.xml" --repo "$PULSE_REPO" 
 
 已完成正式页面调整、最新 server 单体构建、上线手册和 Unreleased 记录。此前 Credits 专项真实 Home RPC/原生卡片/本地中心上报验收及 Web/Storybook 聚焦检查已记录；本轮按约定没有重复运行测试。
 
-尚未完成：全页面 App smoke 曾超时；架构检查因 CI 文件缺失停止；Windows 新改动与独立 MySQL v7 实机、N-1 更新、签名公证、公开 feed 替换和生产上线均未验收。实际消耗仍为 `source_unavailable`，不能在 Release Notes 宣称已有精确扣费统计。
+尚未完成：全页面 App smoke 曾超时；架构检查因 CI 文件缺失停止；Windows 新改动与独立 MySQL v8 实机、N-1 更新、签名公证、公开 feed 替换和生产上线均未验收。实际消耗仍为 `source_unavailable`，不能在 Release Notes 宣称已有精确扣费统计。
 
 更多依据：[项目发布 Skill](../../.agents/skills/project-version-release/SKILL.md)、[中心运维](../../server/docs/test/operations.md)、[客户端更新设计](../design/details/updates-and-release/README.md)、[Credits 验收](paid-credits.md)。

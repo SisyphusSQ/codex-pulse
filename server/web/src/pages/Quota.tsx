@@ -30,7 +30,7 @@ export function QuotaAccounts(){
  const [filter,setFilter]=useState<QuotaFilter>({provider:'',client_id:'',account_key:''});
  const [selectedAccount,setSelectedAccount]=useState('');
  const [selectedKey,setSelectedKey]=useState('');
- const polling={staleTime:15_000,refetchInterval:30_000,refetchIntervalInBackground:false};
+ const polling={staleTime:15_000,refetchInterval:60_000,refetchIntervalInBackground:false};
  const catalogFilter={...filter,account_key:''};
  const catalog=useQuery({queryKey:['quota-accounts',catalogFilter],queryFn:({signal})=>getQuotaAccounts(catalogFilter,signal),...polling});
  const query=useQuery({queryKey:['quotas',filter],queryFn:({signal})=>getQuotas(filter,signal,{view:'summary'}),...polling});
@@ -49,7 +49,7 @@ export function QuotaAccounts(){
 
  {query.isPending?<LoadingState />:query.error&&!data?<ErrorState error={query.error} retry={refresh} />:data&&<>
 
- <div className="quota-snapshot-note"><span>中心读取 {dateTime(data.evaluated_at_ms)}</span><EvidenceIcon label="中心快照说明"><p>每30秒读取中心摘要；历史按选中窗口加载，最多保留四个周期。额度、节奏和 Credits 显示最后一次有效更新及其时间，收到新观测后更新；App关闭期间保留这份数据。当前收到 {data.windows.length} 个窗口。</p></EvidenceIcon></div>
+ <div className="quota-snapshot-note"><span>中心读取 {dateTime(data.evaluated_at_ms)}</span><EvidenceIcon label="中心快照说明"><p>每60秒读取中心摘要；历史按选中窗口加载，最多保留四个周期。额度、节奏和 Credits 显示最后一次有效更新及其时间，收到新观测后更新；App关闭期间保留这份数据。当前收到 {data.windows.length} 个窗口。</p></EvidenceIcon></div>
  {!groups.length?<EmptyState description="尚无已收到的额度或 Credits。请启用设备上报；未确认账号不根据邮箱推断归属。" />:<div className="quota-workspace">
  <Card title="账号" className="quota-selection">{groups.map(a=><button type="button" className={`account-item ${a.key===group?.key?'selected':''}`} key={a.key} aria-pressed={a.key===group?.key} onClick={()=>{setSelectedAccount(a.key);setSelectedKey('');}} aria-label={a.accountKey===null?'查看待关联观测':`查看账号 ${providerNames[a.provider]??a.provider} ${a.account?.email??'邮箱未提供'} ${a.account?.raw_id??a.accountKey}`}><span className="account-provider">{a.accountKey===null?'待关联观测':providerNames[a.provider]??a.provider}</span><strong>{a.account?.email??(a.accountKey===null?'尚未确认账号':'账号信息未取得')}</strong><span>{a.account?.plan??'套餐未知'} · {a.windows.length} 个额度窗口</span><small>{a.account?.raw_id??a.accountKey??'尚未确认账号 ID'}</small></button>)}</Card>
  {group&&<Card key={group.key} className="quota-detail">

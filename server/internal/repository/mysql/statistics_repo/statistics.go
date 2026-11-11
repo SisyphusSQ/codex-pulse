@@ -3,6 +3,7 @@ package statistics_repo
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -22,7 +23,10 @@ func (r *Statistics) Snapshot(ctx context.Context, fn func(context.Context) erro
 	return r.engine.ReadSnapshot(ctx, fn)
 }
 func (r *Statistics) sessionQuery(ctx context.Context, q statistics_dto.StatisticsQuery) *gorm.DB {
-	db := r.engine.DB(ctx).Table("pulse_sessions AS s").Select("s.*").Where("s.deleted = ?", false)
+	return r.sessionFilter(q, r.engine.DB(ctx).Table("pulse_sessions AS s").Select("s.*"))
+}
+func (r *Statistics) sessionFilter(q statistics_dto.StatisticsQuery, db *gorm.DB) *gorm.DB {
+	db = db.Where("s.deleted = ?", false)
 	if q.Provider != "" {
 		db = db.Where("s.provider = ?", q.Provider)
 	}
@@ -98,18 +102,24 @@ func (r *Statistics) usageFilter(ctx context.Context, q statistics_dto.Statistic
 }
 
 func (r *Statistics) streamUsage(ctx context.Context, q statistics_dto.StatisticsQuery, heatmap bool, visit func(reporting_do.Usage) error) error {
-	columns := "u.session_key,u.contribution_id,u.position,u.observed_at_ms,u.model,u.input_tokens,u.cached_tokens,u.cache_write_tokens,u.output_tokens,u.reasoning_tokens,u.total_tokens,u.cost_micro_usd,u.reported_charge_micro_usd,u.pricing_version,u.pricing_mode,u.input_price,u.cached_price,u.cache_write_price,u.output_price,u.cost_status"
+	// 统计只消费数值及归属；贡献身份与位置不参与聚合，避免随全年事实重复传输。
+	columns := "u.session_key,u.observed_at_ms,u.model,u.input_tokens,u.cached_tokens,u.cache_write_tokens,u.output_tokens,u.reasoning_tokens,u.total_tokens,u.cost_micro_usd,u.reported_charge_micro_usd,u.pricing_version,u.pricing_mode,u.input_price,u.cached_price,u.cache_write_price,u.output_price,u.cost_status"
 	if heatmap {
 		columns = "/*+ USE_HASH(u) */ " + columns
 	}
 	for _, physical := range []string{"pulse_usage AS u", "pulse_usage_versions AS u"} {
 		base := r.engine.DB(ctx).Table(physical)
+		projection := columns
 		if physical == "pulse_usage AS u" {
 			base = base.Where("NOT EXISTS (SELECT 1 FROM pulse_session_publications p WHERE p.session_key=u.session_key)")
 		} else {
 			base = base.Joins("JOIN pulse_session_publications p ON p.session_key=u.session_key AND p.generation=u.generation")
+			// SeekDB 窄日期从现有时间索引取数；年度与按会话/项目/搜索的选择路径保持原样。
+			if !heatmap && q.EndAtMS > q.StartAtMS && q.EndAtMS-q.StartAtMS <= (7*24*time.Hour).Milliseconds() && q.SessionKey == "" && q.ProjectID == "" && q.ClientID == "" && q.Search == "" && q.MatchedSessionKeys == nil {
+				projection = "/*+ INDEX(u idx_usage_versions_time) */ " + columns
+			}
 		}
-		db := r.usageFilter(ctx, q, base.Select(columns).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS))
+		db := r.usageFilter(ctx, q, base.Select(projection).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS))
 		rows, err := db.Rows()
 		if err != nil {
 			return err
@@ -121,7 +131,7 @@ func (r *Statistics) streamUsage(ctx context.Context, q statistics_dto.Statistic
 				return err
 			}
 			var row reporting_do.Usage
-			if err := rows.Scan(&row.SessionKey, &row.ContributionID, &row.Position, &row.ObservedAtMS, &row.Model, &row.InputTokens, &row.CachedTokens, &row.CacheWriteTokens, &row.OutputTokens, &row.ReasoningTokens, &row.TotalTokens, &row.CostMicroUSD, &row.ReportedChargeMicroUSD, &row.PricingVersion, &row.PricingMode, &row.InputPrice, &row.CachedPrice, &row.CacheWritePrice, &row.OutputPrice, &row.CostStatus); err != nil {
+			if err := rows.Scan(&row.SessionKey, &row.ObservedAtMS, &row.Model, &row.InputTokens, &row.CachedTokens, &row.CacheWriteTokens, &row.OutputTokens, &row.ReasoningTokens, &row.TotalTokens, &row.CostMicroUSD, &row.ReportedChargeMicroUSD, &row.PricingVersion, &row.PricingMode, &row.InputPrice, &row.CachedPrice, &row.CacheWritePrice, &row.OutputPrice, &row.CostStatus); err != nil {
 				rows.Close()
 				return err
 			}
@@ -165,11 +175,18 @@ func (r *Statistics) StreamInvocations(ctx context.Context, q statistics_dto.Sta
 
 // StreamSources 在同一有序流中读取内联来源及已发布分片；分片校验不再查询数据库。
 func (r *Statistics) StreamSources(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.SessionSource) error) error {
-	db := r.engine.DB(ctx).Table("pulse_session_sources AS src").
-		Select("src.id,src.session_key,src.client_id,src.home_id,src.source_kind,src.revision,src.collected_at_ms,src.digest,src.payload,part.part_index,part.body").
+	columns := "src.id,src.session_key,src.client_id,src.home_id,src.source_kind,src.revision,src.collected_at_ms,src.digest,src.payload,part.part_index,part.body"
+	db := r.engine.DB(ctx).Table("pulse_session_sources AS src")
+	if q.ClientID == "" && q.SessionKey == "" && q.ProjectID == "" {
+		// 宽范围保持来源索引顺序，仅排序单个来源的分片，避免全局排序大正文。
+		columns = "/*+ LEADING(src s owner part) USE_NL(s owner part) INDEX(src idx_session_sources_session) */ " + columns
+		db = r.sessionFilter(q, db.Joins("JOIN pulse_sessions AS s ON s.id=src.session_key"))
+	} else {
+		db = db.Where("src.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+	}
+	db = db.Select(columns).
 		Joins("LEFT JOIN pulse_payload_owners owner ON owner.id=CONCAT('source:',src.id)").
-		Joins("LEFT JOIN pulse_payload_parts part ON part.payload_key=owner.payload_key").
-		Where("src.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+		Joins("LEFT JOIN pulse_payload_parts part ON part.payload_key=owner.payload_key")
 	if q.ClientID != "" {
 		db = db.Where("src.client_id = ?", q.ClientID)
 	}
@@ -227,7 +244,7 @@ func (r *Statistics) StreamSources(ctx context.Context, q statistics_dto.Statist
 }
 
 func (r *Statistics) StreamUntimed(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Usage) error) error {
-	db := r.usageFilter(ctx, q, r.engine.DB(ctx).Table(reporting_repo.PublishedUsage).Select("u.session_key,u.contribution_id,u.model").Where("u.observed_at_ms IS NULL"))
+	db := r.usageFilter(ctx, q, r.engine.DB(ctx).Table(reporting_repo.PublishedUsage).Select("u.session_key,u.model").Where("u.observed_at_ms IS NULL"))
 	rows, err := db.Rows()
 	if err != nil {
 		return err
@@ -238,7 +255,7 @@ func (r *Statistics) StreamUntimed(ctx context.Context, q statistics_dto.Statist
 			return err
 		}
 		var row reporting_do.Usage
-		if err := rows.Scan(&row.SessionKey, &row.ContributionID, &row.Model); err != nil {
+		if err := rows.Scan(&row.SessionKey, &row.Model); err != nil {
 			return err
 		}
 		if err := visit(row); err != nil {

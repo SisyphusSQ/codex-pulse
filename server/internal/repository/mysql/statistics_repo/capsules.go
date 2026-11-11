@@ -9,6 +9,12 @@ import (
 
 func (r *Statistics) StreamSourceMetadata(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(statistics_dto.SourceMetadata) error) error {
 	db := r.engine.DB(ctx).Table("pulse_session_sources AS src").Select("src.id,src.session_key,src.client_id,src.collected_at_ms,src.revision,src.source_kind,COALESCE(cap.complete,JSON_EXTRACT(src.payload,'$.complete')) AS complete,COALESCE(cap.deleted,JSON_EXTRACT(src.payload,'$.deleted')) AS deleted").Joins("LEFT JOIN pulse_session_capsules cap ON cap.kind='source' AND cap.id=src.id").Where("src.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
+	if q.MatchedSessionKeys != nil {
+		if len(q.MatchedSessionKeys) == 0 {
+			return nil
+		}
+		db = db.Where("src.session_key IN ?", q.MatchedSessionKeys)
+	}
 	rows, err := db.Order("src.session_key,src.id").Rows()
 	if err != nil {
 		return err
