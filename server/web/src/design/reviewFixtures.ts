@@ -12,7 +12,7 @@ import publicModels from '../../../internal/service/catalog_srv/models-20261002.
 import publicPlans from '../../../internal/service/catalog_srv/plans-20261002.json';
 import releases from '../../../internal/service/catalog_srv/releases-20261003.json';
 
-export type ReviewScenario='current'|'expired'|'conflict'|'unknown'|'empty'|'error';
+export type ReviewScenario='current'|'expired'|'conflict'|'unknown'|'empty'|'error'|'anonymous';
 export const reviewNow=Date.UTC(2026,9,3,1);
 const key=(model:string)=>model.toLowerCase().replace(/\s+/g,'-');
 const releaseByModel=new Map(releases.flatMap(r=>r.models.map(model=>[key(model),{released_at_ms:Date.parse(`${r.released_on}T00:00:00Z`),release_source_url:r.source_url}] as const)));
@@ -50,6 +50,17 @@ export function reviewQuota(scenario:ReviewScenario) {
  const q=quotaFixture();
  q.accounts[1].plan='Plus';
  q.evaluated_at_ms=reviewNow;
+ q.paid_credits=[{account_key:q.accounts[0].key,credit:{
+  limitId:'codex',state:scenario==='unknown'?'unavailable':'known',
+  ...(scenario==='unknown'||scenario==='conflict'?{}:{balance:'62500',hasCredits:true,unlimited:false}),
+  observedAtMs:scenario==='unknown'?0:reviewNow,checkedAtMs:reviewNow,
+  freshness:scenario==='unknown'?'unknown':scenario==='conflict'?'conflict':scenario==='current'?'fresh':'stale',
+  consumptionState:'source_unavailable',history:scenario==='unknown'?[]:[
+   {observedAtMs:reviewNow-2*86400000,balance:'65000',unlimited:false},
+   {observedAtMs:reviewNow-86400000,balance:'64000',unlimited:false},
+   {observedAtMs:reviewNow,...(scenario==='conflict'?{}:{balance:'62500'}),unlimited:false},
+  ],
+ }}];
  const w=q.windows[0];
  w.current.used_percent=70;w.current.remaining_percent=30;
  w.current.window_start_at_ms=quotaNow-14400000;

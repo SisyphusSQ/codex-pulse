@@ -34,6 +34,8 @@ internal sealed class AccountQuotasPage:FeaturePage
             var identity=Text(QuotaPresentation.AccountTitle(account,L));identity.TextWrapping=TextWrapping.NoWrap;identity.TextTrimming=TextTrimming.CharacterEllipsis;ToolTipService.SetToolTip(identity,identity.Text);body.Children.Add(identity);
             if(account.HasDisplayEmail && account.DisplayEmail!=identity.Text)body.Children.Add(PresentationControls.Caption(account.DisplayEmail));
             body.Children.Add(PresentationControls.Caption(QuotaPresentation.SubscriptionDate(account,L)));
+            foreach(var credit in snapshot.PaidCredits)
+                body.Children.Add(PresentationControls.Caption("Credits · "+PaidCreditsPresentation.Balance(credit,L)+" · "+QuotaPresentation.Freshness(credit.Freshness,L)));
             foreach(var window in QuotaPresentation.Windows(snapshot,response.EvaluatedAtMs))
             {
                 var title=QuotaPresentation.WindowName(window.LimitId,null,window.HasWindowMinutes?window.WindowMinutes:null,L);

@@ -57,7 +57,8 @@ const (
 	applicationSchemaV36Version = 36
 	applicationSchemaV37Version = 37
 	applicationSchemaV38Version = 38
-	applicationSchemaVersion    = applicationSchemaV38Version
+	applicationSchemaV39Version = 39
+	applicationSchemaVersion    = applicationSchemaV39Version
 )
 
 // ApplicationSchemaVersion 返回当前二进制支持的 schema，不访问数据库。
@@ -381,6 +382,9 @@ var applicationMigrations = []migrationDefinition{
 	{version: applicationSchemaV36Version, name: "dsh-local-facts", checksum: applicationSchemaV36Checksum(), apply: migrateDSHForV36},
 	{version: applicationSchemaV37Version, name: "dsh-session-titles", checksum: applicationSchemaV37Checksum(), apply: migrateDSHTitlesForV37},
 	{version: applicationSchemaV38Version, name: "quota-refresh-server-fence", checksum: applicationSchemaV38Checksum(), apply: migrateQuotaRefreshFenceForV38},
+	{version: applicationSchemaV39Version, name: "codex-paid-credits", checksum: applicationSchemaV39Checksum(), apply: func(ctx context.Context, transaction *gorm.DB) error {
+		return storeschema.EnsureObjects(ctx, transaction, paidCreditSchemaObjects)
+	}},
 }
 
 type sourceFailureMigrationColumn struct {
@@ -1018,6 +1022,7 @@ func verifyApplicationSchema(ctx context.Context, transaction *gorm.DB) error {
 		apiSubscriptionQuotaSchemaObjects,
 		codexSubscriptionSchemaObjects,
 		quotaHistoryAssociationSchemaObjects,
+		paidCreditSchemaObjects,
 	} {
 		for _, object := range objects {
 			exists, err := storeschema.VerifyObject(ctx, transaction, object)

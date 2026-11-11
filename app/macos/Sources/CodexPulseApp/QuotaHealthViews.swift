@@ -333,6 +333,14 @@ private struct QuotaContentView: View {
                 state: paceState,
                 currentWindows: displayWindows
             )
+			if provider == .codex {
+                if response.current.paidCredits.isEmpty {
+                    PaidCreditsCard(credit: .init(), localization: localization)
+                }
+                ForEach(response.current.paidCredits, id: \.limitID) { credit in
+                    PaidCreditsCard(credit: credit, localization: localization)
+                }
+            }
 			if provider == .codex { SectionCard(title: "重置次数") {
                 let credits = response.current.resetCredits
                 KeyValueRow(

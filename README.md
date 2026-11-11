@@ -184,3 +184,11 @@ Start with these documents for more detail:
 ### DSH / DeepSeek Harness
 
 DSH Mac 桌面版默认从 `~/.dsh/sessions` 导入官方 V3/V4 JSONL 和 Zstd 会话，支持现有 Session、项目、模型、缓存、活动、吞吐量、本地工具统计和可选中心上报。Mac 和中心 Web 均保持独立 `dsh` 客户端范围。全部费用以美元展示，按实际模型路由与请求起始时间选价：DeepSeek 使用峰谷 API 公价，`openai-codex` 使用已有 OpenAI Standard 基础文本历史价格。费用为 API 公价估算，桌面账户或 Codex 订阅的实际扣费与官方额度不由日志推定。价格、格式、隐私和早期历史 unknown 边界见 [DSH 设计](docs/design/details/providers/dsh.md)，验证见 [DSH 验证记录](docs/test/dsh-provider.md)。
+
+### Codex Credits 余额与消耗（TOO-702）
+
+原生客户端和中心账号页展示官方 `account/rateLimits/read` 的计费 Credits 余额、观测时间及近 30 天余额历史。余额保留精确小数，未知与 0 分开；无限额、失败后旧值与来源冲突有独立状态。它与 Reset Credits 次数、Token 和美元成本分别展示，多台设备的同一账号余额不相加。
+
+目前已核对的官方 CLI 没有账号实际消耗流水；`account/usage/read` 的 `estimatedUsageCreditsMicros` 是估算，不能替代实际扣费。今日、近 7 天、近 30 天实际消耗显示未知，余额下降不推定为消耗。完整口径见[配额设计](docs/design/details/quota/README.md)，本机验收见[Credits 验收](docs/test/paid-credits.md)。
+
+客户端替换、中心部署及 tag / Release / 更新源的完整步骤见[Credits 上线流程](docs/test/credits-rollout.md)。

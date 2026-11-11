@@ -22,6 +22,9 @@ struct CodexAccountQuotaCard: View {
         VStack(alignment: .leading, spacing: 10) {
             accountSummary
             windowContent
+            ForEach(quota.paidCredits, id: \.limitID) { credit in
+                PaidCreditsCard(credit: credit, localization: localization)
+            }
         }
         .frame(maxWidth: 340, alignment: .leading)
         .accessibilityElement(children: .contain)

@@ -1,0 +1,6 @@
+/* 仅提供 Storybook 标识与组件画布，不覆盖产品样式或 AntD token。 */
+.storybook-banner {display:flex;flex-wrap:wrap;gap:8px 16px;padding:10px 20px;background:#edf4ff;color:#304c76;font-size:12px;}
+.storybook-component {padding:24px;max-width:1200px;margin:auto;}
+.storybook-index {padding:24px;}
+.storybook-index-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px;}
+@media(max-width:767px){.storybook-component,.storybook-index{padding:12px;}}

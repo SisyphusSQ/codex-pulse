@@ -4,6 +4,7 @@ import reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v
 
 // SyncView 只显示当前采集客户端的提交进度，不接受其他客户端ID。
 type SyncView struct {
+	PaidCredits      bool   `json:"paid_credits"`
 	ProtocolVersion  int    `json:"protocol_version"`
 	LastReceivedAtMS *int64 `json:"last_received_at_ms"`
 	Batches          int64  `json:"batches"`

@@ -52,5 +52,6 @@ func (runtime *codexAccountQuotaRuntime) ClearCodexAccountQuotaHistory(
 	return accountquota.ClearReceipt{
 		AccountCount: purged.AccountCount, WindowCount: purged.WindowCount,
 		ObservationCount: purged.ObservationCount, ResetSnapshotCount: purged.ResetSnapshotCount,
+		PaidCreditCount: purged.PaidCreditCount,
 	}, nil
 }

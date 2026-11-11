@@ -131,7 +131,7 @@ func (s *Reporting) Accept(ctx context.Context, p access_dto.Principal, batch re
 		}
 		// Helper 持久队列一批一个 Session；混合批次仍保持既有原子事务语义。
 		deferSnapshot := false
-		if len(batch.Sessions) == 1 && len(batch.Accounts)+len(batch.Bindings)+len(batch.Quotas)+len(batch.Credits)+len(batch.Status)+len(batch.AccountUsage) == 0 {
+		if len(batch.Sessions) == 1 && len(batch.Accounts)+len(batch.Bindings)+len(batch.Quotas)+len(batch.Credits)+len(batch.Status)+len(batch.AccountUsage)+len(batch.PaidCredits) == 0 {
 			part := batch.Sessions[0]
 			deferSnapshot = part.Chunk != nil || len(part.Contributions) >= 1000
 			if !deferSnapshot {
@@ -169,6 +169,9 @@ func (s *Reporting) Accept(ctx context.Context, p access_dto.Principal, batch re
 			}
 		}
 		if err := s.acceptAccountFacts(ctx, p, batch, now); err != nil {
+			return err
+		}
+		if err := s.acceptPaidCredits(ctx, p, batch, now); err != nil {
 			return err
 		}
 		if err := s.acceptAccountTokens(ctx, p, batch, now); err != nil {
@@ -214,7 +217,7 @@ func (s *Reporting) Sync(ctx context.Context, p access_dto.Principal) (reporting
 	if client.RevokedAtMS != nil {
 		return reporting_vo.SyncView{}, utils.ErrUnauthorized
 	}
-	return reporting_vo.SyncView{ProtocolVersion: reportingv1.Version, LastReceivedAtMS: client.LastReceivedAtMS, Batches: batches}, nil
+	return reporting_vo.SyncView{ProtocolVersion: reportingv1.Version, LastReceivedAtMS: client.LastReceivedAtMS, Batches: batches, PaidCredits: true}, nil
 }
 func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, snapshot reportingv1.SessionSnapshot) error {
 	sessionKey := reportingv1.Key(snapshot.Provider, snapshot.SessionID)

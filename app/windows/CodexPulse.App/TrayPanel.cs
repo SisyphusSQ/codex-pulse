@@ -177,6 +177,8 @@ internal sealed class TrayPanel:Window,IDisposable
                 if(value.Provider!="dsh")document.Children.Add(PresentationControls.Text(value.Provider!="codex" || trusted?TrayPresentation.Identity(value.Provider,value.Account,privacy,L):L.Text("正在确认账号；在线额度暂不展示。","Confirming account; online quota withheld.")));
                 if(trusted && value.Quota?.Current is {} quota)
                 {
+                    if(value.Provider=="codex")foreach(var credit in quota.PaidCredits)
+                        document.Children.Add(PresentationControls.Text("Credits · "+PaidCreditsPresentation.Balance(credit,L)+" · "+QuotaPresentation.Freshness(credit.Freshness,L)));
                     foreach(var window in QuotaPresentation.Windows(quota))
                     {
                         var card=new StackPanel{Spacing=6};var name=QuotaPresentation.WindowName(window.LimitId,window.HasLimitName?window.LimitName:null,window.HasWindowMinutes?window.WindowMinutes:null,L);

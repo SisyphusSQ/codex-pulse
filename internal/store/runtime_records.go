@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/creditbalance"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 )
 
@@ -171,6 +172,7 @@ type SourceAttempt struct {
 // QuotaFetchRecord is the atomic persistence unit for one online quota fetch.
 // Observations and attempt metrics contain no response text or credentials.
 type QuotaFetchRecord struct {
+	PaidCredits       []creditbalance.Snapshot
 	AccountScope      string
 	BindingGeneration int64
 	SourceInstanceID  string

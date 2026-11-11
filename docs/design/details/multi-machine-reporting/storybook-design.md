@@ -1,4 +1,19 @@
-# 全站 Storybook 交互设计稿
+# 全站 Storybook 与当前 Web 对齐
+
+## 当前约定（2026-11-11）
+
+用户要求 Storybook 对齐全部当前 Web 样式。`全站设计` 的八个工作台页面及配对页统一使用 `ReviewApp → PulseApp`，保留实际导航、筛选、列表/详情、表单、弹窗及响应式布局；关键状态复用同一页面和正式 `QueryState`。公共组件直接导入 `components/`，订阅页使用正式 `SubscriptionPlans`；历史 Issue 的故事入口也使用当前组件，不再把旧样稿当成产品页面。
+
+主题与样式唯一来源为 `pulseTheme`、AntD reset 和 `styles.css`；`.storybook/preview.css` 仅增加合成数据标识和组件画布留白。旧 `Studio` / `*Design` / `studio.css` 不再由任何活动故事加载，不维护两套页面皮肤。
+
+运行 `npm --prefix server/web run storybook`，打开 [全站概览](http://127.0.0.1:6007/?path=/story/全站设计--overview)。目录包括全站页面、关键状态、公共组件、订阅与模型价目和 Credits；保留既有显式 Story ID。工具栏支持桌面 1440px、平板 768px、窄屏 390px，另有固定窄屏的概览、账号、项目和会话故事。
+
+所有 `/api/` 在故事内由 `reviewApi` 拦截。适配当前 GET/POST 会话恢复/续期、合成配对/退出、当前统计/账号/余额及列表详情 DTO；未知路由返回 501，不透传真实中心。错误场景返回实际错误响应，空场景保持年度总量、余额和列表为空，不用正常数据冒充空态。故事操作仅在当前 iframe 内存生效，刷新重置；不能替代真实服务验收。
+
+验证与入口见[全站对齐验收](../../../test/storybook-current-ui.md)。以下保留 2026-10-03 的设计历史，旧样式、端口和故事数量不再作为当前约定。
+
+## 历史设计记录
+
 
 2026-10-03，Execution [TOO-517](https://linear.app/sisyphus-sq/issue/TOO-517)，上游产品与正式验收仍为 [TOO-477](https://linear.app/sisyphus-sq/issue/TOO-477)。用户已于2026-10-03批准本版设计；TOO-519/520/521/522 已将设计接入正式业务前端并完成聚焦开发验证，整体验收仍在 TOO-477。设计样本不作为真实统计证据。
 

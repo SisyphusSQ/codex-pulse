@@ -13,6 +13,7 @@ public struct AppLaunchConfiguration: Sendable {
     public let helperExecutablePath: String
     public let runtimeDirectory: String
     public let clientVersion: String
+    public let creditsSmoke: Bool
     public let smokeMode: Bool
     public let nativeSurfaceSmoke: Bool
     public let cursorProviderSmoke: Bool
@@ -23,6 +24,7 @@ public struct AppLaunchConfiguration: Sendable {
         runtimeDirectory: String,
         clientVersion: String = AppLaunchConfiguration.productVersion(),
         smokeMode: Bool = false,
+        creditsSmoke: Bool = false,
         nativeSurfaceSmoke: Bool = false,
         cursorProviderSmoke: Bool = true,
         sendLifecycleToHelper: Bool = true
@@ -49,6 +51,7 @@ public struct AppLaunchConfiguration: Sendable {
         self.runtimeDirectory = runtimeDirectory
         self.clientVersion = clientVersion
         self.smokeMode = smokeMode
+        self.creditsSmoke = creditsSmoke
         self.nativeSurfaceSmoke = nativeSurfaceSmoke
         self.cursorProviderSmoke = cursorProviderSmoke
         self.sendLifecycleToHelper = sendLifecycleToHelper
@@ -63,6 +66,7 @@ public struct AppLaunchConfiguration: Sendable {
         var runtimeDirectory: String?
         var clientVersion = productVersion()
         var smokeMode = false
+        var creditsSmoke = false
         var nativeSurfaceSmoke = false
         var cursorProviderSmoke = true
         var sendLifecycle = true
@@ -81,6 +85,10 @@ public struct AppLaunchConfiguration: Sendable {
                 index += 2
             case "--smoke":
                 smokeMode = true
+                index += 1
+            case "--credits-smoke":
+                smokeMode = true
+                creditsSmoke = true
                 index += 1
             case "--ui-smoke":
                 smokeMode = true
@@ -117,6 +125,7 @@ public struct AppLaunchConfiguration: Sendable {
             runtimeDirectory: resolvedRuntime,
             clientVersion: clientVersion,
             smokeMode: smokeMode,
+            creditsSmoke: creditsSmoke,
             nativeSurfaceSmoke: nativeSurfaceSmoke,
             cursorProviderSmoke: cursorProviderSmoke,
             sendLifecycleToHelper: sendLifecycle

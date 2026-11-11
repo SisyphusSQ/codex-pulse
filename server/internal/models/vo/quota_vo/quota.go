@@ -86,10 +86,11 @@ type Credits struct {
 	ExpirySchedule             []CreditExpiry `json:"expiry_schedule"`
 }
 type Response struct {
-	EvaluatedAtMS int64     `json:"evaluated_at_ms"`
-	RuleVersion   string    `json:"rule_version"`
-	Accounts      []Account `json:"accounts"`
-	Windows       []Window  `json:"windows"`
-	Credits       []Credits `json:"credits"`
-	Coverage      string    `json:"coverage"`
+	PaidCredits   []PaidCredit `json:"paid_credits"`
+	EvaluatedAtMS int64        `json:"evaluated_at_ms"`
+	RuleVersion   string       `json:"rule_version"`
+	Accounts      []Account    `json:"accounts"`
+	Windows       []Window     `json:"windows"`
+	Credits       []Credits    `json:"credits"`
+	Coverage      string       `json:"coverage"`
 }

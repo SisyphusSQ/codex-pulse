@@ -26,7 +26,9 @@ export interface QuotaCredits {
  snapshot_available_inventory?:string|null; snapshot_next_expires_at_ms?:number|null;
  next_reset_at_ms:number|null; next_expires_at_ms:number|null; expiry_schedule:{expires_at_ms:number|null; count:string}[];
 }
-export interface QuotaResponse { evaluated_at_ms:number; rule_version:string; accounts:QuotaAccount[]; windows:QuotaWindow[]; credits:QuotaCredits[]; coverage:string }
+export interface PaidCreditPoint { observedAtMs:number; balance?:string; unlimited:boolean }
+export interface PaidCredit { account_key:string; credit:{limitId:string;state:string;balance?:string;hasCredits?:boolean;unlimited?:boolean;observedAtMs:number;checkedAtMs:number;freshness:string;consumptionState:string;history:PaidCreditPoint[]} }
+export interface QuotaResponse { paid_credits?:PaidCredit[]; evaluated_at_ms:number; rule_version:string; accounts:QuotaAccount[]; windows:QuotaWindow[]; credits:QuotaCredits[]; coverage:string }
 export interface PacePoint { observed_at_ms:number; elapsed_percent:number; used_percent:number; remaining_percent:number; linked_history:boolean }
 export interface PaceCycle { id:string; window_start_at_ms:number; resets_at_ms:number; complete:boolean; points:PacePoint[] }
 export interface HistoryBandPoint { elapsed_percent:number; median_remaining:number; minimum_remaining:number; maximum_remaining:number; cycle_count:number }

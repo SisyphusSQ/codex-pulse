@@ -9,6 +9,7 @@ import {SubscriptionPanel} from '../components/SubscriptionPanel';
 import {ObservationFilters} from '../components/ObservationFilters';
 import {percent} from '../components/QuotaViews';
 import { AccountIdentity, CreditsCard, PacePanel } from '../components/QuotaViews';
+import {PaidCreditsCard} from '../components/PaidCreditsCard';
 import { EmptyState, ErrorState, LoadingState } from '../components/QueryState';
 import { dateTime, providerNames, tokens } from '../format';
 
@@ -36,7 +37,7 @@ export function QuotaAccounts(){
  const devices=useQuery({queryKey:['devices','status'],queryFn:({signal})=>getDevices(signal)});
  const data=query.data;
  const groups=data?accountGroups(data):[];
- const group=groups.find(a=>a.key===selectedAccount)??groups.find(a=>a.windows.length||a.credits.length)??groups[0];
+ const group=groups.find(a=>a.key===selectedAccount)??groups.find(a=>a.windows.length||a.credits.length||data?.paid_credits?.some(c=>c.account_key===a.accountKey))??groups[0];
  const selected=group?.windows.find(w=>w.key===selectedKey)??group?.windows[0];
  const pace=useQuery({queryKey:['pace',filter,selected?.key],queryFn:({signal})=>getPace(filter,signal,selected?.key),enabled:Boolean(selected),...polling});
  const selectedPace=pace.data?.windows.find(w=>w.key===selected?.key);
@@ -72,6 +73,7 @@ export function QuotaAccounts(){
     {selectedPace?<PacePanel key={selected.key} window={selectedPace} evaluatedAt={pace.data!.evaluated_at_ms} />:<div className="quiet-empty" role="status">节奏快照中暂无这个窗口，可刷新重读。</div>}
    </>}
   </>}
+  {(query.data?.paid_credits??[]).filter(value=>value.account_key===group.accountKey).map(value=><PaidCreditsCard key={`${value.account_key}:${value.credit.limitId}`} value={value}/>)}
  </Card>}
  </div>}
  </>}

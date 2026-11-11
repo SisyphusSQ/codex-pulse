@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/appserver"
+	"github.com/SisyphusSQ/codex-pulse/internal/creditbalance"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -47,6 +48,7 @@ type Failure struct {
 }
 
 type Result struct {
+	PaidCredits   []creditbalance.Snapshot
 	Observations  []store.QuotaObservationSample
 	Failure       *Failure
 	AttemptCount  int64

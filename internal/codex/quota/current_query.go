@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/creditbalance"
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
@@ -52,6 +53,7 @@ const (
 )
 
 type CurrentResponse struct {
+	PaidCredits   []creditbalance.View       `json:"paidCredits,omitempty"`
 	Version       string                     `json:"version"`
 	AccountScope  string                     `json:"accountScope"`
 	EvaluatedAtMS int64                      `json:"evaluatedAtMs"`
@@ -274,7 +276,8 @@ func mapBoundCurrentResponse(
 		return windows[left].Current.LimitID < windows[right].Current.LimitID
 	})
 	response := CurrentResponse{
-		Version: CurrentContractVersion, AccountScope: snapshot.AccountScope,
+		PaidCredits: snapshot.PaidCredits,
+		Version:     CurrentContractVersion, AccountScope: snapshot.AccountScope,
 		EvaluatedAtMS: evaluatedAtMS, Binding: publishedBinding(snapshot.Binding),
 		Windows: make([]CurrentWindow, 0, len(windows)),
 	}

@@ -1147,6 +1147,17 @@ private struct MenuBarPopoverView: View {
     private func quotaSection(_ overview: OverviewPresentation) -> some View {
         let localization = AppLocalizationRegistry.shared.current
         return VStack(alignment: .leading, spacing: 12) {
+            if overview.provider == .codex {
+                ForEach(overview.paidCredits, id: \.limitID) { credit in
+                    HStack {
+                        Text(credit.freshness == "fresh" ? "Credits" : localization.textValue("Credits（最后观测）"))
+                        Spacer()
+                        Text(PaidCreditsPresentation.balance(credit, localization: localization) + " credits")
+                            .monospacedDigit()
+                    }
+                    .accessibilityIdentifier("popover.credits.balance")
+                }
+            }
             PopoverSectionTitle(
                 title: "配额",
                 systemImage: "gauge.with.dots.needle.67percent",

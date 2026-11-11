@@ -131,3 +131,14 @@ it.each([["0","0"],["12345678","1234.6万"],["1234567890","12.3亿"],[null,"—"
  fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(data));mount();
  const label=await screen.findByText('本周期已记录 Token：');expect(label.parentElement).toHaveTextContent(String(display));
 });
+
+ it('selects a paid-credit-only account without requiring quota or reset facts',async()=>{
+  const data=quotaFixture();data.windows=[];data.credits=[];
+  data.paid_credits=[{account_key:'account-two',credit:{limitId:'codex',state:'known',balance:'0',hasCredits:false,unlimited:false,observedAtMs:data.evaluated_at_ms,freshness:'fresh',checkedAtMs:data.evaluated_at_ms,consumptionState:'source_unavailable',history:[]}}];
+  fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success({...paceFixture(),windows:[]}):success(data));mount();
+  expect(await screen.findByLabelText('Credits 余额与消耗')).toBeInTheDocument();
+  const detail=document.querySelector('.quota-detail') as HTMLElement;
+  expect(within(detail).getByText('原始账号 ID：raw-account-two')).toBeInTheDocument();
+  expect(within(detail).getByText('0',{selector:'.metric-value'})).toBeInTheDocument();
+  expect(within(detail).getByText('官方暂未提供实际消耗统计，余额变化不等于实际扣费。')).toBeInTheDocument();
+ });

@@ -2,6 +2,7 @@ package accountquota
 
 import (
 	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
+	"github.com/SisyphusSQ/codex-pulse/internal/creditbalance"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -20,6 +21,7 @@ type Window struct {
 }
 
 type Account struct {
+	PaidCredits       []creditbalance.View         `json:"paidCredits,omitempty"`
 	Subscription      subscriptionaccounts.Account `json:"subscription"`
 	Windows           []Window                     `json:"windows"`
 	LastCollectedAtMS *int64                       `json:"lastCollectedAtMs,omitempty"`
@@ -37,4 +39,5 @@ type ClearReceipt struct {
 	WindowCount        int64 `json:"windowCount"`
 	ObservationCount   int64 `json:"observationCount"`
 	ResetSnapshotCount int64 `json:"resetSnapshotCount"`
+	PaidCreditCount    int64 `json:"paidCreditCount"`
 }

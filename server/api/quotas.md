@@ -43,3 +43,9 @@ Pace 接受 window_key，当前与历史每周期最多 512 个真实显示点�
 ## TOO-524 用户查询收窄
 
 普通 windows/Credits 查询在 SQL 分组/排名前排除 `account_key IS NULL`。Codex 仅通用 limit：Pro/prolite/pro5x/pro20x 为10080分钟，Plus为300/10080分钟；其他窗口保留但不进入 summary/pace/evidence。维护专用 RawHistory 不能由HTTP指定。Web保留节奏与历史，移除来源证据标签和请求；后台evidence接口保留，支持direction=asc/desc，默认观测时间倒序，先仲裁/排序再分页。
+
+## 计费 Credits 余额
+
+`GET /api/v1/quotas` 增加 `paid_credits` 数组，与既有 Reset Credits 的 `credits` 分开。每项为 `{account_key, credit}`；credit 使用共享 camelCase 字段：`limitId`、`state`、可空 `balance` / `hasCredits` / `unlimited`、`observedAtMs`、`checkedAtMs`、`freshness`、`consumptionState` 和 `history`。history 点为 `{observedAtMs, balance?, unlimited}`，每天最后有效 UTC 观测，近 30 天缺口不补值。余额为精确十进制字符串，客户端只格式化。
+
+账号、provider、设备筛选均在选样前生效；不同账号/bucket 分开，三台机器的相同账号余额只选原始时间最新值，不求和。同时间不同值为 conflict，余额未知；超过十分钟为 stale。`consumptionState=source_unavailable` 时今日/7天/30天实际消耗保持未知。Web 显示观测时间与历史，不从余额差分推定扣费，不将 Token 价格或 Reset 次数混入余额。

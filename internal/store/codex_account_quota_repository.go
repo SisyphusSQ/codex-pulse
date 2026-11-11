@@ -41,6 +41,11 @@ func (repository *Repository) CodexAccountQuotaRecords(
 					DetectedAccountID: detected.DetectedAccountID,
 					Windows:           windows,
 				})
+				credits, err := readPaidCredits(ctx, transaction, detected.AccountScope, evaluatedAtMS)
+				if err != nil {
+					return err
+				}
+				records.Accounts[len(records.Accounts)-1].PaidCredits = credits
 			}
 			return nil
 		})
@@ -126,12 +131,13 @@ func (repository *Repository) ClearHistoricalCodexAccountQuota(
 			if err != nil {
 				return err
 			}
-			if purged.WindowCount+purged.ObservationCount+purged.ResetSnapshotCount > 0 {
+			if purged.WindowCount+purged.ObservationCount+purged.ResetSnapshotCount+purged.PaidCreditCount > 0 {
 				result.AccountCount++
 			}
 			result.WindowCount += purged.WindowCount
 			result.ObservationCount += purged.ObservationCount
 			result.ResetSnapshotCount += purged.ResetSnapshotCount
+			result.PaidCreditCount += purged.PaidCreditCount
 		}
 		return nil
 	})
@@ -159,6 +165,10 @@ func purgeCodexAccountQuotaFacts(
 		Where("account_scope = ?", accountScope).Count(&result.ResetSnapshotCount).Error; err != nil {
 		return CodexAccountQuotaPurgeResult{}, err
 	}
+	if err := database.WithContext(ctx).Model(&paidCreditModel{}).
+		Where("account_scope = ?", accountScope).Count(&result.PaidCreditCount).Error; err != nil {
+		return CodexAccountQuotaPurgeResult{}, err
+	}
 	for _, deletion := range []struct {
 		model any
 	}{
@@ -166,6 +176,7 @@ func purgeCodexAccountQuotaFacts(
 		{model: &quotaCurrentModel{}},
 		{model: &quotaObservationModel{}},
 		{model: &resetCreditsSnapshotModel{}},
+		{model: &paidCreditModel{}},
 	} {
 		if err := database.WithContext(ctx).Where("account_scope = ?", accountScope).
 			Delete(deletion.model).Error; err != nil {

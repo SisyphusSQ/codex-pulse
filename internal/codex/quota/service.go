@@ -107,6 +107,7 @@ func quotaFetchRecord(request BoundRefreshRequest, result Result) store.QuotaFet
 		SourceInstanceID:  sourceInstanceID,
 		SourceType:        store.QuotaSourceTypeAppServerRateLimits, ScopeKey: request.Binding.AccountScope,
 		Attempt: attempt, Observations: append([]store.QuotaObservationSample(nil), result.Observations...),
+		PaidCredits: result.PaidCredits,
 	}
 }
 

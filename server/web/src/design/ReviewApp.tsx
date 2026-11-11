@@ -4,7 +4,7 @@ import {api} from '../api/client';
 import {installReviewApi} from './reviewApi';
 import type {ReviewScenario} from './reviewFixtures';
 
-export function ReviewApp({initialPath='/',scenario='expired',ticket='TOO-523'}:{initialPath?:string;scenario?:ReviewScenario;ticket?:string}) {
+export function ReviewApp({initialPath='/',scenario='current',ticket}:{initialPath?:string;scenario?:ReviewScenario;ticket?:string}) {
  const [client]=useState(createQueryClient);
  const [ready,setReady]=useState(false);
  useEffect(()=>{
@@ -14,5 +14,5 @@ export function ReviewApp({initialPath='/',scenario='expired',ticket='TOO-523'}:
   setReady(true);
   return ()=>{setReady(false);client.clear();api.setSession(null);restore();location.hash=hash;};
  },[client,initialPath,scenario]);
- return <div className="ds-live-review"><div className="ds-review-banner"><strong>{ticket} · 当前实现预览</strong><span>全部统计与账号为合成样本 · 操作只在当前故事内存中生效</span><a href={ticket==='TOO-530'?'/?path=/story/too-530-query-feedback--current':ticket==='TOO-524'?'/?path=/story/too-524-center-overview--today':'/?path=/story/too-523-updates--index'}>查看本轮改动目录</a></div>{ready&&<PulseApp queryClient={client}/>}</div>;
+ return <div className="storybook-review"><div className="storybook-banner"><strong>{ticket?`${ticket} · `:''}当前 Web 实现</strong><span>复用实际页面、主题与样式 · 合成数据 · 操作仅在当前故事内存生效</span></div>{ready&&<PulseApp key={`${initialPath}:${scenario}`} queryClient={client}/>}</div>;
 }

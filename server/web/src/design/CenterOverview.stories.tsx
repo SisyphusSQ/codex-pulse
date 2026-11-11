@@ -10,6 +10,6 @@ export const Projects:Story={name:'04 项目采集机器',args:{initialPath:'/pr
 export const Sessions:Story={name:'05 会话来源 · 无工具技能',args:{initialPath:'/sessions'}};
 export const Unknown:Story={name:'06 未取得用量',args:{scenario:'empty'}};
 export const Error:Story={name:'07 接口失败与重试',args:{scenario:'error'}};
-export const Mobile:Story={name:'08 窄屏概览',parameters:{viewport:{defaultViewport:'mobile1'}}};
+export const Mobile:Story={name:'08 窄屏概览',globals:{viewport:{value:'mobile',isRotated:false}}};
 
 export const Authorizations:Story={name:'09 APP 与管理浏览器授权',args:{initialPath:'/devices'}};

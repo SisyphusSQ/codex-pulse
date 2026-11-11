@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/SisyphusSQ/codex-pulse/internal/creditbalance"
 	"github.com/SisyphusSQ/codex-pulse/internal/diagnostics"
 	"github.com/SisyphusSQ/codex-pulse/internal/runtimeclock"
 )
@@ -33,6 +34,7 @@ type RateLimitWindow struct {
 }
 
 type RateLimitSnapshot struct {
+	PaidCredits         creditbalance.Snapshot
 	LimitID             *string
 	LimitName           *string
 	PlanType            *string
@@ -73,6 +75,7 @@ type rateLimitWindowWire struct {
 }
 
 type rateLimitSnapshotWire struct {
+	Credits             json.RawMessage      `json:"credits"`
 	LimitID             *string              `json:"limitId"`
 	LimitName           *string              `json:"limitName"`
 	PlanType            *string              `json:"planType"`
@@ -272,6 +275,7 @@ func normalizeRateLimitSnapshot(wire rateLimitSnapshotWire, expectedLimitID stri
 		return RateLimitSnapshot{}, err
 	}
 	return RateLimitSnapshot{
+		PaidCredits:         creditbalance.Decode(wire.Credits, creditLimitID(limitID)),
 		LimitID:             limitID,
 		LimitName:           limitName,
 		PlanType:            planType,
@@ -279,6 +283,13 @@ func normalizeRateLimitSnapshot(wire rateLimitSnapshotWire, expectedLimitID stri
 		Secondary:           secondary,
 		SpendControlReached: cloneOptionalBool(wire.SpendControlReached),
 	}, nil
+}
+
+func creditLimitID(id *string) string {
+	if id == nil {
+		return "codex"
+	}
+	return *id
 }
 
 func normalizeRateLimitWindow(wire *rateLimitWindowWire) (*RateLimitWindow, error) {

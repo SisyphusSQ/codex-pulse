@@ -383,6 +383,20 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 		}
 	}
 	providers := []string{"codex", "cursor", "grok", "dsh"}
+	if source, ok := r.source.(interface {
+		PaidCreditFacts(context.Context, int64) ([]FactsGroup, error)
+	}); ok {
+		supported, err := client.supportsPaidCredits(ctx, cfg.Credential)
+		if err == nil && supported {
+			groups, e := source.PaidCreditFacts(ctx, cfg.HistoryStartAtMS)
+			if e == nil {
+				_, e = r.state.EnqueueFactGroups(ctx, cfg.partition(), groups, -2)
+			}
+			record("codex", e)
+		} else if err != nil {
+			record("codex", err)
+		}
+	}
 	if current, ok := r.source.(interface {
 		CurrentFacts(context.Context, string, int64) (ExportFactsPage, error)
 	}); ok {

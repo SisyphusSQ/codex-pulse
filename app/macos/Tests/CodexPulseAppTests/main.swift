@@ -13622,6 +13622,11 @@ private func testQuotaRefreshFailurePresentation() throws {
 @main
 struct CodexPulseAppTestMain {
     static func main() async throws {
+        if CommandLine.arguments.contains("--credits-only") {
+            try testPaidCreditsPresentation()
+            print("CodexPulseApp Credits presentation tests passed")
+            return
+        }
         if CommandLine.arguments.contains("--reporting-only") {
             try await testReportingSettingsSafetyAndLateRead()
             print("CodexPulseApp reporting settings tests passed")
@@ -13693,6 +13698,7 @@ struct CodexPulseAppTestMain {
         try testUsageTrendChartPresentationAdaptsRangeAndDensity()
         try testSessionTrendPresentationAdaptsGranularityAndReportingTimezone()
         try testSessionThroughputPresentation()
+        try testPaidCreditsPresentation()
         try testSessionAndProjectDetailsShareResponsiveThirdWidthSplit()
         try testSessionCacheHitRatePresentation()
         try await testFeatureRefreshRetainsNativeContentIdentity()
@@ -14023,4 +14029,15 @@ private func testSessionThroughputPresentation() throws {
     guard SessionThroughputPresentation(stats).rateText == "--", SessionThroughputPresentation(nil).rateText == "--" else {
         throw TestFailure.mismatch("Missing TPS cannot be displayed as zero")
     }
+}
+
+private func testPaidCreditsPresentation() throws {
+    let config = try AppLaunchConfiguration.parse(arguments: ["test", "--helper", "/usr/bin/true", "--runtime-directory", "/private/tmp/cp-credit-test", "--credits-smoke"])
+    try expect(config.creditsSmoke && config.smokeMode && !config.nativeSurfaceSmoke, "Focused Credits smoke stays in background")
+    let l = AppLocalization.englishUS
+    try expect(PaidCreditsPresentation.amount("62500", localization: l) == "62,500", "Official Credits balance uses grouping")
+    try expect(PaidCreditsPresentation.amount("9007199254740993.000000000000000001", localization: l) == "9,007,199,254,740,993.000000000000000001", "Exact Credits precision must survive formatting")
+    try expect(PaidCreditsPresentation.amount("0", localization: l) == "0", "Observed zero is retained")
+    try expect(PaidCreditsPresentation.amount(nil, localization: l) == "--", "Missing balance is unknown")
+    try expect(PaidCreditsPresentation.amount(nil, unlimited: true, localization: l) == "Unlimited", "Unlimited has no numeric sentinel")
 }

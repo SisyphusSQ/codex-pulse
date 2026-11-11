@@ -1,6 +1,9 @@
 package store
 
-import "github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
+import (
+	"github.com/SisyphusSQ/codex-pulse/internal/codex/subscriptionaccounts"
+	"github.com/SisyphusSQ/codex-pulse/internal/creditbalance"
+)
 
 type CodexAccountFence struct {
 	AccountScope      string
@@ -24,6 +27,7 @@ type CodexSubscriptionLinkRequest = subscriptionaccounts.LinkRequest
 type CodexSubscriptionUnlinkRequest = subscriptionaccounts.UnlinkRequest
 
 type CodexDetectedAccountQuotaRecord struct {
+	PaidCredits       []creditbalance.View
 	DetectedAccountID string
 	Windows           []QuotaCurrent
 }
@@ -38,4 +42,5 @@ type CodexAccountQuotaPurgeResult struct {
 	WindowCount        int64
 	ObservationCount   int64
 	ResetSnapshotCount int64
+	PaidCreditCount    int64
 }

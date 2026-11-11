@@ -27,3 +27,7 @@ TOO-529 的 v5 SQL 已纳入明确计划版本 [v0.15.3](../releases/v0.15.3/REA
 TOO-582：2026-10-13 私有生产 MySQL 兼容协议环境已执行 v5→v6 并读回版本/摘要，旧分片正常续传；见[验收摘要](../../test/reporting-publications-2026-10-13.md)。正式版本归档与独立 MySQL 8.4 验收仍未执行。
 
 TOO-697 schema v7 查询索引已归档至 [v0.17.3](../releases/v0.17.3/README.md)，实际执行证据与 SQL 归档分开记录。
+
+TOO-702：未发布结构 v8 的唯一 DDL 为 [MySQL](../schema/v8_mysql.sql) / [SQLite](../schema/v8_sqlite.sql)，不复制第二份 SQL。仅追加官方计费余额事实及索引，SQLite 升级/重入/历史保留和本机真实上报已验证；MySQL、生产和正式版本归档未执行。验收见[Credits](../../../../docs/test/paid-credits.md)。
+
+TOO-702 已纳入目标版本 [v0.18.0](../releases/v0.18.0/README.md) 的 v8 SQL 档案；此前基于旧 main 的 v7 草案不覆盖已发布 v7。

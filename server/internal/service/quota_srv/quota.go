@@ -50,6 +50,11 @@ func (s *Quota) current(ctx context.Context, principal access_dto.Principal, q q
 	}
 	out = quota_vo.Response{EvaluatedAtMS: s.now().UnixMilli(), RuleVersion: "center-quota-v1/" + store.DefaultQuotaArbitrationRule().Version, Accounts: []quota_vo.Account{}, Windows: []quota_vo.Window{}, Credits: []quota_vo.Credits{}, Coverage: "observed_only"}
 	err = s.repository.Snapshot(ctx, func(ctx context.Context) error {
+		var err error
+		out.PaidCredits, err = s.paidCredits(ctx, q, out.EvaluatedAtMS)
+		if err != nil {
+			return err
+		}
 		accounts, err := s.repository.Accounts(ctx, q)
 		if err != nil {
 			return err
