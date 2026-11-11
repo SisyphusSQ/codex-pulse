@@ -2,7 +2,7 @@
 
 2026-11-11。适用 TOO-702 及本轮 Web/Storybook 调整。本文是待执行的上线流程，本轮仅完成开发产物构建，没有提交、打 tag、创建 Release、替换安装版或部署中心。文中尖括号参数和示例绝对路径均须按现场替换，不能原样执行。
 
-## 已确认的当前状态
+## 准备阶段快照（实际发布状态以 Release 为准）
 
 - 正式 `server/web/src/pages/Quota.tsx` 已把计费 Credits 放到节奏/用量图区块之后；Storybook 复用该页面，不维护另一份布局。
 - `make -C server build` 已成功，`server/web/dist` 及内嵌 Web 的 `server/bin/codex-pulse-server` 已更新；版本为 `dev-d15da7f-dirty`，属于本机开发产物，不能冒充正式发布候选。
