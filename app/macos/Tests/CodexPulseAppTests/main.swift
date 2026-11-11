@@ -14036,7 +14036,10 @@ private func testPaidCreditsPresentation() throws {
     try expect(config.creditsSmoke && config.smokeMode && !config.nativeSurfaceSmoke, "Focused Credits smoke stays in background")
     let l = AppLocalization.englishUS
     try expect(PaidCreditsPresentation.amount("62500", localization: l) == "62,500", "Official Credits balance uses grouping")
-    try expect(PaidCreditsPresentation.amount("9007199254740993.000000000000000001", localization: l) == "9,007,199,254,740,993.000000000000000001", "Exact Credits precision must survive formatting")
+    try expect(PaidCreditsPresentation.amount("62500.0000000000", localization: l) == "62,500", "Credits hide trailing fractional zeroes")
+    try expect(PaidCreditsPresentation.amount("62500.9999999999", localization: l) == "62,500", "Credits never round available balance up")
+    try expect(PaidCreditsPresentation.amount("9007199254740993.000000000000000001", localization: l) == "9,007,199,254,740,993", "Large integer Credits retain exact precision")
+    try expect(PaidCreditsPresentation.amount("0.999", localization: l) == "0", "Sub-credit balances display whole credits")
     try expect(PaidCreditsPresentation.amount("0", localization: l) == "0", "Observed zero is retained")
     try expect(PaidCreditsPresentation.amount(nil, localization: l) == "--", "Missing balance is unknown")
     try expect(PaidCreditsPresentation.amount(nil, unlimited: true, localization: l) == "Unlimited", "Unlimited has no numeric sentinel")

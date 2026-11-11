@@ -19,6 +19,8 @@ internal static class QuotaTests
     public static async Task Run()
     {
         var l=new Localization();l.Set("zh-CN");
+        Require(PaidCreditsPresentation.Amount("62500.0000000000",false,l)=="62,500" && PaidCreditsPresentation.Amount("62500.9999999999",false,l)=="62,500","Credits display whole available units without rounding up");
+        Require(PaidCreditsPresentation.Amount("9007199254740993.000000000000000001",false,l)=="9,007,199,254,740,993" && PaidCreditsPresentation.Amount("0.999",false,l)=="0","Credits retain large integer precision and truncate fractions");
         var binding=new CodexAccountBinding{State="confirmed",AccountScope="private-test-scope",BindingGeneration=7};
         Require(QuotaPresentation.SameAccount(binding,binding.Clone()) && !QuotaPresentation.SameAccount(binding,withGeneration(8)),"quota identity requires confirmed scope and generation");
         Require(!QuotaPresentation.SameAccount(binding,new(){State="pending",AccountScope=binding.AccountScope,BindingGeneration=7}),"pending identity cannot reuse previous quota");

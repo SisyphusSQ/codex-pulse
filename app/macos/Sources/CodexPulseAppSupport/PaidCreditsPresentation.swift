@@ -17,8 +17,7 @@ public enum PaidCreditsPresentation {
             groups.append(String(integer[start..<end]))
             end = start
         }
-        let fraction = parts.count > 1 ? (formatter.decimalSeparator ?? ".") + parts[1] : ""
-        return groups.reversed().joined(separator: separator) + fraction
+        return groups.reversed().joined(separator: separator)
     }
 
     public static func balance(_ credit: Codexpulse_Core_V1_PaidCredits, localization: AppLocalization) -> String {

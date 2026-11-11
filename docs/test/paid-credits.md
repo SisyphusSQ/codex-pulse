@@ -1,5 +1,9 @@
 # TOO-702 Credits 余额与消耗验收
 
+## v0.18.1 整数显示修正
+
+余额及历史记录仅在展示层省略小数，保留千位分隔且不向上取整；Helper、契约、存储和上报仍使用原始精确字符串。本次开发阶段 Web 余额组件 2 项测试、Swift `--credits-only` 测试通过；后台 Storybook 已查看带小数夹具的余额与展开历史，均显示整数。Windows 同步源码及断言，本轮不构建、不发布、不替换。以下为 v0.18.0 开发阶段的历史证据，不能当作本补丁重新执行的结果。
+
 2026-11-11，本机开发分支 `suqing/too-702-credits-balance`。范围为官方计费 Credits 余额、观测历史及实际消耗的可用状态。设计见[配额信任模型](../design/details/quota/README.md)，网络字段见[上报合同](../../api/codexpulse/reporting/v1/README.md)及[中心 API](../../server/api/quotas.md)。未提交、推送、发版或部署生产。
 
 ## 数据语义
