@@ -52,13 +52,13 @@ export function reviewQuota(scenario:ReviewScenario) {
  q.evaluated_at_ms=reviewNow;
  q.paid_credits=[{account_key:q.accounts[0].key,credit:{
   limitId:'codex',state:scenario==='unknown'?'unavailable':'known',
-  ...(scenario==='unknown'||scenario==='conflict'?{}:{balance:'62500',hasCredits:true,unlimited:false}),
+  ...(scenario==='unknown'||scenario==='conflict'?{}:{balance:'62500.0000000000',hasCredits:true,unlimited:false}),
   observedAtMs:scenario==='unknown'?0:reviewNow,checkedAtMs:reviewNow,
   freshness:scenario==='unknown'?'unknown':scenario==='conflict'?'conflict':scenario==='current'?'fresh':'stale',
   consumptionState:'source_unavailable',history:scenario==='unknown'?[]:[
-   {observedAtMs:reviewNow-2*86400000,balance:'65000',unlimited:false},
-   {observedAtMs:reviewNow-86400000,balance:'64000',unlimited:false},
-   {observedAtMs:reviewNow,...(scenario==='conflict'?{}:{balance:'62500'}),unlimited:false},
+   {observedAtMs:reviewNow-2*86400000,balance:'65000.875',unlimited:false},
+   {observedAtMs:reviewNow-86400000,balance:'64000.0000000000',unlimited:false},
+   {observedAtMs:reviewNow,...(scenario==='conflict'?{}:{balance:'62500.0000000000'}),unlimited:false},
   ],
  }}];
  const w=q.windows[0];

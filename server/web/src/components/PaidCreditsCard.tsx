@@ -5,8 +5,8 @@ import {dateTime} from '../format';
 export function creditAmount(value?:string,unlimited=false):string {
  if(unlimited)return '无限额';
  if(value===undefined||!/^(0|[1-9][0-9]*)(\.[0-9]+)?$/.test(value))return '—';
- const [integer,fraction]=value.split('.');
- return BigInt(integer).toLocaleString('zh-CN')+(fraction===undefined?'':`.${fraction}`);
+ const [integer]=value.split('.');
+ return BigInt(integer).toLocaleString('zh-CN');
 }
 
 export function PaidCreditsCard({value}:{value:PaidCredit}) {
