@@ -15,14 +15,13 @@ type Preferences interface {
 	LoadPreferences(context.Context) (preferences.Snapshot, error)
 }
 type Exporter struct {
-	repository   *store.Repository
-	preferences  Preferences
-	state        *State
-	identities   AccountIdentitySource
-	usageEpoch   accountUsageEpoch
-	usagePending *accountUsageEpoch
-	startedAtMS  int64
-	now          func() time.Time
+	repository  *store.Repository
+	preferences Preferences
+	state       *State
+	identities  AccountIdentitySource
+	usageEpoch  accountUsageEpoch
+	startedAtMS int64
+	now         func() time.Time
 }
 
 func NewExporter(repository *store.Repository, prefs Preferences, state *State, identities ...AccountIdentitySource) *Exporter {
@@ -56,6 +55,11 @@ func (e *Exporter) source(ctx context.Context, provider string, start int64) (st
 		s.Path = h.Path
 		s.DeviceID = h.DeviceID
 		s.Inode = h.Inode
+		s.HomeConfirmedAtMS = h.ConfirmedAtMS
+		s.HomeGeneration = prefs.CodexHome.Generation
+		if prefs.LastSwitch != nil {
+			s.HomeConfirmedAtMS = max(s.HomeConfirmedAtMS, prefs.LastSwitch.FinishedAtMS)
+		}
 		s.HomeID = e.state.HomeID("codex-home", h.Path, h.DeviceID, strconv.FormatInt(h.Inode, 10))
 	case "cursor":
 		intent = prefs.Providers.Cursor.Intent

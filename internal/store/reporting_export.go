@@ -27,6 +27,8 @@ type ReportingSource struct {
 	Inode                             int64
 	StartAtMS                         int64
 	RecentAfterMS                     int64
+	HomeConfirmedAtMS                 int64
+	HomeGeneration                    uint64
 }
 
 // ReportingPage 在一致的只读事务内导出当前活动代，不读取源文件或认证文件。
