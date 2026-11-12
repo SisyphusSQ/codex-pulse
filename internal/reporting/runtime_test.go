@@ -61,6 +61,55 @@ func waitStatus(t *testing.T, r *Runtime, want func(Status) bool) Status {
 	return Status{}
 }
 
+type paidCreditProbeSource struct{ fakeSource }
+
+func (*paidCreditProbeSource) PaidCreditFacts(context.Context, int64) ([]FactsGroup, error) {
+	return nil, nil
+}
+
+func TestPaidCreditCapabilityFailureRetriesWithoutRejectingDeviceStatus(t *testing.T) {
+	state, _ := testState(t)
+	var unavailable atomic.Bool
+	unavailable.Store(true)
+	var sessionSent atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/api/v1/sync" {
+			if unavailable.Load() {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			_, _ = io.WriteString(w, `{"code":200,"data":{"paid_credits":true}}`)
+			return
+		}
+		var batch reportingv1.Batch
+		if err := json.NewDecoder(req.Body).Decode(&batch); err != nil {
+			t.Error(err)
+			return
+		}
+		if err := batch.Validate(); err != nil {
+			t.Error("invalid batch", err)
+			return
+		}
+		if len(batch.Sessions) > 0 {
+			sessionSent.Store(true)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": reportingv1.Receipt{Version: 1, BatchID: batch.ID, ReceivedAtMS: 3000}})
+	}))
+	defer server.Close()
+	cfg := credentialSettings{ID: 1, Endpoint: server.URL, ClientID: "collector", Credential: "synthetic", Enabled: true, AllowHTTP: true, IntervalSeconds: 60, State: "ready"}
+	if err := state.saveSettings(t.Context(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	runtime := Start(state, &paidCreditProbeSource{})
+	defer runtime.Close(context.Background())
+	failed := waitStatus(t, runtime, func(s Status) bool { return s.State == "offline" || s.State == "protocol_rejected" })
+	if failed.State != "offline" || failed.PendingBatches != 0 || !sessionSent.Load() {
+		t.Fatalf("capability failure blocked valid session uploads: state=%s pending=%d sent=%v", failed.State, failed.PendingBatches, sessionSent.Load())
+	}
+	unavailable.Store(false)
+	waitStatus(t, runtime, func(s Status) bool { return s.State == "ready" || s.State == "partial" })
+}
+
 func TestSyncNowExplicitlyRetriesProtocolRejectionWithoutChangingQueuedBody(t *testing.T) {
 	state, _ := testState(t)
 	var requests atomic.Int32
