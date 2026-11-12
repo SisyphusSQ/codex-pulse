@@ -394,7 +394,8 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 			}
 			record("codex", e)
 		} else if err != nil {
-			record("codex", err)
+			// 能力查询的连接和鉴权错误属于中心连接，不能写进 Provider 的协议状态。
+			returnErr = err
 		}
 	}
 	if current, ok := r.source.(interface {
