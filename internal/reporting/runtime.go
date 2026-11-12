@@ -419,17 +419,10 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 		return false, err
 	}
 	if usage, ok := r.source.(interface {
-		AccountUsage(context.Context) ([]FactsGroup, error)
+		ExportAccountUsage(context.Context, string, int64) (bool, error)
 	}); ok {
-		groups, err := usage.AccountUsage(ctx)
-		if err == nil {
-			_, err = r.state.EnqueueFactGroups(ctx, cfg.partition(), groups, -1)
-			if err == nil {
-				if committed, ok := r.source.(interface{ CommitAccountUsage() }); ok {
-					committed.CommitAccountUsage()
-				}
-			}
-		}
+		more, err := usage.ExportAccountUsage(ctx, cfg.partition(), cfg.HistoryStartAtMS)
+		again = again || more
 		if !errors.Is(err, store.ErrReportingSource) {
 			record("codex", err)
 		}

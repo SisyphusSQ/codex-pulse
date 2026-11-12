@@ -1,6 +1,6 @@
 # 当前账号额度周期已记录 Token
 
-归属 [TOO-529](https://linear.app/sisyphus-sq/issue/TOO-529)，计划交付 v0.15.3。
+功能起源见 [TOO-529](https://linear.app/sisyphus-sq/issue/TOO-529)，断线与重启补传见 [TOO-705](https://linear.app/sisyphus-sq/issue/TOO-705)。
 
 中心账号页的 Codex 7 天额度卡展示“本周期已记录 Token”，采用现有万/亿格式。数值是可确认的新消费记录，不等于官方额度使用量，也不能反推出使用百分比。当前自然周不是统计边界；使用可信周额度 reset 减去真实 10080 分钟确定起点。
 
@@ -8,7 +8,7 @@
 
 Go Helper 复用已运行账号 owner 的 typed account/read 与额度读取所确认的原始 Account ID 和绑定 generation。不读取认证文件，不上传凭据，不让 Swift 复制解析或业务口径。Swift 和 Helper 仍随同一 App Bundle 发布，CoreService contract 无需改变。
 
-启动后第一次确认、换 Home、账号 binding generation 变化时建立新的观察边界，仅纳入边界之后可确认的新事实。旧会话第一条 delta 可能跨越切换边界，缺少可靠前端点时跳过；新会话可纳入首次消费。缺少时间、计数、身份或当前真实周窗口时直接不产生账号消费记录。App 关闭期间尚未记录的消费不补归账号；已有不可变 outbox 照常续传。A→B→A 分别增加 A、B 的当前周期记录；不会把同一 Home 的旧消费全部归给最后登录账号。
+启动后第一次确认、换 Home、账号 binding generation 变化时建立实时观察边界。重启后可通过已完成的可信周额度请求恢复同一绑定代次的首末观测区间，包括升级前已有的请求。观测区间以当前 Home 确认、上报历史起点与实际周窗口为限，代次之间的空档和彼此重叠的区间不参与归属。旧会话的增量前端点与终点须同属一个确认区间。新会话的首次增量使用会话创建时间作为前端点。缺少时间、计数、身份或有效当前窗口时跳过。A→B→A 的三个区间独立验证，已生成的不可变 outbox 照常续传。
 
 候选会话按活动 Token 索引代中的实际消费时间筛选，不依赖 App Server 的会话 recency；长时间运行的旧会话即使 recency 停滞或缺失，也必须继续统计。筛选会话后仍完整导出事实，用边界前端点判定可归属增量，并保持重复 ordinal 和全局事实 ID 不变。未激活的扫描代不能用于近期筛选。
 
@@ -18,7 +18,7 @@ Go Helper 复用已运行账号 owner 的 typed account/read 与额度读取所�
 
 reporting v1 新增可选 account_usage：account_id、安装作用域 local_scope、真实周期起止、采集时间和最多 1000 条结构化 Token 事实。每条包含既有 Session ID、观测时间、原整数 input/cached/output/reasoning/total 和重复 ordinal；无会话标题、正文、文件路径、模型或价格。total 保持现有 input+output+reasoning，缓存包含在输入中，不再累加缓存。
 
-事实 ID 复用既有 ContributionID，不包含账号、设备、Home 或本地索引 generation。同一事实多设备补传只计一次，不同事实求和；已存在事实试图换账号返回冲突，整个上报事务回滚。账号 binding 和事实同批携带，队列持久成功后才推进近期游标。优先队列独立于全历史快照游标，失败重试保留原正文。
+事实 ID 复用既有 ContributionID，不包含账号、设备、Home 或本地索引 generation。同一事实多设备补传只计一次，不同事实求和；已存在事实试图换账号返回冲突，整个上报事务回滚。账号 binding 和事实同批携带，队列持久成功后才推进按中心与 Home 隔离的持久游标。扫到末页后从头再扫，捕获后来建立索引的旧消费。优先队列独立于全历史快照游标，失败重试保留原正文。
 
 ## 中心与展示
 
