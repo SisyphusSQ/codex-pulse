@@ -12,6 +12,51 @@ import (
 	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
 )
 
+func TestReportingFreshnessAdvancesForUnchangedScanPass(t *testing.T) {
+	for _, complete := range []bool{false, true} {
+		name, wantStatus := "partial", "partial"
+		if complete {
+			name, wantStatus = "complete", "ready"
+		}
+		t.Run(name, func(t *testing.T) {
+			repo := lightIndexRepositoryFixture(t)
+			ctx := t.Context()
+			identity := lightRolloutFixture()
+			if complete {
+				generation, err := repo.StartLightTokenRebuild(ctx, "one", identity, "parser-v1", 1_500)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := repo.CommitLightTokenBatch(ctx, storelight.LightTokenBatch{
+					SessionID: "one", Generation: generation, UpdatedAtMS: 1_600, Activate: true,
+					Checkpoint: storelight.LightTokenCheckpoint{DurableOffset: identity.SizeBytes, Complete: true},
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := repo.FinishLightScanPass(ctx, identity.Home, 2_000); err != nil {
+				t.Fatal(err)
+			}
+			before, err := repo.LightIndexState(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if changed, err := repo.FinishLightScanPass(ctx, identity.Home, 3_000); err != nil || changed {
+				t.Fatalf("unchanged scan invalidated data: changed=%t, err=%v", changed, err)
+			}
+			after, err := repo.LightIndexState(ctx)
+			if err != nil || after.TokenScanFinishedAtMS == nil || *after.TokenScanFinishedAtMS != 3_000 || after.UpdatedAtMS != before.UpdatedAtMS {
+				t.Fatalf("scan freshness or data revision: %+v, %v", after, err)
+			}
+			source := ReportingSource{HomeID: "private-home", Path: identity.Home.Path, DeviceID: identity.Home.DeviceID, Inode: identity.Home.Inode}
+			status, err := repo.coreTestRepository.Repository.ReportingStatus(ctx, "codex", source)
+			if err != nil || status.Status != wantStatus || status.CollectedAtMS == nil || *status.CollectedAtMS != 3_000 {
+				t.Fatalf("reporting freshness: %+v, %v", status, err)
+			}
+		})
+	}
+}
+
 func TestReportingExportKeepsReasoningPricingAndExcludesLocalPaths(t *testing.T) {
 	repo := lightIndexRepositoryFixture(t)
 	ctx := t.Context()

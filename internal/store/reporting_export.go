@@ -471,6 +471,7 @@ func (r *Repository) ReportingStatus(ctx context.Context, provider string, sourc
 				UpdatedAtMS            int64
 				TokenScanState         string
 				MetadataReadyAtMS      *int64
+				TokenScanFinishedAtMS  *int64
 			}
 			result := db.Table("light_index_state").Take(&state)
 			if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -483,6 +484,9 @@ func (r *Repository) ReportingStatus(ctx context.Context, provider string, sourc
 				return nil
 			}
 			status.CollectedAtMS = &state.UpdatedAtMS
+			if state.TokenScanFinishedAtMS != nil {
+				status.CollectedAtMS = new(max(state.UpdatedAtMS, *state.TokenScanFinishedAtMS))
+			}
 			status.Status = "partial"
 			if state.TokenScanState == "complete" {
 				status.Status = "ready"
