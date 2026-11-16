@@ -1,5 +1,15 @@
 # 分片续传与后台发布验证
 
+## TOO-711 无变化扫描的新鲜度（2026-11-16）
+
+网络上报成功与采集新鲜度分别判断。轻量索引每轮实际扫描结束后更新 `token_scan_finished_at_ms`，包括覆盖状态不变的 `complete` / `partial`；仅更新时间不推进数据版本、不触发索引失效，不改写 Session 用量与覆盖。设备状态导出取扫描完成时间与数据更新时间的较新者。未完成或中断的扫描不刷新完成时间。
+
+开发回归 `TestReportingFreshnessAdvancesForUnchangedScanPass` 先复现后通过，覆盖完整和部分覆盖的无变化扫描、数据版本与失效标记保持不变，以及设备状态的采集时间。`go test ./internal/store -run '^TestReporting' -count=1` 与 `go test ./internal/reporting -count=1` 通过。
+
+采集包整包未通过：`TestRuntimeMonitorPeriodicRefreshRecoversAfterMetadataFailure` 的通知 callback 阻塞，以及 `TestRuntimeDeepIndexesOnlyRequestedSessionWithoutQuotaFacts` 的 `ingest commit time does not advance` 均已在未改的基线 `5250040` 复现。排除这两个用例的其余采集包回归通过。该结果不能写成整包通过。
+
+实机读回分别记录网络最后接收、扫描完成时间、覆盖状态与当前范围用量；空闲机器的零用量不代表停止采集，`partial` 也不等同于网络离线。正式升级保留原配对、队列、私有 runtime 与真实 Home；本次不需 schema 或协议迁移，不以手工改库刷新时间代替应用修复。提交与发版收尾不重复测试，三机安装结果在正式发布后另行记录。
+
 ## TOO-677 周期边界与显式恢复（2026-10-31）
 
 账号周期消耗只采用观测时间已到达推算周期起点的额度；若 reset 减七天仍晚于观测，等待后续有效观测，不重写采集时间、不制造周期消耗，也不阻塞额度和其他事实。协议与数据库版本保持不变。

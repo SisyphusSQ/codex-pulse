@@ -50,7 +50,12 @@ func (r *Repository) FinishLightScanPass(ctx context.Context, home LightHomeIden
 		result := db.WithContext(ctx).Model(&lightIndexStateModel{}).Where("state_id = 1 AND token_scan_state <> ?", state).
 			Updates(map[string]any{"token_scan_state": state, "token_scan_finished_at_ms": at, "updated_at_ms": at})
 		changed = result.RowsAffected > 0
-		return result.Error
+		if result.Error != nil || changed {
+			return result.Error
+		}
+		// 无变化的扫描也刷新采集时间，但不推进数据版本或触发索引失效。
+		return db.WithContext(ctx).Model(&lightIndexStateModel{}).Where("state_id = 1").
+			Update("token_scan_finished_at_ms", at).Error
 	})
 	return changed, err
 }
