@@ -5,8 +5,8 @@ import {Link} from 'react-router-dom';
 import {referenceAmount,sourceLink,type ModelPrice} from '../api/catalog';
 import {dayjs,dateTime,providerNames} from '../format';
 
-// 2026-10-27 增补 Terra；原目录 2026-10-03 核对 https://learn.chatgpt.com/docs/models；旧型号仍可从实际用量和历史证据查阅。
-const codexReferenceModels=new Set(['gpt-6.1-terra','gpt-6.1-sol','gpt-6-astra','gpt-6-sol','gpt-6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna']);
+// https://learn.chatgpt.com/docs/models；旧型号可从实际用量和历史证据查阅。
+const codexReferenceModels=new Set(['gpt-6.2-astra','gpt-6.2-sol','gpt-6.1-terra','gpt-6.1-sol','gpt-6-astra','gpt-6-sol','gpt-6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna']);
 type Scope='related'|'used'|'history';
 interface ModelGroup extends ModelPrice {rates:ModelPrice[];used:boolean;usageModel:string}
 interface Props {models:ModelPrice[];used:ReadonlySet<string>;provider:string;initialSearch?:string;initialVersion?:string;usageError?:Error|null;usageLoading?:boolean}
@@ -37,13 +37,19 @@ function source(url:string,label='官方来源') {
  return href?<a href={href} target="_blank" rel="noopener noreferrer">{label}</a>:<Typography.Text type="secondary">无公开来源</Typography.Text>;
 }
 const releaseDate=(row:ModelPrice)=>row.released_at_ms==null?'未知':dayjs(row.released_at_ms).utc().format('YYYY-MM-DD');
-const priceColumns=(keys:('input_price'|'cached_price'|'cache_write_price'|'output_price')[])=>keys.map(key=>({title:({input_price:'输入',cached_price:'缓存输入',cache_write_price:'缓存写入',output_price:'输出'})[key],align:'right' as const,width:110,...decimalSorter<ModelPrice>(r=>r[key]),render:(_:unknown,row:ModelPrice)=>referenceAmount(row[key],row.currency)}));
+const priceColumns=(keys:('input_price'|'cached_price'|'cache_write_price'|'output_price')[])=>keys.map(key=>({
+ title:({input_price:'输入',cached_price:'缓存输入',cache_write_price:'缓存写入',output_price:'输出'})[key],
+ align:'right' as const,width:110,...decimalSorter<ModelPrice>(r=>r[key]),
+ render:(_:unknown,row:ModelPrice)=>key==='cache_write_price'&&row.provider==='codex'&&row.currency==='credits'&&row[key]===null
+  ? '无单独收费'
+  : referenceAmount(row[key],row.currency),
+}));
 
 function RateDetails({row}:{row:ModelGroup}) {
  const special=row.rates.filter(r=>r.evidence==='current'&&(isReferenceRate(r,row.used)||r.currency==='USD'&&r.unit==='1M tokens'&&/Batch|Flex/i.test(r.mode))&&r.key!==row.key).sort(baselineOrder);
  const credits=row.rates.filter(r=>r.evidence==='current'&&r.currency==='credits');
  const historical=row.rates.filter(r=>r.evidence==='historical');
- const ratesTable=(rates:ModelPrice[])=><Table<ModelPrice> rowKey="key" size="small" dataSource={rates} pagination={false} scroll={{x:850}} columns={[{title:'更新日期',...decimalSorter<ModelPrice>(r=>r.effective_from_ms??r.verified_at_ms,true),render:(_,r)=>dayjs(r.effective_from_ms??r.verified_at_ms).utc().format('YYYY-MM-DD')},{title:'计费条件',width:240,render:(_,r)=><>{r.mode}{r.model!==row.model&&<div className="metric-note">{r.model}</div>}<div className="metric-note">{r.currency} / {r.unit}</div></>},...priceColumns(['input_price','cached_price','cache_write_price','output_price']),{title:'来源与说明',width:240,render:(_,r)=><>{source(r.source_url)}<div className="metric-note">{r.version}</div><div className="metric-note">{r.notes}</div></>}]} />;
+ const ratesTable=(rates:ModelPrice[])=><Table<ModelPrice> rowKey="key" size="small" dataSource={rates} pagination={false} scroll={{x:850}} columns={[{title:'生效／核对日期',...decimalSorter<ModelPrice>(r=>r.effective_from_ms??r.verified_at_ms,true),render:(_,r)=>dayjs(r.effective_from_ms??r.verified_at_ms).utc().format('YYYY-MM-DD')},{title:'计费条件',width:240,render:(_,r)=><>{r.mode}{r.model!==row.model&&<div className="metric-note">{r.model}</div>}<div className="metric-note">{r.currency} / {r.unit}</div></>},...priceColumns(['input_price','cached_price','cache_write_price','output_price']),{title:'来源与说明',width:240,render:(_,r)=><>{source(r.source_url)}<div className="metric-note">{r.version}</div><div className="metric-note">{r.notes}</div></>}]} />;
  return <div className="catalog-details"><Descriptions size="small" column={{xs:1,md:2}} items={[
   {key:'release',label:'发布时间',children:releaseDate(row)},
   {key:'release-source',label:'发布来源',children:source(row.release_source_url??'','发布说明')},

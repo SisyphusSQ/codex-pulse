@@ -20,6 +20,9 @@ import (
 //go:embed models-20261027.json
 var publicModels []byte
 
+//go:embed models-20261118.json
+var publicModels20261118 []byte
+
 //go:embed plans-20261002.json
 var publicPlans []byte
 
@@ -38,12 +41,17 @@ func (s *Catalog) Current(ctx context.Context, p access_dto.Principal) (out cata
 }
 
 func (s *Catalog) current(ctx context.Context) (out catalog_vo.Response, err error) {
-	out.Version = "reference-2026-10-27"
+	out.Version = "reference-2026-11-18"
 	out.Models = []catalog_vo.Model{}
 	out.Plans = []catalog_vo.Plan{}
 	if err = json.Unmarshal(publicModels, &out.Models, json.RejectUnknownMembers(true)); err != nil {
 		return out, fmt.Errorf("read public model catalog: %w", err)
 	}
+	var additions []catalog_vo.Model
+	if err = json.Unmarshal(publicModels20261118, &additions, json.RejectUnknownMembers(true)); err != nil {
+		return out, fmt.Errorf("read public model catalog additions: %w", err)
+	}
+	out.Models = append(out.Models, additions...)
 	if err = json.Unmarshal(publicPlans, &out.Plans, json.RejectUnknownMembers(true)); err != nil {
 		return out, fmt.Errorf("read public plan catalog: %w", err)
 	}

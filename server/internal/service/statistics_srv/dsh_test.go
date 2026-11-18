@@ -152,9 +152,19 @@ func TestTerraHistoricalCostRevisionAndThreeDeviceCopies(t *testing.T) {
 	}
 }
 
-func TestTerraMixedSessionRollingUpgradeKeepsCostAndDeduplicates(t *testing.T) {
-	for _, provider := range []string{"codex", "dsh"} {
-		t.Run(provider, func(t *testing.T) {
+func TestMixedSessionCatalogUpgradeKeepsCostAndDeduplicates(t *testing.T) {
+	for _, tc := range []struct {
+		provider, model, version    string
+		input, cached, output, cost int64
+		totalCost                   string
+	}{
+		{"codex", "gpt-6.1-terra", "openai-api-2026-10-26", 1_000_000, 50_000, 5_000_000, 5_000, "15000"},
+		{"dsh", "gpt-6.1-terra", "openai-api-2026-10-26", 1_000_000, 50_000, 5_000_000, 5_000, "15000"},
+		{"codex", "gpt-6.2-astra", "openai-api-2026-11-17", 8_000_000, 400_000, 40_000_000, 40_000, "50000"},
+		{"codex", "gpt-6.2-sol", "openai-api-2026-11-17", 2_000_000, 100_000, 10_000_000, 10_000, "20000"},
+	} {
+		t.Run(tc.provider+"/"+tc.model, func(t *testing.T) {
+			provider := tc.provider
 			stats, reporting, admin, clients := statisticsFixture(t)
 			old := throughputSnapshot()
 			old.Provider = provider
@@ -164,7 +174,7 @@ func TestTerraMixedSessionRollingUpgradeKeepsCostAndDeduplicates(t *testing.T) {
 			}
 			for i := range old.Contributions {
 				c := &old.Contributions[i]
-				c.Model, c.CostStatus = new("gpt-6.1-terra"), "unpriced"
+				c.Model, c.CostStatus = new(tc.model), "unpriced"
 				c.Rates, c.CostMicroUSD, c.PricingVersion = nil, nil, nil
 				c.PricingMode = "codex_model_sum"
 				if provider == "dsh" {
@@ -187,14 +197,14 @@ func TestTerraMixedSessionRollingUpgradeKeepsCostAndDeduplicates(t *testing.T) {
 			upgraded.Revision++
 			upgraded.Contributions = append([]reportingv1.Contribution(nil), old.Contributions...)
 			for i := range upgraded.Contributions {
-				upgraded.Contributions[i].PricingVersion = new("openai-api-2026-10-26")
+				upgraded.Contributions[i].PricingVersion = new(tc.version)
 			}
-			terra := &upgraded.Contributions[1]
-			terra.CostStatus = "known"
+			addition := &upgraded.Contributions[1]
+			addition.CostStatus = "known"
 			if provider == "codex" {
-				terra.Rates = &reportingv1.Rates{InputMicroUSD: new(int64(1_000_000)), CachedMicroUSD: new(int64(50_000)), OutputMicroUSD: new(int64(5_000_000))}
+				addition.Rates = &reportingv1.Rates{InputMicroUSD: new(tc.input), CachedMicroUSD: new(tc.cached), OutputMicroUSD: new(tc.output)}
 			} else {
-				terra.CostMicroUSD = new(int64(5_000))
+				addition.CostMicroUSD = new(tc.cost)
 			}
 			q := statisticsTestQuery(t, url.Values{"provider": {provider}, "start_at_ms": {"0"}, "end_at_ms": {"4000000"}})
 			assertCost := func() {
@@ -204,7 +214,7 @@ func TestTerraMixedSessionRollingUpgradeKeepsCostAndDeduplicates(t *testing.T) {
 					t.Fatal(err)
 				}
 				decimal(t, usage.Totals.TotalTokens, "2000")
-				decimal(t, usage.Totals.CostMicroUSD, "15000")
+				decimal(t, usage.Totals.CostMicroUSD, tc.totalCost)
 				if usage.Coverage.ConflictedSessions != 0 {
 					t.Fatal("catalog-only changes created conflict", usage.Coverage)
 				}
@@ -215,7 +225,7 @@ func TestTerraMixedSessionRollingUpgradeKeepsCostAndDeduplicates(t *testing.T) {
 			}
 			centerfixture.SendSnapshot(t, reporting, clients[1], upgraded)
 			assertCost()
-			// The old Helper can continue to publish a higher local revision without Terra prices.
+			// 旧 Helper 仍可能发布缺少新费率的更高本地修订。
 			old.Revision = 3
 			centerfixture.SendSnapshot(t, reporting, clients[0], old)
 			assertCost()

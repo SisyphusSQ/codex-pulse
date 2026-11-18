@@ -186,6 +186,26 @@ func BuiltinOpenAI20261026() CatalogVersion {
 	return catalog
 }
 
+// BuiltinOpenAI20261117 从官方发布日 UTC 日界增补 GPT-6.2 Astra 与 Sol 的基础文本参考价。
+func BuiltinOpenAI20261117() CatalogVersion {
+	catalog := BuiltinOpenAI20261026()
+	catalog.PricingVersion = "openai-api-2026-11-17"
+	catalog.EffectiveFromMS = 1_794_873_600_000
+	catalog.VerifiedAtMS = 1_794_970_338_000
+	catalog.CreatedAtMS = catalog.VerifiedAtMS
+	for _, rate := range []builtinModelRate{
+		{model: "gpt-6.2-astra", input: 8_000_000, cached: 400_000, output: 40_000_000},
+		{model: "gpt-6.2-sol", input: 2_000_000, cached: 100_000, output: 10_000_000},
+	} {
+		catalog.Models = append(catalog.Models, ModelPrice{
+			MatchKind: ModelMatchExact, ModelPattern: rate.model, Priority: 100,
+			InputMicrosPerMillion: new(rate.input), CachedInputMicrosPerMillion: new(rate.cached),
+			OutputMicrosPerMillion: new(rate.output),
+		})
+	}
+	return catalog
+}
+
 // BuiltinOpenAICatalog 返回按生效时间升序排列的完整内置价格历史。
 func BuiltinOpenAICatalog() []CatalogVersion {
 	return []CatalogVersion{
@@ -198,6 +218,7 @@ func BuiltinOpenAICatalog() []CatalogVersion {
 		BuiltinOpenAI20260922(),
 		BuiltinOpenAI20260929(),
 		BuiltinOpenAI20261026(),
+		BuiltinOpenAI20261117(),
 	}
 }
 

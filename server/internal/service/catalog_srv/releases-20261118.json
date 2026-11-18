@@ -1,0 +1,7 @@
+[
+  {
+    "models": ["gpt-6.2-astra", "gpt-6.2-sol"],
+    "released_on": "2026-11-17",
+    "source_url": "https://developers.openai.com/api/docs/changelog"
+  }
+]
