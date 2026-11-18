@@ -237,3 +237,17 @@ make verify
 回归入口：`go test ./internal/pricing ./internal/attribution ./internal/lightindex ./internal/store ./internal/query/pricingcatalog ./internal/reporting ./internal/dshprovider -run 'GPT61|Terra|Current|TestDSH|TestReportingExport|TestTokenScannerRestores|TestNormalizeModel'`。Terra 升级测试先装旧八版、写入已结构化 Token，再两次安装新目录；验证概览、会话、项目统一从无价变为 `$1.56`，检查点及 Token 不变。样例为 100 万 input（含 20 万 cached）、10 万 output、5 万独立 reasoning。补报测试验证排队旧批次不可变、新 revision 使用相同贡献身份；中心三设备副本与重复批次不重复累计。
 
 本次聚焦入口通过；完整 CI、生产、三台真实设备 E2E 与长期运行不由这些测试证明。相关证据与限制见 [TOO-654 验证记录](too-654-terra-segmented.md)。
+
+## GPT-6.2 Astra 与 Sol（TOO-714）
+
+2026-11-18 在真实 Codex Home 各运行一条 App Server 会话。同一私有 runtime 先用旧 Helper 索引，再启动新 Helper，读回 App 与 Helper 环境、参数和偏好中的 Home 物理身份。核对本地会话、项目、上报导出和临时中心 HTTP 查询。
+
+| 模型 | Token | 升级前 API 等价成本 | 升级后 API 等价成本 |
+| --- | ---: | ---: | ---: |
+| GPT-6.2 Astra | 32,333 | 未计价 | 203,470 微美元 |
+| GPT-6.2 Sol | 37,566 | 未计价 | 47,228 微美元 |
+| 项目合计 | 69,899 | 未计价 | 250,698 微美元 |
+
+升级后沿用原代际、扫描位点、贡献 ID 和 Token。临时中心接收已持久化队列中的修订 1 和 2，先得到未计价，再得到已计价。修订 2 按原批次重试的回执相同。第二采集器随后提交未定价的修订 3，中心仍为 2 个会话、69,899 Token、250,698 微美元，无冲突。中心使用环回 SQLite，使用不同但覆盖同一事实的时间范围进行即时阶段对账，避免等待读缓存轮转。
+
+回归入口为根 module 的 `go test ./internal/pricing ./internal/attribution ./internal/query/pricingcatalog ./internal/store ./internal/reporting -run 'GPT6|NormalizeModel|Catalog|Terra|CostRevision'`，与 server module 的 `go test ./internal/service/catalog_srv ./internal/service/reporting_srv ./internal/service/statistics_srv ./internal/http -run 'GPT62|Catalog|Terra|TestNativeCoreReporting|TestMixedSessionCatalog'`。Web 使用 `npm test -- src/pages/Pricing.test.tsx` 和 `npm run build`。原始证据位于忽略目录 `.artifacts/too-714/`。Windows 验证为 Helper 交叉构建，真实桌面验收在 macOS。

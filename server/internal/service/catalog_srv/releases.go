@@ -17,11 +17,19 @@ import (
 //go:embed releases-20261027.json
 var publicReleases []byte
 
+//go:embed releases-20261118.json
+var publicReleases20261118 []byte
+
 func applyModelReleases(models []catalog_vo.Model) error {
 	var records []catalog_dto.ModelRelease
 	if err := json.Unmarshal(publicReleases, &records, json.RejectUnknownMembers(true)); err != nil {
 		return fmt.Errorf("read model releases: %w", err)
 	}
+	var additions []catalog_dto.ModelRelease
+	if err := json.Unmarshal(publicReleases20261118, &additions, json.RejectUnknownMembers(true)); err != nil {
+		return fmt.Errorf("read model release additions: %w", err)
+	}
+	records = append(records, additions...)
 	releases := make(map[string]catalog_dto.ReleaseInfo)
 	for _, record := range records {
 		date, err := time.Parse(time.DateOnly, record.ReleasedOn)

@@ -1,6 +1,8 @@
 # 中心参考价目维护
 
-当前模型入口为 `models-20261027.json`，在 2026-10-02 目录上增补 GPT-6.1 Terra；只有新增条目使用本次核对时刻，旧条目保留原始版本与核对日期。`models-20261002.json` 保留为旧快照。订阅入口仍为 `plans-20261002.json`，不因模型目录更新刷新订阅核对日。字段记录计费平台、模式、模态/单位、货币、nullable价格、来源和版本。来源分别为OpenAI API/Codex pricing、Cursor models-and-pricing、xAI developer pricing及Grok pricing/FAQ。完整来源URL留在每条记录，缺失价格保持NULL。
+`models-20261118.json` 和 `releases-20261118.json` 在既有快照上追加 GPT-6.2 Astra 与 Sol。公开 API 价覆盖 Standard、Batch、Fast、Ultrafast、长短上下文和 30 分钟／12 小时缓存写入。Codex Credits 单独显示，Ultrafast 促销与 2027-03-01（太平洋时间）后的费率按适用期标注。基础消费估算继续读取本机历史目录，上报由新修订补齐 6.2 已有用量。
+
+模型基线为 `models-20261027.json`，在 2026-10-02 目录上增补 GPT-6.1 Terra。旧条目保留原始版本与核对日期，`models-20261002.json` 保留为旧快照。订阅入口仍为 `plans-20261002.json`，不因模型目录更新刷新订阅核对日。字段记录计费平台、模式、模态/单位、货币、nullable价格、来源和版本。来源分别为OpenAI API/Codex pricing、Cursor models-and-pricing、xAI developer pricing及Grok pricing/FAQ。完整来源URL留在每条记录，缺失价格保持NULL。
 
 核对日期不等于费率生效时间：公开页面未提供精确边界时effective_from_ms保持NULL。API美元、Codex Credits及图片/视频/音频等单位不可混用。目录由代码审查后交付，页面请求不抓取外部URL。更新时重新核对官方来源、版本与计费条件，不只改核对日期。
 

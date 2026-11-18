@@ -22,7 +22,7 @@ func TestTerraCatalogCurrentModesHistoryAndRelease(t *testing.T) {
 		if row.ReleasedAtMS == nil || *row.ReleasedAtMS != 1_792_972_800_000 || row.ReleaseSourceURL != "https://developers.openai.com/api/docs/changelog" {
 			t.Fatal("release evidence missing", row)
 		}
-		if row.Evidence == "historical" {
+		if row.Evidence == "historical" && row.Version == "openai-api-2026-10-26" {
 			historical++
 		}
 		if row.Provider == "dsh" && row.Evidence == "current" {

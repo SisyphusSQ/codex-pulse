@@ -92,3 +92,22 @@ it('shows unused Terra and its retention, Batch and Flex conditions from the new
  expect(screen.getByText('Flex · 长上下文')).toBeInTheDocument();
  expect(screen.getByText('Fast · 长上下文 · 缓存12小时')).toBeInTheDocument();
 });
+
+it('shows both GPT-6.2 models before use and distinguishes the Ultrafast rate periods',async()=>{
+ const models=(await import('../../../internal/service/catalog_srv/models-20261118.json')).default;
+ const summary=summaryFixture();
+ vi.stubGlobal('fetch',async(path:RequestInfo|URL)=>new Response(JSON.stringify({code:200,data:String(path).includes('/statistics/usage')?{...summary,models:[]}:{version:'reference-2026-11-18',models,plans:[]}})));
+ render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={['/pricing?provider=codex']}><Pricing /></MemoryRouter></QueryClientProvider>);
+ const astra=await screen.findByRole('row',{name:/gpt-6.2-astra Standard · 短上下文/});
+ const sol=screen.getByRole('row',{name:/gpt-6.2-sol Standard · 短上下文/});
+ expect(within(astra).getByText('$8.00')).toBeInTheDocument();
+ expect(within(sol).getByText('$2.00')).toBeInTheDocument();
+ const user=userEvent.setup();
+ await user.click(within(astra).getByRole('button',{name:/展开行|Expand row/}));
+ await user.click(screen.getByRole('button',{name:/^其他计费条件/}));
+ expect(within(screen.getByText('Ultrafast · 短上下文 · 促销期').closest('tr')!).getByText('$24.00')).toBeInTheDocument();
+ expect(within(screen.getByText('Ultrafast · 短上下文 · 促销结束后').closest('tr')!).getByText('$48.00')).toBeInTheDocument();
+ await user.click(screen.getByRole('button',{name:'订阅 Credits 参考'}));
+ expect(screen.getByText(/购买 Credits 和符合条件的企业 PAYG 促销适用至 2027-02-28/)).toBeInTheDocument();
+ expect(within(screen.getByText('Ultrafast · 促销期 · Codex Credits').closest('tr')!).getByText('无单独收费')).toBeInTheDocument();
+});

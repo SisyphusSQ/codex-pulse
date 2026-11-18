@@ -1,5 +1,10 @@
 ## Unreleased
 
+## v0.18.5 - 2026-11-18
+
+#### feature:
+1. [TOO-714] 支持 GPT-6.2 Astra 和 Sol 的用量归因、Standard API 等价成本、历史补价上报和中心参考价，标明 Ultrafast 促销与后续费率。
+
 ## v0.18.4 - 2026-11-16
 
 #### bugFix:
