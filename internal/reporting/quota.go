@@ -2,6 +2,7 @@ package reporting
 
 import (
 	"context"
+	"errors"
 	"strconv"
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
@@ -30,11 +31,11 @@ func (e *Exporter) captureIdentities(ctx context.Context) error {
 	return e.state.RememberIdentities(ctx, identities)
 }
 func (e *Exporter) FactsPartition(ctx context.Context, provider string) (string, error) {
-	if err := e.captureIdentities(ctx); err != nil {
-		return "", err
-	}
 	source, err := e.source(ctx, provider, 0)
 	if err != nil {
+		return "", err
+	}
+	if err := e.captureIdentities(ctx); err != nil {
 		return "", err
 	}
 	revision := ""
@@ -154,6 +155,9 @@ func (e *Exporter) facts(ctx context.Context, provider, after string, start int6
 		out.Groups = append(out.Groups, FactsGroup{Key: reportingv1.Key("credits", provider, c.ID), Batch: batch})
 	}
 	later, err := e.FactsPartition(ctx, provider)
+	if errors.Is(err, errReportingSourceDisabled) {
+		return ExportFactsPage{}, err
+	}
 	if err != nil || later != before {
 		return ExportFactsPage{}, store.ErrReportingSource
 	}

@@ -339,6 +339,8 @@ M1 的协议与身份边界确定后，M2 和 M3 可按依赖推进；M3 的最�
 
 `internal/reporting` 使用独立私有 `reporting.db` 保存 Pulse 自有凭证、不可变队列、来源 revision、确认与分页进度；默认关闭。`ReportingStatus / PairReporting / ConfigureReporting / SyncReportingNow` 经本机 CoreService 接入，Swift 不接收凭证。App shutdown 先取消并 join 同步 owner，随后关闭本机采集与数据库。配对与设置 UI 由设备配置执行卡衔接。
 
+本机整体同步状态按启用来源汇总。主动关闭的来源保留 `disabled`，启用后尚无可用快照的来源计入 `partial`，已排队批次仍按原确认流程发送。多机中心开关已开启且所有来源均关闭时，沿用 `ready` 表示同步服务待命。连接与上传错误仍按各自状态显示。
+
 结构化 Session 与调用统计从已有一致只读 SQLite 快照导出，不重新读 JSONL/auth 文件；Codex 使用物理 Home fence，Cursor Dashboard 使用账期来源分区，未知账号不归属 Home 用量。网络身份、预算和历史定价见 [上报 contract](../../../../api/codexpulse/reporting/v1/README.md)，开发入口与证据见 [多机测试 runbook](../../../test/multi-machine-reporting.md)。中心原子接收/来源合并已接上本机协议，查询、配额/节奏与 Web 已实现并取得 DEV SeekDB/Tailscale 证据，这些本机证据不是完整 Master 验收。
 
 ## Master 验收条件与验证入口
