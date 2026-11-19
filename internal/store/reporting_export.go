@@ -69,7 +69,7 @@ func exportReportingCodex(db *gorm.DB, source ReportingSource, after string, pag
 	}
 	if err := db.Table("light_index_state").Where("state_id = 1").Take(&state).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return exportReportingStrict(db, source, after, page)
+			return ErrReportingSource
 		}
 		return err
 	}
@@ -227,23 +227,11 @@ func reportingRange(facts []reportingv1.Contribution, start int64) []reportingv1
 	return out
 }
 
-func exportReportingStrict(db *gorm.DB, source ReportingSource, after string, page *ReportingPage) error {
-	// 旧深索引没有一致 Home fence，不把旧库猜归当前 Home；待轻量 metadata 确认后导出。
-	var count int64
-	if err := db.Table("sessions").Count(&count).Error; err != nil {
-		return err
-	}
-	if count > 0 {
-		return ErrReportingSource
-	}
-	return nil
-}
-
 func exportReportingAgent(db *gorm.DB, provider string, source ReportingSource, after string, page *ReportingPage) error {
 	var snapshot struct{ CollectedAtMS int64 }
 	if err := db.Table("agent_provider_snapshots").Where("provider = ?", provider).Take(&snapshot).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil
+			return ErrReportingSource
 		}
 		return err
 	}

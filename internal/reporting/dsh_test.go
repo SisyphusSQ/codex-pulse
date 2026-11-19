@@ -20,9 +20,9 @@ import (
 	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
-type dshTestPreferences struct{ snapshot preferences.Snapshot }
+type testPreferences struct{ snapshot preferences.Snapshot }
 
-func (p *dshTestPreferences) LoadPreferences(context.Context) (preferences.Snapshot, error) {
+func (p *testPreferences) LoadPreferences(context.Context) (preferences.Snapshot, error) {
 	return p.snapshot, nil
 }
 
@@ -47,7 +47,7 @@ func TestDSHCollectorExporterDurableQueueAndDisable(t *testing.T) {
 				t.Fatal(err)
 			}
 			state, statePath := testState(t)
-			prefs := &dshTestPreferences{snapshot: preferences.Snapshot{Providers: preferences.DefaultProviderPreferences()}}
+			prefs := &testPreferences{snapshot: preferences.Snapshot{Providers: preferences.DefaultProviderPreferences()}}
 			at := time.Date(2026, 10, 6, 2, 0, 0, 0, time.UTC).UnixMilli()
 			if tc.model == "gpt-6.1-terra" {
 				at = time.Date(2026, 10, 27, 2, 0, 0, 0, time.UTC).UnixMilli()
