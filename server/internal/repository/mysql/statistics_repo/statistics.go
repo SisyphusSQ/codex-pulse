@@ -2,7 +2,6 @@ package statistics_repo
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
 	"gorm.io/gorm"
@@ -156,72 +155,19 @@ func (r *Statistics) StreamInvocations(ctx context.Context, q statistics_dto.Sta
 
 // StreamSources 在同一有序流中读取内联来源及已发布分片；分片校验不再查询数据库。
 func (r *Statistics) StreamSources(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.SessionSource) error) error {
-	columns := "src.id,src.session_key,src.client_id,src.home_id,src.source_kind,src.revision,src.collected_at_ms,src.digest,src.payload,part.part_index,part.body"
 	db := r.engine.DB(ctx).Table("pulse_session_sources AS src")
+	hint := ""
 	if q.ClientID == "" && q.SessionKey == "" && q.ProjectID == "" {
 		// 宽范围保持来源索引顺序，仅排序单个来源的分片，避免全局排序大正文。
-		columns = "/*+ LEADING(src s owner part) USE_NL(s owner part) INDEX(src idx_session_sources_session) */ " + columns
+		hint = "/*+ LEADING(src s owner part) USE_NL(s owner part) INDEX(src idx_session_sources_session) */ "
 		db = r.sessionFilter(q, db.Joins("JOIN pulse_sessions AS s ON s.id=src.session_key"))
 	} else {
 		db = db.Where("src.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
 	}
-	db = db.Select(columns).
-		Joins("LEFT JOIN pulse_payload_owners owner ON owner.id=CONCAT('source:',src.id)").
-		Joins("LEFT JOIN pulse_payload_parts part ON part.payload_key=owner.payload_key")
 	if q.ClientID != "" {
 		db = db.Where("src.client_id = ?", q.ClientID)
 	}
-	rows, err := db.Order("src.session_key,src.id,part.part_index").Rows()
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	var current reporting_do.SessionSource
-	var parts []reporting_do.PayloadPart
-	count := 0
-	flush := func() error {
-		if current.ID == "" {
-			return nil
-		}
-		payload, err := reporting_repo.ResolvePayloadParts(current.Payload, parts)
-		if err != nil {
-			return err
-		}
-		current.Payload = payload
-		return visit(current)
-	}
-	for rows.Next() {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		var row reporting_do.SessionSource
-		var index sql.NullInt64
-		var body []byte
-		if err := rows.Scan(&row.ID, &row.SessionKey, &row.ClientID, &row.HomeID, &row.SourceKind, &row.Revision, &row.CollectedAtMS, &row.Digest, &row.Payload, &index, &body); err != nil {
-			return err
-		}
-		if row.ID != current.ID {
-			if err := flush(); err != nil {
-				return err
-			}
-			count++
-			if count > statistics_dto.MaximumStatisticsSources {
-				return utils.ErrRequestBudget
-			}
-			current = row
-			parts = nil
-		}
-		if index.Valid {
-			if len(parts) >= 257 {
-				return utils.ErrRequestBudget
-			}
-			parts = append(parts, reporting_do.PayloadPart{PartIndex: int(index.Int64), Body: body})
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	return flush()
+	return reporting_repo.StreamSourcePayloads(ctx, db, hint, statistics_dto.MaximumStatisticsSources, visit)
 }
 
 func (r *Statistics) StreamUntimed(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Usage) error) error {

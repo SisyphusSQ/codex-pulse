@@ -18,7 +18,7 @@ import (
 	statistics_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/statistics_vo"
 	statistics_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/statistics_repo"
 	access_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/access_srv"
-	reporting_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/reporting_srv"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/sessionmerge"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
 
@@ -131,7 +131,7 @@ func (s *Statistics) readProjection(ctx context.Context, q statistics_dto.Statis
 		if len(own) == 0 {
 			return nil
 		}
-		decision := reporting_srv.DecideSnapshot(own, nil)
+		decision := sessionmerge.DecideSnapshot(own, nil)
 		own = nil
 		size = 0
 		if decision.Deleted {

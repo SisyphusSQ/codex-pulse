@@ -16,6 +16,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/server/internal/lib/log"
 	reporting_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/reporting_do"
 	access_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/access_dto"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/sessionmerge"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
 
@@ -307,9 +308,20 @@ func (s *Reporting) ProcessPublication(ctx context.Context) (processed bool, err
 			return true, err
 		}
 	}
-	plan, err := planSession(current, stored, canonical, canonicalFound)
+	sources, err := decodeSessionSources(stored)
 	if err != nil {
 		return true, err
+	}
+	plan, err := planSession(current, sources, canonical, canonicalFound)
+	if err != nil {
+		return true, err
+	}
+	var machineUsage *reporting_do.MachineUsageSource
+	if !stale && snapshot.Provider == "codex" {
+		machineUsage, err = sessionmerge.MachineUsageSource(key, job.ClientID, sources)
+		if err != nil {
+			return true, err
+		}
 	}
 	if !stale {
 		source.Payload, err = s.repository.StagePayload(ctx, source.Payload, snapshot.Complete, snapshot.Deleted)
@@ -366,6 +378,11 @@ func (s *Reporting) ProcessPublication(ctx context.Context) (processed bool, err
 		if !stale {
 			if e = s.repository.SaveSource(ctx, source); e != nil {
 				return e
+			}
+			if snapshot.Provider == "codex" {
+				if e = s.repository.SaveMachineUsageSource(ctx, key, job.ClientID, machineUsage); e != nil {
+					return e
+				}
 			}
 			if e = s.repository.SaveCapsule(ctx, sourceCapsule); e != nil {
 				return e

@@ -23,6 +23,7 @@ import (
 	reporting_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/reporting_vo"
 	reporting_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/reporting_repo"
 	access_srv "github.com/SisyphusSQ/codex-pulse/server/internal/service/access_srv"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/sessionmerge"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
 
@@ -274,14 +275,18 @@ func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, s
 			return err
 		}
 	}
-	_, err = s.rebuildSession(ctx, current, true)
+	_, err = s.rebuildSession(ctx, current, p.ID, true)
 	return err
 }
 
 // rebuildSession 仅重建派生投影，来源、确认记录与 revision 均保持不变。
 // 调用方必须持有 session 锁并在同一事务内提交。
-func (s *Reporting) rebuildSession(ctx context.Context, current reporting_do.Session, apply bool) (bool, error) {
+func (s *Reporting) rebuildSession(ctx context.Context, current reporting_do.Session, sourceClientID string, apply bool) (bool, error) {
 	stored, err := s.repository.Sources(ctx, current.ID)
+	if err != nil {
+		return false, err
+	}
+	sources, err := decodeSessionSources(stored)
 	if err != nil {
 		return false, err
 	}
@@ -290,9 +295,22 @@ func (s *Reporting) rebuildSession(ctx context.Context, current reporting_do.Ses
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, err
 	}
-	plan, err := planSession(current, stored, old, found)
-	if err != nil || !apply || !plan.Changed {
+	plan, err := planSession(current, sources, old, found)
+	if err != nil || !apply {
 		return plan.Changed, err
+	}
+	if current.Provider == "codex" && sourceClientID != "" {
+		// 本机来源可能更新，但全局权威来源没有变化，仍需更新机器索引。
+		source, err := sessionmerge.MachineUsageSource(current.ID, sourceClientID, sources)
+		if err != nil {
+			return false, err
+		}
+		if err := s.repository.SaveMachineUsageSource(ctx, current.ID, sourceClientID, source); err != nil {
+			return false, err
+		}
+	}
+	if !plan.Changed {
+		return false, nil
 	}
 	if plan.FlagsOnly {
 		return true, s.repository.SaveSessionFlags(ctx, plan.Session)
@@ -307,26 +325,28 @@ func (s *Reporting) rebuildSession(ctx context.Context, current reporting_do.Ses
 	return true, s.repository.SaveCanonical(ctx, plan.Session, string(payload), plan.Usage)
 }
 
-func planSession(current reporting_do.Session, stored []reporting_do.SessionSource, old reporting_do.CanonicalSnapshot, oldFound bool) (out reporting_dto.ProjectionPlan, err error) {
-	sessionKey := current.ID
+func decodeSessionSources(stored []reporting_do.SessionSource) ([]reporting_dto.SourceSnapshot, error) {
 	if len(stored) > 128 {
-		return out, ErrReportingBudget
+		return nil, ErrReportingBudget
 	}
-	var sources []reporting_dto.SourceSnapshot
+	sources := make([]reporting_dto.SourceSnapshot, 0, len(stored))
 	size := 0
 	for _, row := range stored {
 		size += len(row.Payload)
 		if size > 64<<20 {
-			return out, ErrReportingBudget
+			return nil, ErrReportingBudget
 		}
-		var snap reportingv1.SessionSnapshot
-		if err := json.Unmarshal([]byte(row.Payload), &snap, json.RejectUnknownMembers(true)); err != nil {
-			return out, err
+		source, err := sessionmerge.DecodeSource(row)
+		if err != nil {
+			return nil, err
 		}
-		// 旧不可变队列保留原始摘要用于重试；调用事实不再进入业务仲裁。
-		snap.Invocations = nil
-		sources = append(sources, reporting_dto.SourceSnapshot{ID: row.ID, ClientID: row.ClientID, Snapshot: snap})
+		sources = append(sources, source)
 	}
+	return sources, nil
+}
+
+func planSession(current reporting_do.Session, sources []reporting_dto.SourceSnapshot, old reporting_do.CanonicalSnapshot, oldFound bool) (out reporting_dto.ProjectionPlan, err error) {
+	sessionKey := current.ID
 	var accepted *reporting_dto.SourceSnapshot
 	if oldFound {
 		var snap reportingv1.SessionSnapshot
@@ -334,14 +354,14 @@ func planSession(current reporting_do.Session, stored []reporting_do.SessionSour
 			return out, err
 		}
 		snap.Invocations = nil
-		for _, row := range stored {
-			if row.ID == current.CanonicalSourceID {
-				accepted = &reporting_dto.SourceSnapshot{ID: row.ID, ClientID: row.ClientID, Snapshot: snap, CorrectionFence: current.CorrectionFence}
+		for _, source := range sources {
+			if source.ID == current.CanonicalSourceID {
+				accepted = &reporting_dto.SourceSnapshot{ID: source.ID, ClientID: source.ClientID, Snapshot: snap, CorrectionFence: current.CorrectionFence}
 				break
 			}
 		}
 	}
-	decision := DecideSnapshot(sources, accepted)
+	decision := sessionmerge.DecideSnapshot(sources, accepted)
 	if decision.Deleted {
 		out.Session = current
 		out.Changed = !current.Deleted || current.Conflict

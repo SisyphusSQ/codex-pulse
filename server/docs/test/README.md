@@ -26,5 +26,6 @@
 - [TOO-700 目录事实口径与窄范围用量查询](too-700-catalog-usage-query.md)
 
 - [TOO-701 六条 Server 查询与维护链路](too-701-server-sql.md)
+- [TOO-725 机器用量日期范围验收](too-725-machine-usage-range.md)
 
 - [Credits 客户端、中心与版本上线流程](../../../docs/test/credits-rollout.md)

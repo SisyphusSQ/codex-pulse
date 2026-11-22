@@ -5,6 +5,7 @@ import (
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
 	reporting_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/reporting_dto"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/sessionmerge"
 )
 
 func TestTerraMixedSessionCatalogVersionUpgrade(t *testing.T) {
@@ -32,7 +33,7 @@ func TestTerraMixedSessionCatalogVersionUpgrade(t *testing.T) {
 			}
 			previous := reporting_dto.SourceSnapshot{ID: "old-device", Snapshot: old}
 			incoming := reporting_dto.SourceSnapshot{ID: "upgraded-device", Snapshot: upgraded}
-			decision := DecideSnapshot([]reporting_dto.SourceSnapshot{previous, incoming}, &previous)
+			decision := sessionmerge.DecideSnapshot([]reporting_dto.SourceSnapshot{previous, incoming}, &previous)
 			if decision.Conflict || decision.Source.ID != incoming.ID {
 				t.Fatal("unchanged Sol rate blocked Terra enrichment", decision)
 			}
@@ -53,7 +54,7 @@ func TestTerraMixedSessionCatalogVersionUpgrade(t *testing.T) {
 					different.Contributions[0].CostMicroUSD = new(int64(11_000))
 				}
 				incoming.Snapshot = different
-				if !DecideSnapshot([]reporting_dto.SourceSnapshot{previous, incoming}, &previous).Conflict {
+				if !sessionmerge.DecideSnapshot([]reporting_dto.SourceSnapshot{previous, incoming}, &previous).Conflict {
 					t.Fatal("real pricing conflict hidden", change)
 				}
 			}

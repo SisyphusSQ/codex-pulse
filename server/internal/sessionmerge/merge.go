@@ -1,4 +1,5 @@
-package reporting_srv
+// Package sessionmerge 管理独立于存储及接收流程的来源快照仲裁。
+package sessionmerge
 
 import (
 	"cmp"
