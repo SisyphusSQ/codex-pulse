@@ -34,7 +34,7 @@ func (s *Reporting) ReconcileCursor(ctx context.Context, after string, limit int
 			if err != nil {
 				return err
 			}
-			changed, err = s.rebuildSession(ctx, current, apply)
+			changed, err = s.rebuildSession(ctx, current, "", apply)
 			return err
 		})
 		if err != nil {

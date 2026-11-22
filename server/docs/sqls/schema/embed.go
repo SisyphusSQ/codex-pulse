@@ -10,9 +10,9 @@ import (
 )
 
 // Version 只在已交付结构发生有意升级时递增。
-const Version int64 = 9
+const Version int64 = 10
 
-//go:embed center_mysql.sql center_sqlite.sql v3_mysql.sql v3_sqlite.sql v4_mysql.sql v4_sqlite.sql v5_mysql.sql v5_sqlite.sql v6_mysql.sql v6_sqlite.sql v7_mysql.sql v7_sqlite.sql v8_mysql.sql v8_sqlite.sql
+//go:embed center_mysql.sql center_sqlite.sql v3_mysql.sql v3_sqlite.sql v4_mysql.sql v4_sqlite.sql v5_mysql.sql v5_sqlite.sql v6_mysql.sql v6_sqlite.sql v7_mysql.sql v7_sqlite.sql v8_mysql.sql v8_sqlite.sql v10_mysql.sql v10_sqlite.sql
 var files embed.FS
 
 //go:embed v9_usage_cutover.sql
@@ -64,6 +64,11 @@ func Definition(driver string) ([]string, string, map[string][]string, error) {
 	}
 	content = append(content, addition...)
 	addition, err = files.ReadFile("v8_" + driver + ".sql")
+	if err != nil {
+		return nil, "", nil, err
+	}
+	content = append(content, addition...)
+	addition, err = files.ReadFile("v10_" + driver + ".sql")
 	if err != nil {
 		return nil, "", nil, err
 	}

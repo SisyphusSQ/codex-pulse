@@ -69,6 +69,8 @@ input>0/cache=0 返回真实零，input=cache>0 返回 10000；零输入 not_app
 
 新增 `GET /api/v1/statistics/source-usage`，要求 admin；共用范围和筛选，返回 `range/scope/items`。scope 为 `collector_copies_may_overlap`；每项包含 machine(client_id/client_name)、totals、coverage、revoked_at_ms。只统计 Codex；其他平台筛选返回空项。每机器先仲裁自身同会话多个 Home；与其他机器副本可重叠，不可相加成全局。项目过滤以本机来源所属项目组判断，不能先用全局 canonical 项目排除来源。
 
+TOO-725 用入选来源的计时范围选择快照。开区间上界按 `observed_at_ms < end_at_ms` 处理，下界含起始毫秒。无时间事实按模型计入覆盖信息，采集截至仍表示最近采集时间。
+
 summary 新增 activity_granularity（hour/day）、activity_timeline（start_at_ms/end_at_ms/tokens/sessions nullable 十进制字符串）、top_sessions（范围Token倒序Top5，Session VO，排除unassigned_usage）。单自然日按真实偏移的小时推进，保留23/25小时DST日期；未知桶的两个计数均为NULL。星期小时序列保持原有Sunday=0约定，增加 nullable 十进制字符串 session_count；无事实为NULL，不再用 legacy sessions=0 推断真实零。Top5与当前范围统计共用事实扫描和数据库快照。
 
 项目VO新增 machines（client_id/client_name）；会话sources原字段继续使用中心名称表。设备状态仅返回未撤销设备；历史会话/项目仍解析撤销设备名称。客户端授权列表SQL过滤撤销项，鉴权撤销和历史行保留。
