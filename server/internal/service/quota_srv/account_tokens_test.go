@@ -8,6 +8,7 @@ import (
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
 	quota_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/quota_dto"
+	centerfixture "github.com/SisyphusSQ/codex-pulse/server/internal/testsupport/center"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
 
@@ -97,5 +98,20 @@ func TestAccountTokensAggregateBeyondInt64WithoutPrecisionLoss(t *testing.T) {
 	out := readQuota(t, s, admin, quota_dto.Query{})
 	if len(out.Windows) != 1 || out.Windows[0].RecordedTokens == nil || *out.Windows[0].RecordedTokens != "18446744073709551614" {
 		t.Fatal("overflow")
+	}
+	for _, usage := range b.AccountUsage {
+		fact := usage.Facts[0]
+		snapshot := centerfixture.Snapshot()
+		snapshot.SessionID = fact.SessionID
+		snapshot.CollectedAtMS = quotaNow
+		snapshot.Contributions = []reportingv1.Contribution{fact.Contribution()}
+		snapshot.Contributions[0].Model = new("gpt-6.2-sol")
+		centerfixture.SendSnapshot(t, reporting, clients[0], snapshot)
+	}
+	window := out.Windows[0]
+	detail, err := s.AccountModelUsage(t.Context(), admin, quota_dto.Query{AccountKey: *window.AccountKey, WindowKey: window.Key})
+	if err != nil || len(detail.Models) != 1 || detail.Models[0].TotalTokens != *window.RecordedTokens ||
+		detail.Models[0].InputTokens == nil || *detail.Models[0].InputTokens != *window.RecordedTokens {
+		t.Fatalf("model totals lost precision: %+v %v", detail, err)
 	}
 }

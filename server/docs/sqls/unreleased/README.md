@@ -1,5 +1,7 @@
 # 未发布结构
 
+TOO-724 使用 [v9 用量切换 SQL](../schema/v9_usage_cutover.sql)。适用于已登记的中心结构，先停止旧中心写入并备份，再由启动迁移器在一个事务中拷贝有效旧用量、设发布指针和写版本标记。实际验证见 [DEV 验收](../../test/too-724-account-model-usage.md)。
+
 以下 TOO-478/483/513 段为初始设计与开发历史；中心 v2 已随 v0.15.0 交付，段内当时的“未发布/未执行”不代表当前环境状态。TOO-523 v3 已转入 [v0.15.1 发布档案](../releases/v0.15.1/README.md)，运行时仍只使用 schema。结构 v4 已有 2026-10-03 的 SeekDB 生产与 DEV 读回，构建为 `v0.15.1+center.9dbb1c5`，机器为 SQMC04，见下文及 [查询保留](../../../../docs/test/center-query-retention-20261003.md)；该读回不是独立 MySQL 8.4。结构 v5 已有 [v0.15.3](../releases/v0.15.3/README.md) 档案。TOO-478、TOO-483、TOO-513 段里的 Not Run 是交付前记录，现行状态以 [schema README](../schema/README.md) 与上述 runbook 为准。
 
 TOO-478：中心初始结构 v1，完整初始化 SQL 位于 ../schema/center_mysql.sql 和 center_sqlite.sql，由运行时嵌入；不复制成第二份初始化 SQL。没有已发布中心版本，不建立虚构 releases/vX.Y.Z。

@@ -51,6 +51,9 @@ func TestSchemaExplicitInitReopenAndVersionRejection(t *testing.T) {
 	if err := s.Check(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	if engine.DB(t.Context()).Migrator().HasTable("pulse_usage") {
+		t.Fatal("fresh schema still creates the old usage table")
+	}
 	if err := s.Init(t.Context()); err != nil {
 		t.Fatalf("reentrant init: %v", err)
 	}

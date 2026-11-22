@@ -10,7 +10,7 @@ import (
 	schema_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/schema_do"
 )
 
-// Upgrade 只接受已确认 v1..v7 定义，新增已登记结构后读回字段，最后提交版本标记。
+// Upgrade 只接受已登记结构，读回目标字段后切换用量投影并提交版本标记。
 func (s *Schema) Upgrade(ctx context.Context) error {
 	return s.withMigrationLock(ctx, s.upgrade)
 }
@@ -32,15 +32,23 @@ func (s *Schema) upgrade(ctx context.Context) error {
 	// 既有 Windows 构建的 v6 CRLF 摘要已在开发库确认；仅接受这一个已知等价定义。
 	v6 := map[string]string{"mysql": "695cb3cbd3fbdfd19f809dfce688e6c0f5352b4bd96e9adeb7945c2f88f90e0c", "sqlite": "65d89e7629f95edc6d80967b2f9839b80a792da91b166720fd247567f2c8f096"}
 	v7 := map[string]string{"mysql": "ec2e64d187cb542d1f9c0a7c45212bf9749c3b7b0c13597e6baab2474ba1aca8", "sqlite": "8a862017f2fc8963bce363e6c4f261d155a66671111affb95e412d2864165f7b"}
-	if schema.Version != 8 || !((marker.Version == 7 && marker.Checksum == v7[db.Dialector.Name()]) || (marker.Version == 6 && (marker.Checksum == v6[db.Dialector.Name()] || (db.Dialector.Name() == "mysql" && marker.Checksum == "7f4c7f80de583a8e268c527cf5d3e6404b25edbe723345838607097bf17812d7"))) || (marker.Version == 5 && marker.Checksum == v5[db.Dialector.Name()]) || (marker.Version == 4 && marker.Checksum == v4[db.Dialector.Name()]) || (marker.Version == 3 && marker.Checksum == v3[db.Dialector.Name()]) || (marker.Version == 1 && marker.Checksum == legacy[db.Dialector.Name()]) || (marker.Version == 2 && marker.Checksum == v2[db.Dialector.Name()])) {
+	v8 := map[string]string{"mysql": "abee32ac651477051dd6354bfcae89075e8a091057965c4a70f6f460fdc61a8f", "sqlite": "f2ed58099b1ebca810f87244ece40540c9eb04895fa892863d8ec6f43a5f3bdd"}
+	prior := map[int64]map[string]string{1: legacy, 2: v2, 3: v3, 4: v4, 5: v5, 6: v6, 7: v7, 8: v8}
+	driver := db.Dialector.Name()
+	expected := prior[marker.Version][driver]
+	knownV6CRLF := marker.Version == 6 && driver == "mysql" && marker.Checksum == "7f4c7f80de583a8e268c527cf5d3e6404b25edbe723345838607097bf17812d7"
+	if (expected == "" || marker.Checksum != expected) && !knownV6CRLF {
 		return ErrSchemaIncompatible
 	}
 	statements, checksum, _, err := schema.Definition(db.Dialector.Name())
 	if err != nil {
 		return err
 	}
-	upgrade := func(ctx context.Context) error {
+	prepare := func(ctx context.Context) error {
 		for _, ddl := range statements {
+			if marker.Version == 8 {
+				break
+			}
 			if strings.HasPrefix(ddl, "CREATE INDEX idx_") {
 				continue
 			}
@@ -50,13 +58,19 @@ func (s *Schema) upgrade(ctx context.Context) error {
 				}
 			}
 		}
-		if err := s.queryIndexes(ctx, true); err != nil {
+		if err := s.queryIndexes(ctx, marker.Version < 8); err != nil {
 			return err
 		}
-		if err := s.checkColumns(ctx); err != nil {
-			return err
+		return s.checkColumns(ctx)
+	}
+	cutover := func(ctx context.Context) error {
+		db := s.engine.DB(ctx)
+		for _, statement := range schema.UsageCutoverStatements() {
+			if err := db.Exec(statement).Error; err != nil {
+				return fmt.Errorf("migrate published usage: %w", err)
+			}
 		}
-		result := s.engine.DB(ctx).Model(&schema_do.SchemaVersion{}).Where("id = ? AND version = ? AND checksum = ?", 1, marker.Version, marker.Checksum).Updates(map[string]any{"version": schema.Version, "checksum": checksum, "initialized_at_ms": time.Now().UnixMilli()})
+		result := db.Model(&schema_do.SchemaVersion{}).Where("id = ? AND version = ? AND checksum = ?", 1, marker.Version, marker.Checksum).Updates(map[string]any{"version": schema.Version, "checksum": checksum, "initialized_at_ms": time.Now().UnixMilli()})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -65,8 +79,16 @@ func (s *Schema) upgrade(ctx context.Context) error {
 		}
 		return nil
 	}
-	if db.Dialector.Name() == "sqlite" {
-		return s.engine.Transaction(ctx, upgrade)
+	if driver == "sqlite" {
+		return s.engine.Transaction(ctx, func(ctx context.Context) error {
+			if err := prepare(ctx); err != nil {
+				return err
+			}
+			return cutover(ctx)
+		})
 	}
-	return upgrade(ctx)
+	if err := prepare(ctx); err != nil {
+		return err
+	}
+	return s.engine.Transaction(ctx, cutover)
 }

@@ -19,6 +19,34 @@ beforeEach(()=>{api.setSession({client_id:'synthetic-browser',name:'测试浏览
 afterEach(()=>vi.unstubAllGlobals());
 function mount(){render(<OperationNotifications><QueryClientProvider client={createQueryClient()}><QueryNotifications /><MemoryRouter><Quota /></MemoryRouter></QueryClientProvider></OperationNotifications>);}
 describe('quota facts and pace',()=>{
+ it('loads account model details on expand and keeps missing counters unknown',async()=>{
+  const quota=quotaFixture(),window=quota.windows[0];
+  fetcher.mockImplementation(async path=>{
+   const url=new URL(String(path),'http://localhost');
+   if(url.pathname.endsWith('/devices/status'))return success([]);
+   if(url.pathname.endsWith('/pace'))return success(paceFixture());
+   if(url.pathname.endsWith('/model-usage')){
+    expect(url.searchParams.get('window_key')).toBe(window.key);
+    expect(url.searchParams.get('account_key')).toBe(window.account_key);
+    return success({
+     recorded_tokens:'30',window_start_at_ms:window.current.window_start_at_ms,resets_at_ms:window.current.resets_at_ms,
+     models:[
+      {kind:'model',model:'gpt-6.2-sol',name:'GPT-6.2 Sol',total_tokens:'20',input_tokens:'16',cached_tokens:'8',output_tokens:'3',reasoning_tokens:'1'},
+      {kind:'unmatched',model:null,name:null,total_tokens:'10',input_tokens:null,cached_tokens:null,output_tokens:null,reasoning_tokens:null},
+     ],
+    });
+   }
+   return success(quota);
+  });
+  mount();
+  const button=await screen.findByRole('button',{name:'本周期模型用量'});
+  expect(fetcher.mock.calls.some(([path])=>String(path).includes('/model-usage'))).toBe(false);
+  await userEvent.setup().click(button);
+  expect(await screen.findByText('GPT-6.2 Sol')).toBeInTheDocument();
+  const unmatched=screen.getByRole('row',{name:/明细未匹配/});
+  expect(within(unmatched).getAllByLabelText('未知')).toHaveLength(4);
+  expect(screen.getByRole('row',{name:/合计 30/})).toBeInTheDocument();
+ });
  it('loads summary and selected pace without a source evidence entry',async()=>{
   const data=quotaFixture();data.windows[0].observation_count=41;
   fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/pace')?success(paceFixture()):success(data));

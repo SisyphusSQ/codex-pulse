@@ -43,7 +43,8 @@ func (r *Reporting) SourceMetadata(ctx context.Context, id string) (row reportin
 // HasLargeProjection 同样让小型纠正/部分副本避开已有大投影的同步重写。
 func (r *Reporting) HasLargeProjection(ctx context.Context, key string) (bool, error) {
 	var n int64
-	err := r.engine.DB(ctx).Model(&reporting_do.CanonicalSnapshot{}).Where("session_key = ?", key).Where("LENGTH(payload) >= ? OR EXISTS (SELECT 1 FROM pulse_session_publications p WHERE p.session_key = ?)", 256<<10, key).Count(&n).Error
+	err := r.engine.DB(ctx).Model(&reporting_do.CanonicalSnapshot{}).Where("session_key = ?", key).
+		Where("LENGTH(payload) >= ? OR EXISTS (SELECT 1 FROM pulse_payload_owners owner WHERE owner.id = ?)", 256<<10, "canonical:"+key).Count(&n).Error
 	return n > 0, err
 }
 func (r *Reporting) Job(ctx context.Context, id string) (row reporting_do.PublicationJob, err error) {
@@ -102,15 +103,15 @@ func (r *Reporting) StageUsage(ctx context.Context, generation string, usage []r
 	}
 	return nil
 }
-func (r *Reporting) Publish(ctx context.Context, session reporting_do.Session, generation, manifest string) error {
+func (r *Reporting) Publish(ctx context.Context, session reporting_do.Session, generation, payload string) error {
 	db := r.engine.DB(ctx)
 	if err := db.Save(&session).Error; err != nil {
 		return err
 	}
-	if err := r.setPayloadOwner(ctx, "canonical:"+session.ID, manifest); err != nil {
+	if err := r.setPayloadOwner(ctx, "canonical:"+session.ID, payload); err != nil {
 		return err
 	}
-	if err := db.Save(&reporting_do.CanonicalSnapshot{SessionKey: session.ID, Payload: manifest}).Error; err != nil {
+	if err := db.Save(&reporting_do.CanonicalSnapshot{SessionKey: session.ID, Payload: payload}).Error; err != nil {
 		return err
 	}
 	return db.Save(&reporting_do.SessionPublication{SessionKey: session.ID, Generation: generation}).Error

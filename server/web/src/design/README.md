@@ -23,3 +23,7 @@
 本轮旧6007已按用户要求停止；当前分支预览使用 `npm --prefix server/web run storybook -- --port 6008`。入口：`http://127.0.0.1:6008/?path=/story/subscription-plans--codex`；最新价目入口：`/?path=/story/subscription-plans--focused-model-prices`；改动目录：`/?path=/story/too-523-updates--index`。保留原22条设计供对照，新追加18条，合计40条，当前实现以“本轮优化”为准。
 
 价目先在 Storybook 检查，再接入正式前端的同一 `ModelPriceCatalog` 组件。Codex 默认参考型号依据2026-10-03官方模型说明，Cursor/Grok保留现有文本模型参考；近30天实际使用和已观测未定价型号仍可查。普通API全目录、Batch/Flex及未使用的图片/音频/Embedding不铺在主表；Fast/长上下文、缓存写入、Credits和历史版本在模型内展开。仅改变查阅层，不更改公开费率或历史统计算法。
+
+## TOO-724 账号周期模型用量
+
+在 Storybook 的「账号周期模型用量」组查看现有账号页中的 [展开明细](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--complete)、[部分未知](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--partial) 和 [390px 窄屏](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--mobile)。预览复用 7 天额度卡下方的正式组件，模型及 Token 由 Storybook 的模拟 API 返回。
