@@ -7,8 +7,15 @@ import (
 	quota_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/quota_vo"
 )
 
+func activeAccountTokenWindow(window *quota_vo.Window, now int64) bool {
+	return window.Provider == "codex" && window.AccountKey != nil && window.LimitID == "codex" &&
+		window.WindowMinutes != nil && *window.WindowMinutes == 10080 &&
+		window.Current.WindowStartAtMS != nil && window.Current.ResetsAtMS != nil &&
+		*window.Current.WindowStartAtMS <= now && *window.Current.ResetsAtMS > now
+}
+
 func (s *Quota) withAccountTokens(ctx context.Context, q quota_dto.Query, window *quota_vo.Window, now int64) error {
-	if window.Provider != "codex" || window.AccountKey == nil || window.LimitID != "codex" || window.WindowMinutes == nil || *window.WindowMinutes != 10080 || window.Current.WindowStartAtMS == nil || window.Current.ResetsAtMS == nil || *window.Current.WindowStartAtMS > now || *window.Current.ResetsAtMS <= now {
+	if !activeAccountTokenWindow(window, now) {
 		return nil
 	}
 	total, available, err := s.repository.AccountTokenTotal(ctx, q, *window.AccountKey, *window.Current.WindowStartAtMS, *window.Current.ResetsAtMS, now)

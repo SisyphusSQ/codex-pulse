@@ -2,6 +2,7 @@ package reporting_repo
 
 import (
 	"context"
+	"uuid"
 
 	"gorm.io/gorm/clause"
 
@@ -87,29 +88,21 @@ func (r *Reporting) Canonical(ctx context.Context, key string) (row reporting_do
 	err = r.engine.DB(ctx).Where("session_key = ?", key).Take(&row).Error
 	return
 }
-func (r *Reporting) SaveCanonical(ctx context.Context, session reporting_do.Session, payload reporting_do.CanonicalSnapshot, usage []reporting_do.Usage) error {
+
+// SaveCanonical 在持有 session 锁的事务中替换同步投影，旧的分片投影由后台回收。
+func (r *Reporting) SaveCanonical(ctx context.Context, session reporting_do.Session, payload string, usage []reporting_do.Usage) error {
+	generation := uuid.New().String()
+	if err := r.StageUsage(ctx, generation, usage); err != nil {
+		return err
+	}
 	db := r.engine.DB(ctx)
-	if err := db.Save(&session).Error; err != nil {
+	previous := r.engine.DB(ctx).Model(&reporting_do.SessionPublication{}).Select("generation").
+		Where("session_key = ?", session.ID).
+		Where("NOT EXISTS (SELECT 1 FROM pulse_payload_owners owner WHERE owner.id = ?)", "canonical:"+session.ID)
+	if err := db.Where("generation = (?) AND session_key = ?", previous, session.ID).Delete(&reporting_do.UsageVersion{}).Error; err != nil {
 		return err
 	}
-	if err := r.setPayloadOwner(ctx, "canonical:"+session.ID, payload.Payload); err != nil {
-		return err
-	}
-	if err := db.Save(&payload).Error; err != nil {
-		return err
-	}
-	if err := db.Where("session_key = ?", session.ID).Delete(&reporting_do.Usage{}).Error; err != nil {
-		return err
-	}
-	if err := db.Where("session_key = ?", session.ID).Delete(&reporting_do.SessionPublication{}).Error; err != nil {
-		return err
-	}
-	if len(usage) > 0 {
-		if err := db.CreateInBatches(usage, 250).Error; err != nil {
-			return err
-		}
-	}
-	return nil
+	return r.Publish(ctx, session, generation, payload)
 }
 func (r *Reporting) SaveSessionFlags(ctx context.Context, row reporting_do.Session) error {
 	return r.engine.DB(ctx).Save(&row).Error

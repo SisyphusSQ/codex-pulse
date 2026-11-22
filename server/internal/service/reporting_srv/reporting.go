@@ -304,7 +304,7 @@ func (s *Reporting) rebuildSession(ctx context.Context, current reporting_do.Ses
 	if err = s.repository.SaveCapsule(ctx, plan.Capsule); err != nil {
 		return false, err
 	}
-	return true, s.repository.SaveCanonical(ctx, plan.Session, reporting_do.CanonicalSnapshot{SessionKey: current.ID, Payload: string(payload)}, plan.Usage)
+	return true, s.repository.SaveCanonical(ctx, plan.Session, string(payload), plan.Usage)
 }
 
 func planSession(current reporting_do.Session, stored []reporting_do.SessionSource, old reporting_do.CanonicalSnapshot, oldFound bool) (out reporting_dto.ProjectionPlan, err error) {

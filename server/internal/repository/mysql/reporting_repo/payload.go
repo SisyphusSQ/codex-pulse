@@ -99,8 +99,11 @@ func (r *Reporting) StagePayload(ctx context.Context, value string, complete, de
 	return string(b), err
 }
 
-// PublishedUsage 同时兼容未迁移旧会话与新版本；查询不能直接扫描暂存表。
-const PublishedUsage = `(SELECT u.* FROM pulse_usage u WHERE NOT EXISTS (SELECT 1 FROM pulse_session_publications p WHERE p.session_key=u.session_key) UNION ALL SELECT v.session_key,v.contribution_id,v.position,v.observed_at_ms,v.model,v.input_tokens,v.cached_tokens,v.cache_write_tokens,v.output_tokens,v.reasoning_tokens,v.total_tokens,v.cost_micro_usd,v.reported_charge_micro_usd,v.pricing_version,v.pricing_mode,v.input_price,v.cached_price,v.cache_write_price,v.output_price,v.cost_status FROM pulse_usage_versions v JOIN pulse_session_publications p ON p.session_key=v.session_key AND p.generation=v.generation) AS u`
+// PublishedUsage 只查询各会话当前发布的用量代。
+func PublishedUsage(db *gorm.DB) *gorm.DB {
+	return db.Table("pulse_usage_versions AS u").
+		Joins("JOIN pulse_session_publications AS p ON p.session_key = u.session_key AND p.generation = u.generation")
+}
 
 func (r *Reporting) setPayloadOwner(ctx context.Context, id, payload string) error {
 	var ref reporting_dto.PayloadReference

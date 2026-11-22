@@ -106,50 +106,31 @@ func (r *Statistics) streamUsage(ctx context.Context, q statistics_dto.Statistic
 	columns := "u.session_key,u.observed_at_ms,u.model,u.input_tokens,u.cached_tokens,u.cache_write_tokens,u.output_tokens,u.reasoning_tokens,u.total_tokens,u.cost_micro_usd,u.reported_charge_micro_usd,u.pricing_version,u.pricing_mode,u.input_price,u.cached_price,u.cache_write_price,u.output_price,u.cost_status"
 	if heatmap {
 		columns = "/*+ USE_HASH(u) */ " + columns
+	} else if q.EndAtMS > q.StartAtMS && q.EndAtMS-q.StartAtMS <= (7*24*time.Hour).Milliseconds() && q.SessionKey == "" && q.ProjectID == "" && q.ClientID == "" && q.Search == "" && q.MatchedSessionKeys == nil {
+		// SeekDB 窄日期从现有时间索引取数。
+		columns = "/*+ INDEX(u idx_usage_versions_time) */ " + columns
 	}
-	for _, physical := range []string{"pulse_usage AS u", "pulse_usage_versions AS u"} {
-		base := r.engine.DB(ctx).Table(physical)
-		projection := columns
-		if physical == "pulse_usage AS u" {
-			base = base.Where("NOT EXISTS (SELECT 1 FROM pulse_session_publications p WHERE p.session_key=u.session_key)")
-		} else {
-			base = base.Joins("JOIN pulse_session_publications p ON p.session_key=u.session_key AND p.generation=u.generation")
-			// SeekDB 窄日期从现有时间索引取数；年度与按会话/项目/搜索的选择路径保持原样。
-			if !heatmap && q.EndAtMS > q.StartAtMS && q.EndAtMS-q.StartAtMS <= (7*24*time.Hour).Milliseconds() && q.SessionKey == "" && q.ProjectID == "" && q.ClientID == "" && q.Search == "" && q.MatchedSessionKeys == nil {
-				projection = "/*+ INDEX(u idx_usage_versions_time) */ " + columns
-			}
-		}
-		db := r.usageFilter(ctx, q, base.Select(projection).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS))
-		rows, err := db.Rows()
-		if err != nil {
-			return err
-		}
+	base := reporting_repo.PublishedUsage(r.engine.DB(ctx)).
+		Select(columns).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS)
+	rows, err := r.usageFilter(ctx, q, base).Rows()
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
 
-		for rows.Next() {
-			if err := ctx.Err(); err != nil {
-				rows.Close()
-				return err
-			}
-			var row reporting_do.Usage
-			if err := rows.Scan(&row.SessionKey, &row.ObservedAtMS, &row.Model, &row.InputTokens, &row.CachedTokens, &row.CacheWriteTokens, &row.OutputTokens, &row.ReasoningTokens, &row.TotalTokens, &row.CostMicroUSD, &row.ReportedChargeMicroUSD, &row.PricingVersion, &row.PricingMode, &row.InputPrice, &row.CachedPrice, &row.CacheWritePrice, &row.OutputPrice, &row.CostStatus); err != nil {
-				rows.Close()
-				return err
-			}
-			if err := visit(row); err != nil {
-				rows.Close()
-				return err
-			}
-		}
-		err = rows.Err()
-		closeErr := rows.Close()
-		if err != nil {
+	for rows.Next() {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if closeErr != nil {
-			return closeErr
+		var row reporting_do.Usage
+		if err := rows.Scan(&row.SessionKey, &row.ObservedAtMS, &row.Model, &row.InputTokens, &row.CachedTokens, &row.CacheWriteTokens, &row.OutputTokens, &row.ReasoningTokens, &row.TotalTokens, &row.CostMicroUSD, &row.ReportedChargeMicroUSD, &row.PricingVersion, &row.PricingMode, &row.InputPrice, &row.CachedPrice, &row.CacheWritePrice, &row.OutputPrice, &row.CostStatus); err != nil {
+			return err
+		}
+		if err := visit(row); err != nil {
+			return err
 		}
 	}
-	return nil
+	return rows.Err()
 }
 func (r *Statistics) StreamInvocations(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Invocation) error) error {
 	db := r.engine.DB(ctx).Table("pulse_invocations AS i").Select("i.session_key,i.invocation_id,i.observed_at_ms,i.kind,i.tool_name,i.outcome,i.duration_ms").Where("i.observed_at_ms >= ? AND i.observed_at_ms < ?", q.StartAtMS, q.EndAtMS).Where("i.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
@@ -244,7 +225,7 @@ func (r *Statistics) StreamSources(ctx context.Context, q statistics_dto.Statist
 }
 
 func (r *Statistics) StreamUntimed(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Usage) error) error {
-	db := r.usageFilter(ctx, q, r.engine.DB(ctx).Table(reporting_repo.PublishedUsage).Select("u.session_key,u.model").Where("u.observed_at_ms IS NULL"))
+	db := r.usageFilter(ctx, q, reporting_repo.PublishedUsage(r.engine.DB(ctx)).Select("u.session_key,u.model").Where("u.observed_at_ms IS NULL"))
 	rows, err := db.Rows()
 	if err != nil {
 		return err

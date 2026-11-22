@@ -28,6 +28,14 @@
 
 历史 `complete` 表示该周期实际首末采样覆盖前 10% 与后 10%，并不声明中间每个时刻都有观测或完整历史上传。没有满足条件的历史基线保持 NULL/空数组；legacy 仅用于允许的曲线、上一周期与基线，不提升当前可信性。
 
+## 当前周期模型用量
+
+`GET /api/v1/quotas/model-usage` 要求管理员会话、`account_key` 和对应的 Codex 7 天 `window_key`，可带 `client_id`。账号、设备筛选和窗口起止沿用摘要；找不到对应窗口返回 404。展开明细时查询，受同一账号周期 200,000 条事实预算约束。
+
+同一只读快照返回 `evaluated_at_ms`、实际周期 `window_start_at_ms` / `resets_at_ms`、`recorded_tokens` 与 `models`。无有效周期或尚未上报账号用量时，总量为 NULL、明细为空。已有周期记录且没有事实时，总量为 `"0"`、明细为空。
+
+账号事实决定总量，已发布的会话贡献按相同事实 ID 补充模型和计数。明细按已知模型、`unknown_model`、`unmatched` 排列，已知模型按总量降序。每行含 `kind`、可空 `model` 和 `name`、`total_tokens` 及可空的 `input_tokens` / `cached_tokens` / `output_tokens` / `reasoning_tokens`。Token 使用精确十进制字符串。缺失分项返回 NULL，所有行总量与 `recorded_tokens` 对账。
+
 ## Web 展示约定
 
 Web 按原始账号键筛选，不使用邮箱作唯一键；quota/pace 分别返回自己的评估时间，页面不得宣称两次请求同快照。30 秒轮询只读取已收到事实，不触发采集端刷新。reset_remaining_ms 以中心确认时快照展示，不能用旧 reset 在前端推测新周期或重置 used。实际采样只画离散点，历史 band 虚线注明计算网格；下降保留，不按缺口补线或追加当前时刻。

@@ -4,6 +4,8 @@ import (
 	"context"
 	"math/big"
 
+	"gorm.io/gorm"
+
 	reporting_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/reporting_do"
 	quota_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/quota_dto"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
@@ -11,20 +13,30 @@ import (
 
 const accountTokenFactLimit = 200000
 
-func (r *Quota) AccountTokenTotal(ctx context.Context, q quota_dto.Query, account string, start, end, now int64) (string, bool, error) {
-	db := r.engine.DB(ctx)
-	periods := db.Model(&reporting_do.AccountTokenPeriod{}).Where("account_key = ? AND provider = 'codex' AND collected_at_ms >= ? AND collected_at_ms <= ? AND window_start_at_ms <= ? AND resets_at_ms > ?", account, start, now+5*60*1000, now, now)
+func (r *Quota) accountTokenPeriods(ctx context.Context, q quota_dto.Query, account string, start, now int64) *gorm.DB {
+	periods := r.engine.DB(ctx).Model(&reporting_do.AccountTokenPeriod{}).
+		Where("account_key = ? AND provider = 'codex' AND collected_at_ms >= ? AND collected_at_ms <= ? AND window_start_at_ms <= ? AND resets_at_ms > ?", account, start, now+5*60*1000, now, now)
 	if q.ClientID != "" {
 		periods = periods.Where("client_id = ?", q.ClientID)
 	}
-	periods = periods.Select("1")
-	facts := db.Where("account_key = ? AND provider = 'codex' AND observed_at_ms >= ? AND observed_at_ms < ? AND observed_at_ms <= ?", account, start, end, now)
+	return periods.Select("1")
+}
+
+func (r *Quota) accountTokenFacts(ctx context.Context, q quota_dto.Query, account string, start, end, now int64) *gorm.DB {
+	facts := r.engine.DB(ctx).Model(&reporting_do.AccountTokenFact{}).
+		Where("account_key = ? AND provider = 'codex' AND observed_at_ms >= ? AND observed_at_ms < ? AND observed_at_ms <= ?", account, start, end, now)
 	if q.ClientID != "" {
 		facts = facts.Where("EXISTS (SELECT 1 FROM pulse_account_token_sources s WHERE s.fact_id = pulse_account_token_facts.id AND s.client_id = ?)", q.ClientID)
 	}
+	return facts.Limit(accountTokenFactLimit + 1)
+}
+
+func (r *Quota) AccountTokenTotal(ctx context.Context, q quota_dto.Query, account string, start, end, now int64) (string, bool, error) {
+	db := r.engine.DB(ctx)
+	periods := r.accountTokenPeriods(ctx, q, account, start, now)
+	bounded := r.accountTokenFacts(ctx, q, account, start, end, now).Select("total_tokens").Where("EXISTS (?)", periods)
 	// 限额内分别累加整数商与余数，两部分都能放入 int64，兼容 SQLite 的整数 SUM。
 	const base = 1000000
-	bounded := facts.Model(&reporting_do.AccountTokenFact{}).Select("total_tokens").Where("EXISTS (?)", periods).Limit(accountTokenFactLimit + 1)
 	var available bool
 	var count, high, low int64
 	err := db.Table("(?) AS facts", bounded).

@@ -19,7 +19,7 @@ func TestCatalogUsesOnlyPublishedFacts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, key := range []string{"published", "empty", "deleted"} {
+	for _, key := range []string{"legacy", "published", "empty", "deleted"} {
 		if err := db.Create(&reporting_do.SessionPublication{SessionKey: key, Generation: "current"}).Error; err != nil {
 			t.Fatal(err)
 		}
@@ -29,9 +29,8 @@ func TestCatalogUsesOnlyPublishedFacts(t *testing.T) {
 		position                   int64
 		price                      *int64
 	}{
-		{"legacy", "", "legacy-model", 1, nil},
-		{"legacy", "", "legacy-model", 2, nil},
-		{"published", "", "replaced-inline", 1, new(int64(1))},
+		{"legacy", "current", "legacy-model", 1, nil},
+		{"legacy", "current", "legacy-model", 2, nil},
 		{"published", "obsolete", "obsolete-model", 1, new(int64(2))},
 		{"published", "pending", "pending-model", 1, new(int64(3))},
 		{"published", "current", "published-model", 1, new(int64(9007199254740993))},
@@ -39,18 +38,12 @@ func TestCatalogUsesOnlyPublishedFacts(t *testing.T) {
 		{"published", "current", "published-model", 3, new(int64(0))},
 		{"deleted", "current", "deleted-model", 1, new(int64(4))},
 		{"staged", "pending", "never-published", 1, new(int64(5))},
-		{"empty", "", "removed-inline", 1, new(int64(6))},
+		{"empty", "obsolete", "removed-model", 1, new(int64(6))},
 	} {
 		row := reporting_do.Usage{SessionKey: item.session, ContributionID: item.model, Position: item.position, Model: new(item.model), PricingVersion: new("historical"), InputPrice: item.price}
 		// 同值的独立贡献只在目录中去重；不同费率仍保留。
 		row.ContributionID += strconv.FormatInt(item.position, 10)
-		var err error
-		if item.generation == "" {
-			err = db.Create(&row).Error
-		} else {
-			err = db.Create(&reporting_do.UsageVersion{Generation: item.generation, Usage: row}).Error
-		}
-		if err != nil {
+		if err := db.Create(&reporting_do.UsageVersion{Generation: item.generation, Usage: row}).Error; err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Button, Card, Progress, Select, Typography } from 'antd';
+import {useQueryClient} from '@tanstack/react-query';
 import {useFeedbackQuery as useQuery} from '../components/QueryNotifications';
-import { getPace, getQuotas, getQuotaAccounts, type QuotaAccount, type QuotaCredits, type QuotaFilter, type QuotaResponse, type QuotaWindow } from '../api/quotas';
+import { accountModelUsageQueryKey, getPace, getQuotas, getQuotaAccounts, type QuotaAccount, type QuotaCredits, type QuotaFilter, type QuotaResponse, type QuotaWindow } from '../api/quotas';
 import { getDevices } from '../api/statistics';
 import { Navigate,useSearchParams } from 'react-router-dom';
 import {EvidenceIcon} from '../components/EvidenceIcon';
@@ -10,10 +11,12 @@ import {ObservationFilters} from '../components/ObservationFilters';
 import {percent} from '../components/QuotaViews';
 import { AccountIdentity, CreditsCard, PacePanel } from '../components/QuotaViews';
 import {PaidCreditsCard} from '../components/PaidCreditsCard';
+import {AccountModelUsage} from '../components/AccountModelUsage';
 import { EmptyState, ErrorState, LoadingState } from '../components/QueryState';
 import { dateTime, providerNames, tokens } from '../format';
 
 interface AccountGroup { key:string; accountKey:string|null; account?:QuotaAccount; provider:string; windows:QuotaWindow[]; credits:QuotaCredits[] }
+
 function allowedMinutes(plan:string|null|undefined):number[]{return ['pro','prolite','pro5x','pro20x'].includes(plan?.toLowerCase()??'')?[10080]:plan?.toLowerCase()==='plus'?[300,10080]:[];}
 function quotaSlots(group:AccountGroup){return group.provider==='codex'?allowedMinutes(group.account?.plan).map(minutes=>({minutes,window:group.windows.find(w=>w.window_minutes===minutes)})):group.windows.map(window=>({minutes:window.window_minutes,window}));}
 function accountGroups(data:QuotaResponse):AccountGroup[]{
@@ -27,6 +30,7 @@ function accountGroups(data:QuotaResponse):AccountGroup[]{
 
 export function QuotaAccounts(){
 
+ const queryClient=useQueryClient();
  const [filter,setFilter]=useState<QuotaFilter>({provider:'',client_id:'',account_key:''});
  const [selectedAccount,setSelectedAccount]=useState('');
  const [selectedKey,setSelectedKey]=useState('');
@@ -39,11 +43,12 @@ export function QuotaAccounts(){
  const groups=data?accountGroups(data):[];
  const group=groups.find(a=>a.key===selectedAccount)??groups.find(a=>a.windows.length||a.credits.length||data?.paid_credits?.some(c=>c.account_key===a.accountKey))??groups[0];
  const selected=group?.windows.find(w=>w.key===selectedKey)??group?.windows[0];
+ const weeklyWindow=group?.windows.find(w=>w.provider==='codex'&&w.window_minutes===10080);
  const pace=useQuery({queryKey:['pace',filter,selected?.key],queryFn:({signal})=>getPace(filter,signal,selected?.key),enabled:Boolean(selected),...polling});
  const selectedPace=pace.data?.windows.find(w=>w.key===selected?.key);
  const busy=query.isFetching||pace.isFetching;
  function change(value:QuotaFilter){setFilter(value);setSelectedAccount('');setSelectedKey('');}
- function refresh(){void query.refetch();if(selected)void pace.refetch();void catalog.refetch();void devices.refetch();}
+ function refresh(){void query.refetch();if(selected)void pace.refetch();void catalog.refetch();void devices.refetch();void queryClient.invalidateQueries({queryKey:accountModelUsageQueryKey});}
  return <section>
  <ObservationFilters value={filter} providerLabel="额度 Provider" sourceLabel="额度采集来源" refreshLabel="刷新额度" onChange={scope=>change({...filter,...scope,account_key:''})} refresh={refresh} busy={busy} extra={<Select className="quota-account-filter" aria-label="额度账号" value={filter.account_key} loading={catalog.isPending} showSearch={{optionFilterProp:'label'}} onChange={account_key=>change({...filter,account_key})} options={[{value:'',label:'全部账号'},...(catalog.data?.accounts??[]).map(a=>({value:a.key,label:`${providerNames[a.provider]??a.provider} · ${a.email??'邮箱未提供'} · ${a.raw_id}`}))]} />} />
 
@@ -63,6 +68,7 @@ export function QuotaAccounts(){
    {w.provider==='codex'&&w.window_minutes===10080&&<div className="metric-note">本周期已记录 Token：<Typography.Text strong>{w.recorded_tokens==null?'—':tokens(w.recorded_tokens)}</Typography.Text></div>}
    <div className="metric-note">最后更新 {dateTime(w.current.observed_at_ms)}{w.current.conflict?' · 来源冲突':''}{w.current.freshness==='suspicious'?' · 发现可疑观测，保留有效值':''}{group.accountKey===null?` · ${devices.data?.find(d=>d.id===w.current.selected_client_id)?.name??'来源未知'}`:''}</div>
   </Card>:<Card key={`missing:${minutes}`} size="small" className="quota-window-summary"><strong>{minutes===300?'5 小时':'7 天'}</strong><div className="quota-summary-value">未取得</div><div className="metric-note">等待该窗口的有效采集观测</div></Card>)}</div>
+  {weeklyWindow&&group.accountKey&&<AccountModelUsage accountKey={group.accountKey} window={weeklyWindow} clientID={filter.client_id} />}
   {!group.windows.length&&<Typography.Paragraph type="secondary">当前账号暂无已收到的额度窗口。</Typography.Paragraph>}
   {!group.credits.length&&<Typography.Paragraph type="secondary">当前账号暂无已收到的 Reset Credits，库存保持未知。</Typography.Paragraph>}
   {group.credits.map(c=><CreditsCard key={c.key} showAccount={group.accountKey===null} credits={c} account={group.account} devices={devices.data??[]} />)}

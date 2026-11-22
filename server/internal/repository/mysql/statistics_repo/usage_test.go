@@ -27,16 +27,17 @@ func TestUsageProjectionPreservesFactsAndPublishedGeneration(t *testing.T) {
 		}
 	}
 	fact := reporting_do.Usage{SessionKey: "legacy", ContributionID: "fact", Position: 9, ObservedAtMS: new(int64(100)), Model: new("model"), InputTokens: new(int64(9007199254740993)), CachedTokens: new(int64(0)), CacheWriteTokens: new(int64(2)), OutputTokens: new(int64(3)), ReasoningTokens: new(int64(4)), TotalTokens: new(int64(9007199254740996)), CostMicroUSD: new(int64(5)), ReportedChargeMicroUSD: new(int64(6)), PricingVersion: new("historical"), PricingMode: "event", InputPrice: new(int64(7)), CachedPrice: new(int64(8)), CacheWritePrice: new(int64(9)), OutputPrice: new(int64(10)), CostStatus: "known"}
-	if err := db.Create(&fact).Error; err != nil {
+	if err := db.Create(&reporting_do.UsageVersion{Generation: "migrated", Usage: fact}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&reporting_do.SessionPublication{SessionKey: "legacy", Generation: "migrated"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	fact.SessionKey = "published"
-	if err := db.Create(&fact).Error; err != nil {
-		t.Fatal(err)
-	}
 	for _, generation := range []string{"current", "obsolete"} {
-		for _, id := range []string{"one", "two", "untimed"} {
+		for i, id := range []string{"one", "two", "untimed"} {
 			row := fact
+			row.Position = int64(i)
 			row.ContributionID = id
 			row.InputTokens, row.Model = nil, nil
 			if id == "untimed" {
@@ -96,10 +97,8 @@ func TestUsageAccessPathPreservesPublishedFactsAndSelectiveQueries(t *testing.T)
 		if err := db.Create(&reporting_do.Session{ID: key, Provider: "codex", ProjectID: "project", Deleted: key == "deleted"}).Error; err != nil {
 			t.Fatal(err)
 		}
-		if key != "legacy" {
-			if err := db.Create(&reporting_do.SessionPublication{SessionKey: key, Generation: "current"}).Error; err != nil {
-				t.Fatal(err)
-			}
+		if err := db.Create(&reporting_do.SessionPublication{SessionKey: key, Generation: "current"}).Error; err != nil {
+			t.Fatal(err)
 		}
 		if err := db.Create(&reporting_do.SessionSource{ID: key, SessionKey: key, ClientID: "client", Payload: "{}"}).Error; err != nil {
 			t.Fatal(err)
@@ -107,14 +106,9 @@ func TestUsageAccessPathPreservesPublishedFactsAndSelectiveQueries(t *testing.T)
 		for i, at := range []*int64{new(start - 1), new(start), new(start), new(start + day), new(start + 7*day), nil} {
 			models := []*string{nil, new(""), new("unknown"), new("model")}
 			row := reporting_do.Usage{SessionKey: key, ContributionID: strconv.Itoa(i), Position: int64(i), ObservedAtMS: at, Model: models[i%len(models)], TotalTokens: new(int64(9007199254740993)), CachedTokens: new(int64(0))}
-			if err := db.Create(&row).Error; err != nil {
-				t.Fatal(err)
-			}
-			if key != "legacy" {
-				for _, gen := range []string{"current", "obsolete"} {
-					if err := db.Create(&reporting_do.UsageVersion{Generation: gen, Usage: row}).Error; err != nil {
-						t.Fatal(err)
-					}
+			for _, gen := range []string{"current", "obsolete"} {
+				if err := db.Create(&reporting_do.UsageVersion{Generation: gen, Usage: row}).Error; err != nil {
+					t.Fatal(err)
 				}
 			}
 		}
@@ -155,7 +149,7 @@ func TestUsageAccessPathPreservesPublishedFactsAndSelectiveQueries(t *testing.T)
 			}
 			// 原已发布事实定义作为对照，不依赖新的索引选择逻辑。
 			var expected []reporting_do.Usage
-			base := db.Table(reporting_repo.PublishedUsage).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS)
+			base := reporting_repo.PublishedUsage(db).Select("u.*").Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS)
 			if err := repo.usageFilter(t.Context(), q, base).Find(&expected).Error; err != nil {
 				t.Fatal(err)
 			}
@@ -167,7 +161,7 @@ func TestUsageAccessPathPreservesPublishedFactsAndSelectiveQueries(t *testing.T)
 			}); err != nil {
 				t.Fatal(err)
 			}
-			if len(queries) != 2 || strings.Contains(queries[0], "INDEX(u") || strings.Contains(queries[1], "INDEX(u idx_usage_versions_time)") != tc.indexed {
+			if len(queries) != 1 || strings.Contains(queries[0], "INDEX(u idx_usage_versions_time)") != tc.indexed {
 				t.Fatal("unexpected access path", queries)
 			}
 			for _, sql := range queries {

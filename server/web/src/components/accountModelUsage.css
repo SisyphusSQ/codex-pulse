@@ -1,0 +1,28 @@
+.account-model-usage {
+  margin-bottom: 16px;
+  background: var(--ant-color-bg-container);
+}
+
+.model-usage-period {
+  margin-bottom: 12px;
+}
+
+.model-usage-caption {
+  margin-top: 8px;
+}
+
+.model-usage-number {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.model-usage-scroll-hint {
+  display: none;
+}
+
+@media (max-width: 680px) {
+  .model-usage-scroll-hint {
+    display: block;
+    margin-bottom: 6px;
+  }
+}

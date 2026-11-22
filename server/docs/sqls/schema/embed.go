@@ -10,10 +10,24 @@ import (
 )
 
 // Version 只在已交付结构发生有意升级时递增。
-const Version int64 = 8
+const Version int64 = 9
 
 //go:embed center_mysql.sql center_sqlite.sql v3_mysql.sql v3_sqlite.sql v4_mysql.sql v4_sqlite.sql v5_mysql.sql v5_sqlite.sql v6_mysql.sql v6_sqlite.sql v7_mysql.sql v7_sqlite.sql v8_mysql.sql v8_sqlite.sql
 var files embed.FS
+
+//go:embed v9_usage_cutover.sql
+var usageCutover string
+
+// UsageCutoverStatements 仅用于已有中心，和版本标记在同一事务中执行。
+func UsageCutoverStatements() []string {
+	var statements []string
+	for statement := range strings.SplitSeq(usageCutover, ";") {
+		if statement = strings.TrimSpace(statement); statement != "" {
+			statements = append(statements, statement)
+		}
+	}
+	return statements
+}
 
 // Definition 返回受控 dialect 的 SQL、摘要以及从 SQL 提取的表字段清单。
 func Definition(driver string) ([]string, string, map[string][]string, error) {
@@ -55,7 +69,7 @@ func Definition(driver string) ([]string, string, map[string][]string, error) {
 	}
 	content = append(content, addition...)
 
-	sum := sha256.Sum256(content)
+	sum := sha256.Sum256(append(content, usageCutover...))
 	var lines []string
 	columns := make(map[string][]string)
 	table := ""
@@ -78,8 +92,16 @@ func Definition(driver string) ([]string, string, map[string][]string, error) {
 		}
 	}
 	var statements []string
+	delete(columns, "pulse_usage")
 	for statement := range strings.SplitSeq(strings.Join(lines, "\n"), ";") {
-		if statement = strings.TrimSpace(statement); statement != "" {
+		statement = strings.TrimSpace(statement)
+		// 已发布的旧 SQL 字节保留。新库只初始化当前用量结构。
+		if strings.HasPrefix(statement, "CREATE TABLE IF NOT EXISTS pulse_usage (") ||
+			strings.HasPrefix(statement, "CREATE UNIQUE INDEX IF NOT EXISTS unq_usage_position ON pulse_usage ") ||
+			strings.HasPrefix(statement, "CREATE INDEX IF NOT EXISTS idx_usage_time ON pulse_usage ") {
+			continue
+		}
+		if statement != "" {
 			statements = append(statements, statement)
 		}
 	}
