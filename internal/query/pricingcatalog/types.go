@@ -9,9 +9,11 @@ const (
 	BasisStandard    = "openai_api_standard_short_context_text"
 	BasisCursor      = "cursor_published_model_token_rates"
 	BasisGrok        = "xai_published_model_token_rates"
+	BasisAGY         = "agy_provider_api_reference"
 	SourceOpenAIAPI  = "openai-api"
 	SourceCursorDocs = "cursor_pricing_docs"
 	SourceXAIDocs    = "xai_pricing_docs"
+	SourceAGYDocs    = "agy_provider_api_pricing"
 	CurrencyUSD      = "USD"
 	UnitTokens       = int64(1_000_000)
 )

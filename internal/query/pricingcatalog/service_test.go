@@ -325,3 +325,37 @@ func TestDSHTerraReferenceKeepsMixedSourceAndProvider(t *testing.T) {
 		t.Fatal("DSH OpenAI model omitted")
 	}
 }
+
+func TestCurrentReturnsAGYReferencePrices(t *testing.T) {
+	t.Parallel()
+	at := time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)
+	service, err := NewService(&readerStub{}, func() time.Time { return at })
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := service.Current(t.Context(), agentprovider.Scope{Provider: agentprovider.AGY})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.ProviderContext.EffectiveProvider != agentprovider.AGY ||
+		out.Source != SourceAGYDocs ||
+		out.Basis != BasisAGY ||
+		out.PricingVersion != pricing.AGYPriceVersion ||
+		len(out.Items) == 0 {
+		t.Fatalf("unexpected AGY pricing catalog: %+v", out)
+	}
+	foundCarbon := false
+	for _, item := range out.Items {
+		if item.ModelID == "gemini-4-carbon" {
+			foundCarbon = true
+			if item.InputMicros.Value == nil || *item.InputMicros.Value != 2_000_000 ||
+				item.CachedInputMicros.Value == nil || *item.CachedInputMicros.Value != 100_000 ||
+				item.OutputMicros.Value == nil || *item.OutputMicros.Value != 10_000_000 {
+				t.Fatalf("unexpected gemini-4-carbon rate: %+v", item)
+			}
+		}
+	}
+	if !foundCarbon {
+		t.Fatal("gemini-4-carbon missing from AGY pricing catalog")
+	}
+}
