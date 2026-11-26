@@ -8,6 +8,7 @@ final class StatusBarDisplayPreferences: ObservableObject {
         static let style = "statusBar.style"
         static let showCostSummary = "statusBar.showCostSummary"
         static let showProjectRanking = "statusBar.showProjectRanking"
+        static let maskAccountEmail = "statusBar.maskAccountEmail"
     }
 
     private let defaults: UserDefaults
@@ -24,12 +25,17 @@ final class StatusBarDisplayPreferences: ObservableObject {
         didSet { defaults.set(showProjectRanking, forKey: Key.showProjectRanking) }
     }
 
+    @Published var maskAccountEmail: Bool {
+        didSet { defaults.set(maskAccountEmail, forKey: Key.maskAccountEmail) }
+    }
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         let storedStyle = defaults.string(forKey: Key.style)
         self.style = StatusBarStyle.resolve(storedValue: storedStyle)
         self.showCostSummary = defaults.object(forKey: Key.showCostSummary) as? Bool ?? true
         self.showProjectRanking = defaults.object(forKey: Key.showProjectRanking) as? Bool ?? true
+        self.maskAccountEmail = defaults.object(forKey: Key.maskAccountEmail) as? Bool ?? false
         if storedStyle != style.rawValue { defaults.set(style.rawValue, forKey: Key.style) }
     }
 }

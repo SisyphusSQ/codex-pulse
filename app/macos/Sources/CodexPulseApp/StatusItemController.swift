@@ -914,6 +914,7 @@ private struct MenuBarPopoverView: View {
                 accountFallbackText: model.statusAccountCardFallbackText,
                 captureSource: captureSource,
                 isPrivacyHidden: captureSource.isPrivacyHidden,
+                maskAccountEmail: preferences.maskAccountEmail,
                 screenshotFeedback: screenshotFeedback,
                 onOpenProject: openProject,
                 onCopyPopoverScreenshot: copyPopoverScreenshot,
@@ -949,6 +950,8 @@ private struct MenuBarPopoverView: View {
 			grokContent
 		case .dsh:
 			dshContent
+		case .agy:
+			agyContent
 		case .codex:
 			if let overview = model.statusPresentation {
                     VStack(alignment: .leading, spacing: 18) {
@@ -972,7 +975,7 @@ private struct MenuBarPopoverView: View {
                 ContentUnavailableView {
                     Label("尚未启用客户端", systemImage: "switch.2")
                 } description: {
-                    Text("打开设置后可以启用 Codex、Cursor、Grok 或 DSH。")
+                    Text("打开设置后可以启用 Codex、Cursor、Grok、DSH 或 Antigravity。")
                 } actions: {
                     Button("打开设置") { onOpenSettings() }
                         .accessibilityIdentifier("popover.empty-providers.open-settings")
@@ -990,6 +993,153 @@ private struct MenuBarPopoverView: View {
 		}
 		.frame(maxWidth: .infinity, minHeight: 440)
 	}
+
+    @ViewBuilder
+    private var agyContent: some View {
+        if let overview = model.statusPresentation {
+            VStack(alignment: .leading, spacing: 18) {
+                agyQuotaSection(overview)
+                dailyTrendSection(overview, copy: .lastSevenDays)
+                if preferences.showCostSummary { costSection(overview) }
+                if preferences.showProjectRanking {
+                    projectRankingSection(overview, copy: .lastSevenDays)
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+            .background(PopoverCaptureDocumentProbe(source: captureSource).allowsHitTesting(false))
+        } else {
+            statusLoadingContent
+        }
+    }
+
+    private func agyQuotaSection(_ overview: OverviewPresentation) -> some View {
+        let localization = model.localization
+        let pools = AGYQuotaPoolResolver.groupPools(overview.quotaWindows)
+        return VStack(alignment: .leading, spacing: 12) {
+            PopoverSectionTitle(
+                title: "多池配额",
+                systemImage: "gauge.with.dots.needle.67percent",
+                localization: localization
+            )
+            if let notice = overview.quotaRefreshNotice {
+                Label(notice, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("popover.quota.refresh-status")
+            }
+            if pools.isEmpty {
+                PulseCard {
+                    Text(localization.textValue("尚未取得可信额度数据"))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                ForEach(pools) { pool in
+                    PulseCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(pool.displayName)
+                                    .font(.system(size: 14, weight: .semibold))
+                                Spacer()
+                                if pool.isStale {
+                                    Text(
+                                        pool.lastSuccessAtMS.map {
+                                            localization.format("上次观测 %@", cursorStatusDateText($0))
+                                        } ?? localization.textValue("上次观测")
+                                    )
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.orange)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange.opacity(0.14), in: Capsule())
+                                    .accessibilityIdentifier("popover.agy.pool.stale.\(pool.limitID)")
+                                }
+                            }
+                            if let primary = pool.primaryWindow {
+                                agyPopoverWindowRow(
+                                    window: primary,
+                                    label: "5h",
+                                    overview: overview,
+                                    localization: localization
+                                )
+                            }
+                            if pool.primaryWindow != nil && pool.secondaryWindow != nil {
+                                Divider()
+                            }
+                            if let secondary = pool.secondaryWindow {
+                                agyPopoverWindowRow(
+                                    window: secondary,
+                                    label: localization.textValue("周额度"),
+                                    overview: overview,
+                                    localization: localization
+                                )
+                            }
+                        }
+                    }
+                    .accessibilityIdentifier("popover.agy.pool.\(pool.limitID)")
+                }
+            }
+        }
+    }
+
+    private func agyPopoverWindowRow(
+        window: QuotaWindowPresentation,
+        label: String,
+        overview: OverviewPresentation,
+        localization: AppLocalization
+    ) -> some View {
+        let reset = QuotaResetPresentation(
+            resetsAtMS: window.resetsAtMS,
+            resetRemainingMS: window.resetRemainingMS
+        )
+        let progress = QuotaProgressPresentation(
+            remainingPercent: window.remainingPercent,
+            localization: localization
+        )
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(progress.percentText)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(quotaLevelColor(progress.level))
+            }
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.quaternary)
+                    Capsule()
+                        .fill(quotaLevelColor(progress.level))
+                        .frame(width: geometry.size.width * CGFloat(progress.fraction))
+                }
+            }
+            .frame(height: 7)
+            .accessibilityLabel(label)
+            .accessibilityValue(progress.accessibilityValue)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if let pace = overview.quotaPaceWindows.first(where: { $0.id == window.id }) {
+                    Text(pace.forecastText)
+                        .fontWeight(.medium)
+                        .foregroundStyle(pace.forecastState == "at_risk" ? .orange : .secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                Spacer(minLength: 4)
+                Text(localization.format("距离重置：%@", reset.remainingText))
+                    .lineLimit(1)
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            if let message = window.unknownMessage {
+                Text(message)
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
 
     @ViewBuilder
     private var dshContent: some View {
@@ -1657,6 +1807,11 @@ private struct DailyTrendCopy {
 		unavailableText: "本月用量趋势暂时不可用",
 		emptyText: "本月还没有每日用量"
 	)
+	static let lastSevenDays = Self(
+		title: "近 7 天每日 Token",
+		unavailableText: "近 7 天用量趋势暂时不可用",
+		emptyText: "近 7 天还没有每日用量"
+	)
 	static let currentPeriod = Self(
 		title: "每日 Token",
 		unavailableText: "当前额度周期用量趋势暂时不可用",
@@ -1681,6 +1836,12 @@ private struct ProjectRankingCopy {
 		periodLabel: "月额度周期",
 		unavailableText: "月额度项目排行暂时不可用",
 		emptyText: "本月暂无已归类项目用量"
+	)
+	static let lastSevenDays = Self(
+		title: "近 7 天项目 Token 排行",
+		periodLabel: "近 7 天",
+		unavailableText: "近 7 天项目排行暂时不可用",
+		emptyText: "近 7 天暂无已归类项目用量"
 	)
 	static let currentPeriod = Self(
 		title: "项目 Token 排行",
@@ -1754,6 +1915,7 @@ private struct PopoverHeader: View {
     let accountFallbackText: String
     let captureSource: PopoverCaptureSource
     let isPrivacyHidden: Bool
+    let maskAccountEmail: Bool
     let screenshotFeedback: PopoverScreenshotFeedback
     let onOpenProject: @MainActor () -> Void
     let onCopyPopoverScreenshot: @MainActor () -> Void
@@ -1794,7 +1956,8 @@ private struct PopoverHeader: View {
 					summary: accountSummary,
 					fallbackText: accountFallbackText,
 					captureSource: captureSource,
-					isPrivacyHidden: isPrivacyHidden
+					isPrivacyHidden: isPrivacyHidden,
+					maskAccountEmail: maskAccountEmail
 				)
                 }
 			}
@@ -1862,15 +2025,22 @@ private struct PopoverAccountCapsule: View {
     let fallbackText: String
     let captureSource: PopoverCaptureSource
     let isPrivacyHidden: Bool
+    let maskAccountEmail: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             if let summary, summary.availability == .available {
                 HStack(spacing: 4) {
                     Text(summary.planText)
-                    Text(summary.emailText)
+                    if summary.emailText != "--" && !summary.emailText.isEmpty {
+                        Text(
+                            maskAccountEmail
+                                ? PopoverAccountEmailMasker.mask(summary.emailText)
+                                : summary.emailText
+                        )
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    }
                 }
             } else {
                 Text(summary?.accessibilityLabel ?? fallbackText)
@@ -2014,6 +2184,8 @@ private struct StatusDisplaySettingsView: View {
                         SettingsToggle(identifier: "cost-summary", title: "显示 API 成本摘要", subtitle: "当前周额度周期的本地 API 等价估算", value: $preferences.showCostSummary)
                         Divider()
                         SettingsToggle(identifier: "project-ranking", title: "显示项目排行", subtitle: "按当前额度周期展示 Token 前 5 的已归类项目", value: $preferences.showProjectRanking)
+                        Divider()
+                        SettingsToggle(identifier: "mask-account-email", title: "隐藏账号邮箱", subtitle: "在弹窗顶部账号胶囊中对邮箱地址进行脱敏显示", value: $preferences.maskAccountEmail)
                     }
                 }
                 Button(action: onOpenSettings) {

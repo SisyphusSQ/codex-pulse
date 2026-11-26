@@ -58,6 +58,10 @@ public enum ProductCopy {
         case "codex", "codex_cli", "local_jsonl", "session_jsonl": "Codex 本机会话"
         case "chatgpt", "openai", "quota", "quota_api": "Codex 额度"
         case "reset_credits": "重置次数"
+        case "agy.summaries": "Antigravity 会话摘要"
+        case "agy.trajectories": "Antigravity 本地轨迹"
+        case "agy.transcripts": "Antigravity 日志回退"
+        case "agy.ls_rpc": "Antigravity 本机配额"
         case "", "unknown": "本机数据"
         default: "本机数据"
         }

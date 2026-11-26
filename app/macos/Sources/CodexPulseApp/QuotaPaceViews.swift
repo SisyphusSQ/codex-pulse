@@ -7,10 +7,15 @@ import SwiftUI
 struct QuotaPaceStateView: View {
     let state: FeatureLoadState<Codexpulse_Core_V1_QuotaPaceResponse>
     let currentWindows: [Codexpulse_Core_V1_CurrentWindow]
+    var provider: AgentProvider = .codex
 
     var body: some View {
         if let response = state.value {
-            QuotaPaceCenterView(response: response, currentWindows: currentWindows)
+            QuotaPaceCenterView(
+                response: response,
+                currentWindows: currentWindows,
+                provider: provider
+            )
         } else {
             SectionCard(title: "配额节奏中心") {
                 switch state {
@@ -41,15 +46,33 @@ struct QuotaPaceStateView: View {
 private struct QuotaPaceCenterView: View {
     let response: Codexpulse_Core_V1_QuotaPaceResponse
     let currentWindows: [Codexpulse_Core_V1_CurrentWindow]
+    let provider: AgentProvider
+    @State private var selectedPoolID: String? = nil
     @State private var selectedWindowID: String? = nil
 
-    private var windows: [QuotaPaceWindowPresentation] {
+    private var allWindows: [QuotaPaceWindowPresentation] {
         response.pace.windows.map {
             QuotaPaceWindowPresentation(
                 $0,
                 evaluatedAtMS: response.pace.evaluatedAtMs
             )
         }
+    }
+
+    private var agyPools: [AGYQuotaPacePoolGroup] {
+        guard provider == .agy else { return [] }
+        return AGYQuotaPoolResolver.groupPacePools(allWindows, currentWindows: currentWindows)
+    }
+
+    private var activePool: AGYQuotaPacePoolGroup? {
+        agyPools.first { $0.id == selectedPoolID } ?? agyPools.first
+    }
+
+    private var windows: [QuotaPaceWindowPresentation] {
+        if provider == .agy, let activePool {
+            return activePool.windows
+        }
+        return allWindows
     }
 
     private var selectedWindow: QuotaPaceWindowPresentation? {
@@ -86,6 +109,10 @@ private struct QuotaPaceCenterView: View {
             }
         }
         .accessibilityIdentifier("quota.pace.center")
+        .onChange(of: agyPools.map(\.id), initial: true) { _, poolIDs in
+            guard provider == .agy else { return }
+            selectedPoolID = SegmentedSelection.resolved(selectedPoolID, in: poolIDs)
+        }
         .onChange(of: windows.map(\.id), initial: true) { _, ids in
             selectedWindowID = SegmentedSelection.resolved(selectedWindowID, in: ids)
         }
@@ -93,13 +120,18 @@ private struct QuotaPaceCenterView: View {
 
     @ViewBuilder
     private var windowPickerHeader: some View {
-        if windows.count > 1 {
-            VStack(alignment: .leading, spacing: 10) {
-                headerDescription
+        VStack(alignment: .leading, spacing: 10) {
+            headerDescription
+            if provider == .agy, agyPools.count > 1 {
+                DynamicSegmentedSelector(
+                    choices: agyPools.map { SegmentedChoice(id: $0.id, title: $0.displayName) },
+                    selection: $selectedPoolID
+                )
+                .accessibilityIdentifier("quota.pace.pool-picker")
+            }
+            if windows.count > 1 {
                 windowPicker
             }
-        } else {
-            headerDescription
         }
     }
 
@@ -111,7 +143,17 @@ private struct QuotaPaceCenterView: View {
 
     private var windowPicker: some View {
         DynamicSegmentedSelector(
-            choices: windows.map { SegmentedChoice(id: $0.id, title: localizedCopy(title(for: $0))) },
+            choices: windows.map { window in
+                let label: String
+                if provider == .agy {
+                    label = AGYQuotaPoolResolver.isPrimaryWindow(
+                        windowKind: window.windowKind, windowMinutes: nil
+                    ) ? "5h" : localizedCopy("周额度")
+                } else {
+                    label = localizedCopy(title(for: window))
+                }
+                return SegmentedChoice(id: window.id, title: label)
+            },
             selection: $selectedWindowID
         )
         .accessibilityIdentifier("quota.pace.window-picker")

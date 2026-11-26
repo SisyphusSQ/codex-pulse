@@ -357,12 +357,18 @@ public final class AppModel: ObservableObject {
         guard let statusProvider else {
             return "Codex Pulse --"
         }
-		if statusProvider == .cursor {
-			return "月剩 -- · 已用 --"
-		}
+        if statusProvider == .cursor {
+            return "月剩 -- · 已用 --"
+        }
         let currentLocalization = localization
-		switch statusPresentation {
+        switch statusPresentation {
         case .some(let overview):
+            if statusProvider == .agy {
+                if let summary = StatusBarQuotaPresentation(overview) {
+                    return "\(summary.remainingText) · \(summary.usageText)"
+                }
+                return "\(statusProvider.compactTitle) --"
+            }
             let values = overview.quotaWindows.prefix(2).map { window in
                 let percent = window.remainingPercent.map { currentLocalization.percent($0) } ?? "--"
                 return "\(window.title) \(percent)"
@@ -370,12 +376,13 @@ public final class AppModel: ObservableObject {
             return values.isEmpty ? "Codex Pulse --" : values.joined(separator: " · ")
         case .none:
             switch state {
-            case .loading: return "Codex Pulse …"
+            case .loading: return statusProvider == .agy ? "\(statusProvider.compactTitle) …" : "Codex Pulse …"
             case .recovery, .restartRequired:
                 return "Codex Pulse \(currentLocalization.textValue("恢复"))"
             case .unavailable:
                 return "Codex Pulse \(currentLocalization.textValue("离线"))"
-            default: return "Codex Pulse --"
+            default:
+                return statusProvider == .agy ? "\(statusProvider.compactTitle) --" : "Codex Pulse --"
             }
         }
     }
@@ -399,12 +406,27 @@ public final class AppModel: ObservableObject {
     }
 
     public var statusAccountCardFallbackText: String {
-        if statusProvider == .dsh { return localization.textValue("本机 DSH 用量") }
-        guard statusProvider == .codex else {
+        switch statusProvider {
+        case .dsh:
+            return localization.textValue("本机 DSH 用量")
+        case .agy:
+            if let presentation = statusPresentation,
+               presentation.account.availability == .available
+            {
+                return presentation.account.accessibilityLabel
+            }
+            return localization.textValue("Antigravity 账号暂不可用")
+        case .cursor:
             return statusPresentation?.account.accessibilityLabel
-                ?? localization.textValue("正在读取 Codex 账户与套餐信息")
+                ?? localization.textValue("正在读取 Cursor 账户信息")
+        case .grok:
+            return statusPresentation?.account.accessibilityLabel
+                ?? localization.textValue("正在读取 Grok 账户信息")
+        case .codex:
+            return codexCardFallbackText(quota: statusOverviewResponses[.codex]?.quota)
+        case .none:
+            return ""
         }
-        return codexCardFallbackText(quota: statusOverviewResponses[.codex]?.quota)
     }
 
     public var quotaAccountCardSummary: PopoverAccountSummaryPresentation? {
@@ -898,7 +920,7 @@ public final class AppModel: ObservableObject {
         sessionsState = .loading(previous: previous)
 		let request = FeatureRequestFactory.sessions(options: sessionOptions, provider: provider, cursor: cursor)
         launch(.sessions, operation: { [runtime] in try await runtime.listSessions(request) }) { [weak self] response in
-			guard let self, response.providerContext.effectiveProvider == provider.rawValue else { return }
+			guard let self, selectedProvider == provider, response.providerContext.effectiveProvider == provider.rawValue else { return }
             completePage(.sessions, cursor: cursor)
             let merged = FeatureResponseMerge.sessions(previous, response, append: !reset)
             sessionsState = loadState(value: merged, meta: merged.meta, isEmpty: merged.items.isEmpty)
@@ -962,7 +984,7 @@ public final class AppModel: ObservableObject {
         projectsState = .loading(previous: previous)
 		let request = FeatureRequestFactory.projects(options: projectOptions, provider: provider, cursor: cursor)
         launch(.projects, operation: { [runtime] in try await runtime.listProjects(request) }) { [weak self] response in
-			guard let self, response.providerContext.effectiveProvider == provider.rawValue else { return }
+			guard let self, selectedProvider == provider, response.providerContext.effectiveProvider == provider.rawValue else { return }
             completePage(.projects, cursor: cursor)
             let merged = FeatureResponseMerge.projects(previous, response, append: !reset)
             projectsState = loadState(value: merged, meta: merged.meta, isEmpty: merged.items.isEmpty)
@@ -1099,8 +1121,8 @@ public final class AppModel: ObservableObject {
         usageState = .loading(previous: previous)
 		let request = FeatureRequestFactory.usage(range: usageRange, provider: provider)
         launch(.usage, operation: { [runtime] in try await runtime.usageCost(request) }) { [weak self] response in
-			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
-			self?.usageState = loadState(value: response, meta: response.meta, isEmpty: false)
+			guard let self, selectedProvider == provider, response.providerContext.effectiveProvider == provider.rawValue else { return }
+			usageState = loadState(value: response, meta: response.meta, isEmpty: false)
         } failure: { [weak self] error in
             self?.usageState = failedLoadState(previous: previous, error: error)
         }
@@ -1178,8 +1200,8 @@ public final class AppModel: ObservableObject {
             .pricingCatalog,
 			operation: { [runtime] in try await runtime.pricingCatalogCurrent(request) }
         ) { [weak self] response in
-			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
-            self?.pricingCatalogState = loadState(
+			guard let self, selectedProvider == provider, response.providerContext.effectiveProvider == provider.rawValue else { return }
+            pricingCatalogState = loadState(
                 value: response,
                 meta: response.meta,
                 isEmpty: response.items.isEmpty
@@ -1195,18 +1217,16 @@ public final class AppModel: ObservableObject {
         quotaState = .loading(previous: previous)
 		let request = FeatureRequestFactory.quota(provider: provider, now: now)
         launch(.quota, operation: { [runtime] in try await runtime.quotaCurrent(request) }) { [weak self] response in
-			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
-            self?.quotaState = loadState(
+			guard let self, selectedProvider == provider, response.providerContext.effectiveProvider == provider.rawValue else { return }
+            quotaState = loadState(
                 value: response,
                 meta: response.meta,
                 isEmpty: response.current.windows.isEmpty && response.current.sources.isEmpty
             )
-            if let self {
-                switch quotaAccountState {
-                case .ready(let account), .partial(let account, _):
-                    acceptCodexCardAccount(account, matching: response)
-                default: break
-                }
+            switch quotaAccountState {
+            case .ready(let account), .partial(let account, _):
+                acceptCodexCardAccount(account, matching: response)
+            default: break
             }
         } failure: { [weak self] error in
             self?.quotaState = failedLoadState(previous: previous, error: error)
@@ -1219,8 +1239,8 @@ public final class AppModel: ObservableObject {
         quotaPaceState = .loading(previous: previous)
 		let request = FeatureRequestFactory.quotaPace(provider: provider, now: now)
         launch(.quotaPace, operation: { [runtime] in try await runtime.quotaPace(request) }) { [weak self] response in
-			guard response.providerContext.effectiveProvider == provider.rawValue else { return }
-            self?.quotaPaceState = loadState(
+			guard let self, selectedProvider == provider, response.providerContext.effectiveProvider == provider.rawValue else { return }
+            quotaPaceState = loadState(
                 value: response,
                 meta: response.meta,
                 isEmpty: response.pace.windows.isEmpty
