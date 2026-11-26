@@ -190,7 +190,6 @@ export function legacyUsageTarget(params:URLSearchParams) {
  return `/usage/models${next.size?`?${next.toString()}`:''}`;
 }
 export default function Quota(){
- const queryClient=useQueryClient();
  const [params]=useSearchParams();
  if(params.get('view')==='usage')return <Navigate to={legacyUsageTarget(params)} replace />;
  return <section className="accounts-page"><QuotaAccounts /></section>;
