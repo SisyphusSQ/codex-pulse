@@ -105,9 +105,10 @@ func NewLSClient(discoverer *LSDiscoverer, httpClient *http.Client) *LSClient {
 }
 
 // FetchAccountAndQuota 执行账号夹心校验：
-// GetUserStatus -> RetrieveUserQuotaSummary({forceRefresh: true}) -> GetUserStatus，
+// GetUserStatus -> RetrieveUserQuotaSummary({forceRefresh}) -> GetUserStatus，
 // 切号竞态下直接丢弃脏观测并返回 ErrAccountMismatch。
-func (c *LSClient) FetchAccountAndQuota(ctx context.Context) (LSSandwichResult, error) {
+// 常规自动刷新传入 forceRefresh=false，不要求 LS 强制刷新；仅显式手动刷新传 forceRefresh=true。
+func (c *LSClient) FetchAccountAndQuota(ctx context.Context, forceRefresh bool) (LSSandwichResult, error) {
 	before, err := c.GetUserStatus(ctx)
 	if err != nil {
 		return LSSandwichResult{}, err
@@ -116,7 +117,7 @@ func (c *LSClient) FetchAccountAndQuota(ctx context.Context) (LSSandwichResult, 
 	if beforeID == "" {
 		return LSSandwichResult{}, ErrLSUnavailable
 	}
-	summary, err := c.RetrieveUserQuotaSummary(ctx)
+	summary, err := c.RetrieveUserQuotaSummary(ctx, forceRefresh)
 	if err != nil {
 		return LSSandwichResult{}, err
 	}
@@ -195,8 +196,8 @@ func (c *LSClient) GetUserStatus(ctx context.Context) (LSUserStatus, error) {
 	}, nil
 }
 
-func (c *LSClient) RetrieveUserQuotaSummary(ctx context.Context) (LSQuotaSummary, error) {
-	raw, err := c.call(ctx, lsMethodRetrieveQuota, map[string]any{"forceRefresh": true})
+func (c *LSClient) RetrieveUserQuotaSummary(ctx context.Context, forceRefresh bool) (LSQuotaSummary, error) {
+	raw, err := c.call(ctx, lsMethodRetrieveQuota, map[string]any{"forceRefresh": forceRefresh})
 	if err != nil {
 		return LSQuotaSummary{}, err
 	}

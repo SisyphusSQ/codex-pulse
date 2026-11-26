@@ -357,3 +357,87 @@ func TestAccountSandwichOfflineStaleExpiryOnlineToggleAndPrivacy(t *testing.T) {
 		t.Fatalf("LS RPC must not be called when agy_online_enabled=false: before=%d after=%d", beforeCalls, rpcTotal.Load())
 	}
 }
+
+func TestQuotaCollectorForceRefreshAndAutoInterval(t *testing.T) {
+	t.Parallel()
+
+	if DefaultQuotaMinRefresh != 5*time.Minute {
+		t.Fatalf("DefaultQuotaMinRefresh = %v, want 5m", DefaultQuotaMinRefresh)
+	}
+
+	repo := openPulseRepo(t)
+	now := time.Date(2026, 11, 26, 10, 0, 0, 0, time.UTC)
+	reset5h := now.Add(3 * time.Hour)
+
+	var recordedForce []bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case lsServicePath + lsMethodGetUserStatus:
+			_, _ = w.Write([]byte(`{"userStatus":{"email":"user@example.com","planStatus":{"planInfo":{"planName":"Google AI Pro"}}}}`))
+		case lsServicePath + lsMethodRetrieveQuota:
+			var reqBody struct {
+				ForceRefresh bool `json:"forceRefresh"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+				t.Errorf("decode RetrieveUserQuotaSummary body: %v", err)
+			}
+			recordedForce = append(recordedForce, reqBody.ForceRefresh)
+			_, _ = w.Write([]byte(`{"groups":[{"displayName":"Gemini Models","buckets":[{"bucketId":"g5","window":"5h","remainingFraction":0.80,"resetTime":"` + reset5h.Format(time.RFC3339) + `"}]}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	lsClient := NewLSClient(nil, newLoopbackHTTPClient(2*time.Second))
+	lsClient.endpoint = &LSEndpoint{BaseURL: srv.URL, CSRFToken: "tok"}
+
+	clock := now
+	qCollector, err := NewQuotaCollector(lsClient, repo, QuotaCollectorConfig{
+		MinimumRefresh: DefaultQuotaMinRefresh,
+		Now:            func() time.Time { return clock },
+		Enabled:        func() bool { return true },
+	})
+	if err != nil {
+		t.Fatalf("NewQuotaCollector: %v", err)
+	}
+
+	// 1. 首次自动刷新：执行 RPC，且必须传 forceRefresh=false
+	res1 := qCollector.RefreshIfDue(context.Background(), false)
+	if !res1.Attempted || res1.Err != nil {
+		t.Fatalf("first auto refresh = %+v, want attempted without error", res1)
+	}
+	if len(recordedForce) != 1 || recordedForce[0] {
+		t.Fatalf("first auto refresh forceRefresh = %v, want [false]", recordedForce)
+	}
+
+	// 2. 5m 到期前再次自动刷新：必须节流跳过，不发 RPC
+	clock = clock.Add(5*time.Minute - time.Millisecond)
+	res2 := qCollector.RefreshIfDue(context.Background(), false)
+	if res2.Attempted || res2.Err != nil {
+		t.Fatalf("throttled auto refresh = %+v, want not attempted", res2)
+	}
+	if len(recordedForce) != 1 {
+		t.Fatalf("throttled auto refresh should not call RPC: recorded=%v", recordedForce)
+	}
+
+	// 3. 间隔内显式手动刷新（force=true）：绕过节流，且传 forceRefresh=true
+	res3 := qCollector.RefreshIfDue(context.Background(), true)
+	if !res3.Attempted || res3.Err != nil {
+		t.Fatalf("manual refresh = %+v, want attempted without error", res3)
+	}
+	if len(recordedForce) != 2 || !recordedForce[1] {
+		t.Fatalf("manual refresh forceRefresh = %v, want [false true]", recordedForce)
+	}
+
+	// 4. 手动刷新后满 5m 再次自动刷新：重新触发，且传 forceRefresh=false
+	clock = clock.Add(DefaultQuotaMinRefresh)
+	res4 := qCollector.RefreshIfDue(context.Background(), false)
+	if !res4.Attempted || res4.Err != nil {
+		t.Fatalf("due auto refresh = %+v, want attempted without error", res4)
+	}
+	if len(recordedForce) != 3 || recordedForce[2] {
+		t.Fatalf("due auto refresh forceRefresh = %v, want [false true false]", recordedForce)
+	}
+}

@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	defaultAGYQuotaMinRefresh = 2 * time.Minute
+	// DefaultQuotaMinRefresh 是 AGY 本机 LS 配额自动刷新的默认最小间隔。
+	DefaultQuotaMinRefresh    = 5 * time.Minute
 	defaultAGYMaxObsPerWindow = 256
 )
 
@@ -109,7 +110,7 @@ func (c *QuotaCollector) RefreshIfDue(ctx context.Context, force bool) OnlineRef
 	c.mu.Unlock()
 
 	atMS := now.UnixMilli()
-	result, err := c.client.FetchAccountAndQuota(ctx)
+	result, err := c.client.FetchAccountAndQuota(ctx, force)
 	if err != nil {
 		c.recordFailure(ctx, atMS, err)
 		return OnlineRefreshClass{Attempted: true, Remote: true, Err: err}

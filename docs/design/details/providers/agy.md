@@ -66,7 +66,7 @@ Antigravity 是独立的第五个 Agent Provider（代码、协议、数据库�
   - 优先扫描 `~/.gemini/<product>/daemon/hub_*.json`（校验 `pid` 存活，按 `mtime` 降序提取 `httpPort` / `httpsPort` 与 `csrfToken`，忽略损坏文件）；未命中时回退跨平台进程枚举（macOS/Unix `ps` + `lsof`，Windows PowerShell `Win32_Process` + `Get-NetTCPConnection`）。
   - 严格限定回环地址（`127.0.0.1` / `localhost` / `::1`），禁止 HTTP 重定向；白名单仅允许 `GetUserStatus` 与 `RetrieveUserQuotaSummary`，拒绝 `GetAllCascadeTrajectories` / `GetCascadeTrajectory`。
 - **账号夹心与账号胶囊（`ls_client.go` / `account.go`）**：
-  - 依次执行 `GetUserStatus → RetrieveUserQuotaSummary({forceRefresh: true}) → GetUserStatus`，若前后账号不一致则立即丢弃脏观测，防止切号串数据。
+  - 依次执行 `GetUserStatus → RetrieveUserQuotaSummary({forceRefresh}) → GetUserStatus`，若前后账号不一致则立即丢弃脏观测，防止切号串数据；常规自动刷新最小间隔为 `5m` 且固定传 `forceRefresh: false`，不要求 LS 强制刷新；是否访问上游仍由 LS 自身实现决定，不能据此保证完全离线。仅用户显式手动刷新（`RequestQuotaRefresh` / 全局 `manual` 触发）绕过节流并传 `forceRefresh: true`。
   - `AccountSnapshot(provider=agy)` 返回 `type="agy"`、`email`（仅内存即时展示，不写盘）与标准化 `plan_type`（`Google AI Ultra 20×`、`Google AI Ultra 5×`、`Google AI Pro`、`Google AI Free`）；`agy_quota_snapshots.account_scope` 仅存 64 位 SHA-256 摘要，CSRF token 与原始响应体永不落库或写日志。
 - **多配额池归一化与离线语义（`quota_pools.go` / `quota_collector.go` / `quota_query.go`）**：
   - 兼容 Google AI Ultra 共享池、Google AI Pro 独立 Argon/Carbon 分组或嵌套周桶、`clientModelConfigs.quotaInfo` 差异推断，以及 Proto3 零值省略规则（仅当 `remainingFraction` 省略且 `resetTime > now` 时判为 `100%` 已用；已过期则不判耗尽）。
