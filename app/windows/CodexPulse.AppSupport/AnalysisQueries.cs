@@ -105,6 +105,13 @@ public static class AnalysisQueries
         "rollup_ambiguous"=>l.Text("部分汇总归属尚未确认，当前显示已知用量。","Some summary attribution is unresolved; known usage is shown."),
         _=>l.Text("部分用量尚未确认。","Some usage is not yet confirmed.")
     };
+    public static string? SessionRoleTag(string? titleReason,Localization l)=>titleReason switch
+    {
+        "role:subagent"=>l.Text("子代理","Subagent"),
+        "role:swarm_worker"=>l.Text("Swarm","Swarm"),
+        "role:side_question"=>l.Text("支线提问","Side question"),
+        _=>null
+    };
     public static string TrendGranularity(string granularity,Localization l)=>granularity switch
     {"hour"=>l.Text("按小时","Hourly"),"day"=>l.Text("按天","Daily"),"week"=>l.Text("按周","Weekly"),"month"=>l.Text("按月","Monthly"),_=>l.Text("统计粒度未知","Unknown granularity")};
 }

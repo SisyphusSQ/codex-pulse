@@ -116,22 +116,22 @@ internal sealed class TrayPanel:Window,IDisposable
         var provider=host.Workspace.TrayProvider;
         if(provider is null){slot.Clear();Render();return;}
         activeProvider=provider;
-        var context=host.Workspace.Context with{Provider=provider,Start=DateOnly.FromDateTime(DateTime.Today).AddDays(provider=="cursor"?-29:-6),EndExclusive=DateOnly.FromDateTime(DateTime.Today).AddDays(1),Preset=provider=="cursor"?"quota_month":provider=="dsh"?"seven_days":"quota_week"};
+        var context=host.Workspace.Context with{Provider=provider,Start=DateOnly.FromDateTime(DateTime.Today).AddDays(provider=="cursor"?-29:-6),EndExclusive=DateOnly.FromDateTime(DateTime.Today).AddDays(1),Preset=provider=="cursor"?"quota_month":provider is "dsh" or "agy"?"seven_days":"quota_week"};
         await slot.LoadAsync((provider,context.Generation,context.TimeZone),async ct=>
         {
             var now=DateTimeOffset.Now.ToUnixTimeMilliseconds();QuotaCurrentResponse? quota=null;AccountSnapshotResponse? account=null;QuotaPaceResponse? pace=null;
-            if(provider!="dsh")
+            if(Workspace.SupportsQuota(provider))
             {
                 var qr=new QuotaCurrentRequest{Provider=new(){Provider=provider},EvaluatedAtMs=now};
-                var q=host.Client.QueryAsync("QuotaCurrent",qr,context,["quota","account"],(core,d,c)=>core.QuotaCurrentAsync(qr,deadline:d,cancellationToken:c),ct,true);
+                var q=host.Client.QueryAsync("QuotaCurrent",qr,context,["quota","quota_"+provider,"account"],(core,d,c)=>core.QuotaCurrentAsync(qr,deadline:d,cancellationToken:c),ct,true);
                 Task<AccountSnapshotResponse?> a=Task.FromResult<AccountSnapshotResponse?>(null);
-                if(provider is "codex" or "cursor" or "grok")
+                if(Workspace.SupportsAccountSnapshot(provider))
                 {
                     var ar=new AccountSnapshotRequest{Provider=new(){Provider=provider},EvaluatedAtMs=now,TimeZone=context.TimeZone};
                     a=Optional(host.Client.QueryAsync("AccountSnapshot",ar,context,["account"],(core,d,c)=>core.AccountSnapshotAsync(ar,deadline:d,cancellationToken:c),ct,true));
                 }
                 var pr=new QuotaPaceRequest{Provider=new(){Provider=provider},EvaluatedAtMs=now};
-                var p=host.Client.QueryAsync("QuotaPace",pr,context,["quota","account"],(core,d,c)=>core.QuotaPaceAsync(pr,deadline:d,cancellationToken:c),ct,true);
+                var p=host.Client.QueryAsync("QuotaPace",pr,context,["quota","quota_"+provider,"account"],(core,d,c)=>core.QuotaPaceAsync(pr,deadline:d,cancellationToken:c),ct,true);
                 var optionalQuota=Optional(q);var optionalAccount=a;var optionalPace=Optional(p);
                 await Task.WhenAll(optionalQuota,optionalAccount,optionalPace);quota=await optionalQuota;account=await optionalAccount;pace=await optionalPace;
             }
@@ -173,36 +173,79 @@ internal sealed class TrayPanel:Window,IDisposable
             if(!string.IsNullOrEmpty(feedback.Text))document.Children.Add(feedback);
             if(slot.State.Value is {} value && value.Provider==host.Workspace.TrayProvider)
             {
+                var today=DateOnly.FromDateTime(DateTime.Today);
                 var trusted=TrayPresentation.CanShowQuota(value.Provider,value.Quota,value.Account);
+                if(value.Provider=="agy")
+                {
+                    var agySummary=TrayPresentation.SummarizeAgyTray(value.Quota,value.Account,value.Usage,today,value.ReadAtMs,L);
+                    var summaryLine=PresentationControls.Caption(agySummary.CompactText);summaryLine.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;
+                    document.Children.Add(summaryLine);
+                }
                 if(value.Provider!="dsh")document.Children.Add(PresentationControls.Text(value.Provider!="codex" || trusted?TrayPresentation.Identity(value.Provider,value.Account,privacy,L):L.Text("正在确认账号；在线额度暂不展示。","Confirming account; online quota withheld.")));
                 if(trusted && value.Quota?.Current is {} quota)
                 {
-                    if(value.Provider=="codex")foreach(var credit in quota.PaidCredits)
-                        document.Children.Add(PresentationControls.Text("Credits · "+PaidCreditsPresentation.Balance(credit,L)+" · "+QuotaPresentation.Freshness(credit.Freshness,L)));
-                    foreach(var window in QuotaPresentation.Windows(quota))
+                    if(value.Provider=="agy")
                     {
-                        var card=new StackPanel{Spacing=6};var name=QuotaPresentation.WindowName(window.LimitId,window.HasLimitName?window.LimitName:null,window.HasWindowMinutes?window.WindowMinutes:null,L);
-                        var expired=window.HasResetsAtMs && DateTimeOffset.Now.ToUnixTimeMilliseconds()>=window.ResetsAtMs;
-                        var remaining=expired?null:QuotaPresentation.Percent(window.HasRemainingPercent,window.RemainingPercent);
-                        var quotaHeading=new Grid {ColumnSpacing=12};quotaHeading.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});quotaHeading.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
-                        var label=PresentationControls.Text(name,14);label.VerticalAlignment=VerticalAlignment.Center;quotaHeading.Children.Add(label);
-                        var number=PresentationControls.Text(QuotaPresentation.PercentText(remaining,L),24);number.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;Grid.SetColumn(number,1);quotaHeading.Children.Add(number);card.Children.Add(quotaHeading);QuotaPage.AddProgress(card,name,remaining);
-                        card.Children.Add(PresentationControls.Text((expired?L.Text("等待新周期","Awaiting new cycle"):QuotaPresentation.Freshness(window.Freshness,L))+" · "+L.Text("重置 ","Resets ")+L.Timestamp(window.HasResetsAtMs?window.ResetsAtMs:null),12));document.Children.Add(PresentationControls.Card(card));
+                        var pools=QuotaPresentation.AgyPools(quota,L);
+                        if(pools.Count==0)document.Children.Add(PresentationControls.Text(L.Text("尚无可用配额池；本地用量仍可独立查看。","No quota pools available yet; local usage remains independent.")));
+                        foreach(var pool in pools)
+                        {
+                            var card=new StackPanel{Spacing=8};
+                            var poolTitle=PresentationControls.Text(pool.DisplayName,14);poolTitle.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;
+                            card.Children.Add(poolTitle);
+                            var row=new Grid{ColumnSpacing=12};
+                            var slots=new List<(string Label,CurrentWindow Window)>();
+                            if(pool.Primary is {} primary)slots.Add((QuotaPresentation.WindowShortLabel(primary.WindowKind,primary.HasWindowMinutes?primary.WindowMinutes:null,L),primary));
+                            if(pool.Secondary is {} secondary)slots.Add((QuotaPresentation.WindowShortLabel(secondary.WindowKind,secondary.HasWindowMinutes?secondary.WindowMinutes:null,L),secondary));
+                            for(var i=0;i<slots.Count;i++)row.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});
+                            for(var i=0;i<slots.Count;i++)
+                            {
+                                var (slotLabel,window)=slots[i];
+                                var expired=QuotaPresentation.IsExpired(window,value.ReadAtMs);
+                                var remaining=QuotaPresentation.EffectiveRemaining(window,value.ReadAtMs);
+                                var cell=new StackPanel{Spacing=4};
+                                var cellHead=new Grid{ColumnSpacing=8};cellHead.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});cellHead.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
+                                var cap=PresentationControls.Caption(slotLabel);cap.VerticalAlignment=VerticalAlignment.Center;cellHead.Children.Add(cap);
+                                var num=PresentationControls.Text(QuotaPresentation.PercentText(remaining,L),18);num.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;Grid.SetColumn(num,1);cellHead.Children.Add(num);cell.Children.Add(cellHead);
+                                QuotaPage.AddProgress(cell,pool.DisplayName+" · "+slotLabel,remaining);
+                                cell.Children.Add(PresentationControls.Text((expired?L.Text("等待新周期","Awaiting new cycle"):QuotaPresentation.Freshness(window.Freshness,L))+" · "+L.Text("重置 ","Resets ")+L.Timestamp(window.HasResetsAtMs?window.ResetsAtMs:null),11));
+                                Grid.SetColumn(cell,i);row.Children.Add(cell);
+                            }
+                            card.Children.Add(row);
+                            document.Children.Add(PresentationControls.Card(card));
+                        }
+                        if(value.Pace?.Pace is {} agyPace && agyPace.Windows.Count>0)
+                            document.Children.Add(PresentationControls.Disclosure(L.Text("额度节奏","Quota pace"),PaceChart.CreatePoolSwitcher(QuotaPresentation.AgyPacePools(agyPace,quota,L),L)));
                     }
-                    if(quota.ResetCredits is {} credits)document.Children.Add(PresentationControls.Text(L.Text("可用重置库存：","Available reset inventory: ")+(credits.HasAvailableCount?credits.AvailableCount.ToString(L.Culture):"—")+" · "+QuotaPresentation.Freshness(credits.Freshness,L)));
-                    if(value.Pace?.Pace is {} pace && (value.Provider!="codex" || QuotaPresentation.SameAccount(quota.Binding,pace.Binding)))
-                        foreach(var window in pace.Windows)document.Children.Add(PresentationControls.Disclosure(L.Text("额度节奏 · ","Quota pace · ")+QuotaPresentation.WindowName(window.LimitId,null,window.HasWindowMinutes?window.WindowMinutes:null,L),PaceChart.Create(window,L)));
+                    else
+                    {
+                        if(value.Provider=="codex")foreach(var credit in quota.PaidCredits)
+                            document.Children.Add(PresentationControls.Text("Credits · "+PaidCreditsPresentation.Balance(credit,L)+" · "+QuotaPresentation.Freshness(credit.Freshness,L)));
+                        foreach(var window in QuotaPresentation.Windows(quota))
+                        {
+                            var card=new StackPanel{Spacing=6};var name=QuotaPresentation.WindowName(window.LimitId,window.HasLimitName?window.LimitName:null,window.HasWindowMinutes?window.WindowMinutes:null,L);
+                            var expired=QuotaPresentation.IsExpired(window,value.ReadAtMs);
+                            var remaining=QuotaPresentation.EffectiveRemaining(window,value.ReadAtMs);
+                            var quotaHeading=new Grid {ColumnSpacing=12};quotaHeading.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});quotaHeading.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
+                            var label=PresentationControls.Text(name,14);label.VerticalAlignment=VerticalAlignment.Center;quotaHeading.Children.Add(label);
+                            var number=PresentationControls.Text(QuotaPresentation.PercentText(remaining,L),24);number.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;Grid.SetColumn(number,1);quotaHeading.Children.Add(number);card.Children.Add(quotaHeading);QuotaPage.AddProgress(card,name,remaining);
+                            card.Children.Add(PresentationControls.Text((expired?L.Text("等待新周期","Awaiting new cycle"):QuotaPresentation.Freshness(window.Freshness,L))+" · "+L.Text("重置 ","Resets ")+L.Timestamp(window.HasResetsAtMs?window.ResetsAtMs:null),12));document.Children.Add(PresentationControls.Card(card));
+                        }
+                        if(value.Provider=="codex" && quota.ResetCredits is {} credits)document.Children.Add(PresentationControls.Text(L.Text("可用重置库存：","Available reset inventory: ")+(credits.HasAvailableCount?credits.AvailableCount.ToString(L.Culture):"—")+" · "+QuotaPresentation.Freshness(credits.Freshness,L)));
+                        if(value.Pace?.Pace is {} pace && (value.Provider!="codex" || QuotaPresentation.SameAccount(quota.Binding,pace.Binding)))
+                            foreach(var window in pace.Windows)document.Children.Add(PresentationControls.Disclosure(L.Text("额度节奏 · ","Quota pace · ")+QuotaPresentation.WindowName(window.LimitId,null,window.HasWindowMinutes?window.WindowMinutes:null,L),PaceChart.Create(window,L)));
+                    }
                 }
                 else if(value.Provider=="dsh")document.Children.Add(PresentationControls.Text(L.Text("DSH 不提供官方额度。","DSH does not provide an official quota.")));
                 else document.Children.Add(PresentationControls.Text(L.Text("在线额度暂不可用；Home 用量仍可独立查看。","Online quota is unavailable; Home usage remains independent.")));
-                var rangeLabel=value.Provider=="dsh"?L.Text("最近 7 天的 Home 用量","Home usage in the last 7 days"):value.Fallback?value.Provider=="cursor"?L.Text("额度范围不可用，显示最近 30 天。","Quota period unavailable; showing the last 30 days."):L.Text("额度范围不可用，显示最近 7 天。","Quota period unavailable; showing the last 7 days."):L.Text("当前额度周期的 Home 用量","Home usage in the current quota period");
+                var rangeLabel=value.Provider=="agy"?L.Text("近 7 天用量与每日模型趋势","Last 7 days usage & daily model trend"):value.Provider=="dsh"?L.Text("最近 7 天的 Home 用量","Home usage in the last 7 days"):value.Fallback?value.Provider=="cursor"?L.Text("额度范围不可用，显示最近 30 天。","Quota period unavailable; showing the last 30 days."):L.Text("额度范围不可用，显示最近 7 天。","Quota period unavailable; showing the last 7 days."):L.Text("当前额度周期的 Home 用量","Home usage in the current quota period");
                 document.Children.Add(PresentationControls.Text(rangeLabel+"\n"+L.Timestamp(value.Range.StartAtMs,value.Range.TimeZone)+" — "+L.Timestamp(value.Range.EndAtMs,value.Range.TimeZone),12));
                 document.Children.Add(PresentationControls.Text("Token · "+L.Tokens(value.Usage.Totals?.TotalTokens),24));
                 if(preferences.ShowCost)document.Children.Add(PresentationControls.Text(L.Text("API 等价估算 · ","API-equivalent estimate · ")+L.Money(value.Usage.Totals?.EstimatedUsdMicros)+L.Text("（非订阅账单）"," (not a subscription bill)")));
-                document.Children.Add(Charts.Bars(DashboardPresentation.UsageTrend(value.Usage),L,"Token",true,compact:true));
+                document.Children.Add(Charts.Bars(DashboardPresentation.UsageTrend(value.Usage),L,"Token",true,compact:true,showLegend:value.Provider=="agy"));
                 if(preferences.ShowProjects && value.Projects is {} projects)
                 {
-                    document.Children.Add(PresentationControls.Heading(L.Text("项目摘要 · 前 5","Project summary · Top 5")));
+                    document.Children.Add(PresentationControls.Heading(value.Provider=="agy"?L.Text("近 7 天项目摘要 · 前 5","Last 7 days projects · Top 5"):L.Text("项目摘要 · 前 5","Project summary · Top 5")));
                     var ranking=new StackPanel {Spacing=2};var rank=0;
                     foreach(var item in projects.Items)
                     {
@@ -214,9 +257,7 @@ internal sealed class TrayPanel:Window,IDisposable
                 }
                 else if(preferences.ShowProjects)document.Children.Add(PresentationControls.Text(L.Text("项目摘要暂不可用。","Project summary is unavailable.")));
                 document.Children.Add(PresentationControls.Text(L.Text("快照读取时间 ","Snapshot read ")+L.Timestamp(value.ReadAtMs)+" · "+L.Text("Home 用量不归属当前账号","Home usage is independent of account identity"),12));
-                var tooltip="Codex Pulse · "+MainWindow.ProviderName(value.Provider)+" · "+L.State(slot.State.Kind)+" · Token "+L.Tokens(value.Usage.Totals?.TotalTokens,compact:true);
-                if(trusted && value.Quota is {} q)tooltip+=" · "+string.Join(" / ",QuotaPresentation.Windows(q.Current).Take(2).Select(w=>QuotaPresentation.PercentText(QuotaPresentation.Percent(w.HasRemainingPercent,w.RemainingPercent),L)));
-                TooltipChanged?.Invoke(tooltip+" · "+L.Timestamp(value.ReadAtMs));
+                TooltipChanged?.Invoke(TrayPresentation.Tooltip(value.Provider,value.Quota,value.Account,value.Usage,today,slot.State.Kind,value.ReadAtMs,L));
             }
             else if(slot.State.Kind!=LoadKind.Loading)document.Children.Add(PresentationControls.Text(host.Session?.State==CoreConnectionState.Recovery?L.Text("恢复模式：请打开主窗口。","Recovery mode: open the main window."):L.Text("尚无可信快照。可启用客户端或重新连接。","No trusted snapshot. Enable a client or reconnect.")));
             var open=Action("打开主窗口","Open main",()=>{Hide();host.ShowMain();});open.HorizontalAlignment=HorizontalAlignment.Stretch;footer.Children.Add(open);

@@ -26,7 +26,7 @@ func main() {
 	snapshot, err := preferences.NewCurrentSnapshot(nil, preferences.OnlinePreferences{})
 	must(err)
 	disabled := preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled}
-	snapshot.Providers = preferences.ProviderPreferences{Codex: disabled, Cursor: disabled, Grok: disabled, DSH: disabled}
+	snapshot.Providers = preferences.ProviderPreferences{Codex: disabled, Cursor: disabled, Grok: disabled, DSH: disabled, AGY: disabled}
 	snapshot.Updates.AutoCheckEnabled = false
 	store, err := preferences.NewFileStore(filepath.Join(runtime, "preferences.json"))
 	must(err)

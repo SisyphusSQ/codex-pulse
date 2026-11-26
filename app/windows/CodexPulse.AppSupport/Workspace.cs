@@ -7,7 +7,21 @@ public sealed record QueryContext(string Provider, DateOnly Start, DateOnly EndE
 
 public sealed class Workspace
 {
-    public static readonly string[] ProviderOrder = ["codex", "cursor", "grok", "dsh"];
+    public static readonly string[] ProviderOrder = ["codex", "cursor", "grok", "dsh", "agy"];
+    public static string ProviderDisplayName(string provider) => provider switch
+    {
+        "codex" => "Codex",
+        "cursor" => "Cursor",
+        "grok" => "Grok",
+        "dsh" => "DSH",
+        "agy" => "Antigravity",
+        _ => provider
+    };
+    public static string ProviderCompactName(string provider) => provider == "agy" ? "AGY" : ProviderDisplayName(provider);
+    public static bool SupportsInvocationUsage(string? provider) => provider is "codex" or "dsh";
+    public static bool SupportsThroughput(string? provider) => provider is "codex" or "agy";
+    public static bool SupportsAccountSnapshot(string? provider) => provider is "codex" or "cursor" or "grok" or "agy";
+    public static bool SupportsQuota(string? provider) => provider is not (null or "" or "dsh");
     public Feature Feature { get; private set; } = Feature.Summary;
     public string? Provider { get; private set; }
     public string? TrayProvider { get; private set; }
@@ -71,7 +85,7 @@ public sealed class Workspace
         if (preset is not ("today" or "seven_days" or "thirty_days" or "quota_week" or "quota_month")) throw new ArgumentException("invalid_preset");
         ApplyPreset(preset); Changed?.Invoke();
     }
-    private string DefaultOverviewPreset() => Provider switch { "cursor" => "quota_month", "grok" => "quota_week", "dsh" => "seven_days", _ => OverviewDefault };
+    private string DefaultOverviewPreset() => Provider switch { "cursor" => "quota_month", "grok" => "quota_week", "dsh" or "agy" => "seven_days", _ => OverviewDefault };
     private void ApplyPreset(string preset)
     {
         RangePreset = preset is "today" or "seven_days" or "thirty_days" or "quota_week" or "quota_month" ? preset : "seven_days";

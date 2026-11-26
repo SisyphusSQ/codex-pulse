@@ -14,7 +14,7 @@ public static class SettingsDraft
             {
                 QuotaEnabled = snapshot.Online.QuotaEnabled, ResetCreditsEnabled = snapshot.Online.ResetCreditsEnabled,
                 GrokQuotaEnabled = snapshot.Online.GrokQuotaEnabled, GrokAutoRefreshEnabled = snapshot.Online.GrokAutoRefreshEnabled,
-                CursorOnlineEnabled = snapshot.Online.CursorOnlineEnabled
+                CursorOnlineEnabled = snapshot.Online.CursorOnlineEnabled, AgyOnlineEnabled = snapshot.Online.AgyOnlineEnabled
             },
             Refresh = new SettingsRefreshUpdate
             {

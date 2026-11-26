@@ -20,14 +20,14 @@ internal sealed class DashboardPage : FeaturePage
         summary=new(host,L.Text("当前范围汇总","Current range summary"),Render,"dashboard-summary",showHeader:false,showStatus:false);
         Body.Children.Add(summary.View);
     }
-    public override bool DependsOn(string domain)=>domain is "index" or "settings" or "account" or "quota" or "quota_codex" or "quota_cursor" or "quota_grok";
+    public override bool DependsOn(string domain)=>domain is "index" or "settings" or "account" or "quota" or "quota_codex" or "quota_cursor" or "quota_grok" or "quota_agy";
     public override async Task LoadAsync(bool force=false)
     {
         State(LoadKind.Loading);
         var context=Host.Workspace.Context with { Provider="" };
         var request=new DashboardSummaryRequest { Range=DashboardPresentation.LocalRange(context), Granularity=context.Preset=="today"?"hour":"day",
             ActivityRange=DashboardPresentation.AnnualRange(context.TimeZone,DateOnly.FromDateTime(DateTime.Today)) };
-        await summary.Slot.LoadAsync(context,token=>Host.Client.QueryAsync("DashboardSummary",request,context,["index","quota","quota_codex","quota_cursor","quota_grok","settings","account"],
+        await summary.Slot.LoadAsync(context,token=>Host.Client.QueryAsync("DashboardSummary",request,context,["index","quota","quota_codex","quota_cursor","quota_grok","quota_agy","settings","account"],
             (client,deadline,cancel)=>client.DashboardSummaryAsync(request,deadline:deadline,cancellationToken:cancel),token,force),value=>DashboardPresentation.Kind(value.Meta,value.Coverage?.OverallState=="empty"));
         State(summary.Slot.State.Kind);
     }
