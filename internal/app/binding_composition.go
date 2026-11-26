@@ -159,7 +159,7 @@ func composeCoreGraph(
 				agyLSClient,
 				repository,
 				agyprovider.QuotaCollectorConfig{
-					MinimumRefresh: 2 * time.Minute,
+					MinimumRefresh: agyprovider.DefaultQuotaMinRefresh,
 					Now:            time.Now,
 					Enabled: func() bool {
 						if admitProviderControl(controller, agentprovider.AGY) != nil {
