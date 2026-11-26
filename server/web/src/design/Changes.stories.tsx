@@ -3,7 +3,7 @@ import {Card} from 'antd';
 import {ReviewApp} from './ReviewApp';
 
 function ChangeIndex(){
- const pages=[['全站页面','/?path=/story/全站设计--overview'],['账号与 Credits','/?path=/story/too-702-credits--balance'],['订阅与模型价目','/?path=/story/subscription-plans--codex'],['关键状态','/?path=/story/关键状态--stale'],['公共组件','/?path=/story/公共组件--credits']];
+ const pages=[['全站页面','/?path=/story/全站设计--overview'],['Antigravity (AGY)','/?path=/story/too-736-agy--multi-pool-quota'],['账号与 Credits','/?path=/story/too-702-credits--balance'],['订阅与模型价目','/?path=/story/subscription-plans--codex'],['关键状态','/?path=/story/关键状态--stale'],['公共组件','/?path=/story/公共组件--credits']];
  return <section className="storybook-index"><h1>当前 Web 样式与交互</h1><p className="metric-note">所有入口复用正式组件、pulseTheme 和 styles.css；统计与账号均为合成样本。</p><div className="storybook-index-grid">{pages.map(([name,url])=><Card key={name}><h2><a href={url} target="_top">{name}</a></h2></Card>)}</div></section>;
 }
 const meta={id:'too-523-updates',title:'功能场景',component:ReviewApp,parameters:{layout:'fullscreen',docs:{disable:true}},args:{initialPath:'/',scenario:'current'}} satisfies Meta<typeof ReviewApp>;
@@ -22,3 +22,4 @@ export const Pricing:Story={name:'09 相关模型与 API 参考折算',args:{ini
 export const Metrics:Story={name:'10 采集来源状态',args:{initialPath:'/usage/sources'}};
 export const Favicon:Story={name:'11 当前页面外壳与导航'};
 export const BoundedQuota:Story={name:'12 四周期与按需详情',args:{initialPath:'/quota',scenario:'current'}};
+export const AntigravityPools:Story={name:'13 Antigravity 多配额池与 LS RPC',args:{initialPath:'/quota?provider=agy',scenario:'current'}};

@@ -3,7 +3,7 @@ import {SubscriptionPlans} from '../components/SubscriptionPlans';
 import {reviewCatalog} from './reviewFixtures';
 import {ReviewApp} from './ReviewApp';
 
-const meta={id:'subscription-plans',title:'订阅与模型价目',component:SubscriptionPlans,parameters:{layout:'fullscreen'},decorators:[Story=><div className="storybook-component"><Story/></div>],args:{plans:reviewCatalog.plans,initialProvider:'codex'},argTypes:{plans:{control:false},initialProvider:{control:'select',options:['codex','cursor','grok']}}} satisfies Meta<typeof SubscriptionPlans>;
+const meta={id:'subscription-plans',title:'订阅与模型价目',component:SubscriptionPlans,parameters:{layout:'fullscreen'},decorators:[Story=><div className="storybook-component"><Story/></div>],args:{plans:reviewCatalog.plans,initialProvider:'codex'},argTypes:{plans:{control:false},initialProvider:{control:'select',options:['codex','cursor','grok','agy']}}} satisfies Meta<typeof SubscriptionPlans>;
 export default meta;
 type Story=StoryObj<typeof meta>;
 export const Codex:Story={name:'01 Codex · 当前订阅组件'};

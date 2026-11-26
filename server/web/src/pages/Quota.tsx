@@ -97,8 +97,8 @@ function AgyPoolWindowSlot({poolLabel,slotLabel,window:w,selectedKey,onSelect,de
 }
 
 export function QuotaAccounts(){
-
- const [filter,setFilter]=useState<QuotaFilter>({provider:'',client_id:'',account_key:''});
+ const [params]=useSearchParams();
+ const [filter,setFilter]=useState<QuotaFilter>(()=>({provider:params.get('provider')??'',client_id:params.get('client_id')??'',account_key:params.get('account_key')??''}));
  const [selectedAccount,setSelectedAccount]=useState('');
  const [selectedKey,setSelectedKey]=useState('');
  const polling={staleTime:15_000,refetchInterval:60_000,refetchIntervalInBackground:false};

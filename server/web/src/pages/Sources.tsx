@@ -1,14 +1,15 @@
 import {useState} from 'react';
 import {Card,Descriptions,Tag,Typography} from 'antd';
 import {useFeedbackQuery as useQuery} from '../components/QueryNotifications';
-import {Link} from 'react-router-dom';
+import {Link,useSearchParams} from 'react-router-dom';
 import {getDevices} from '../api/statistics';
 import {providerSourceChannels,SourceTable} from '../components/SourceTable';
 import {ObservationFilters,type ObservationScope} from '../components/ObservationFilters';
 import {EmptyState,ErrorState,LoadingState} from '../components/QueryState';
 import {dateTime,integer,providerLabel,providerTagColor} from '../format';
 export default function Sources(){
- const [scope,setScope]=useState<ObservationScope>({provider:'',client_id:''});
+ const [params]=useSearchParams();
+ const [scope,setScope]=useState<ObservationScope>(()=>({provider:params.get('provider')??'',client_id:params.get('client_id')??''}));
  const [selected,setSelected]=useState('');
  const query=useQuery({queryKey:['devices','status'],queryFn:({signal})=>getDevices(signal)});
  const rows=(query.data??[]).filter(d=>d.revoked_at_ms===null&&(!scope.client_id||d.id===scope.client_id)&&(!scope.provider||d.providers.some(p=>p.provider===scope.provider))).map(d=>({...d,providers:d.providers.filter(p=>!scope.provider||p.provider===scope.provider)}));
