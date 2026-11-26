@@ -27,6 +27,8 @@ type reportingQuotaCursor struct {
 	At         int64
 	Key        string
 	Generation int64
+	Scope      string `json:",omitempty"`
+	Window     string `json:",omitempty"`
 }
 
 func quotaReportingCursor(after string) (out reportingQuotaCursor, err error) {
@@ -252,11 +254,197 @@ func (r *Repository) reportingQuotaPage(ctx context.Context, provider, after str
 				page.Next = encodeQuotaCursor(cursor)
 			}
 			return nil
+		case "dsh":
+			page.Done = true
+			return nil
+		case "agy":
+			if cursor.Stage != "quota" {
+				return ErrReportingSource
+			}
+			return exportReportingAGYQuota(db, cursor, after, start, current, &page)
 		default:
 			return ErrReportingSource
 		}
 	})
 	return
+}
+
+// ReportingAGYAccounts 返回本地已持久化的非敏感 AGY 账号摘要（64位 hex account_scope 与标准化套餐，不含邮箱原文）。
+func (r *Repository) ReportingAGYAccounts(ctx context.Context) ([]reportingv1.Account, error) {
+	if r == nil || r.database == nil {
+		return nil, ErrInvalidRepository
+	}
+	var out []reportingv1.Account
+	err := r.database.ViewSnapshot(ctx, func(_ context.Context, db *gorm.DB) error {
+		type accEntry struct {
+			plan        *string
+			collectedAt int64
+		}
+		entries := map[string]*accEntry{}
+		var snaps []agyQuotaSnapshotModel
+		if err := db.Order("account_scope, updated_at_ms DESC").Find(&snaps).Error; err != nil {
+			return err
+		}
+		for _, snap := range snaps {
+			if !validHexDigest(snap.AccountScope) {
+				continue
+			}
+			e := entries[snap.AccountScope]
+			if e == nil {
+				e = &accEntry{plan: snap.PlanType, collectedAt: snap.DataAsOfMS}
+				entries[snap.AccountScope] = e
+			}
+			if snap.DataAsOfMS > e.collectedAt {
+				e.collectedAt = snap.DataAsOfMS
+				if snap.PlanType != nil && *snap.PlanType != "" {
+					e.plan = snap.PlanType
+				}
+			} else if e.plan == nil && snap.PlanType != nil && *snap.PlanType != "" {
+				e.plan = snap.PlanType
+			}
+		}
+		var obsScopes []struct {
+			AccountScope string
+			MaxObserved  int64
+		}
+		if err := db.Table("agy_quota_observations").Select("account_scope, MAX(observed_at_ms) AS max_observed").Group("account_scope").Scan(&obsScopes).Error; err != nil {
+			return err
+		}
+		for _, row := range obsScopes {
+			if !validHexDigest(row.AccountScope) {
+				continue
+			}
+			if _, exists := entries[row.AccountScope]; !exists {
+				entries[row.AccountScope] = &accEntry{collectedAt: row.MaxObserved}
+			}
+		}
+		scopes := make([]string, 0, len(entries))
+		for scope := range entries {
+			scopes = append(scopes, scope)
+		}
+		sort.Strings(scopes)
+		out = make([]reportingv1.Account, 0, len(scopes))
+		for _, scope := range scopes {
+			e := entries[scope]
+			out = append(out, reportingv1.Account{
+				Provider:      "agy",
+				ID:            scope,
+				Email:         nil,
+				Plan:          e.plan,
+				CollectedAtMS: e.collectedAt,
+			})
+		}
+		return nil
+	})
+	return out, err
+}
+
+func exportReportingAGYQuota(db *gorm.DB, cursor reportingQuotaCursor, after string, start int64, current bool, page *ReportingQuotaPage) error {
+	var snapshots []agyQuotaSnapshotModel
+	if err := db.Order("account_scope, limit_id, window_kind").Find(&snapshots).Error; err != nil {
+		return err
+	}
+	windowMinutes := make(map[string]int64, len(snapshots))
+	for _, snap := range snapshots {
+		windowMinutes[snap.AccountScope+"\x00"+snap.LimitID+"\x00"+snap.WindowKind] = snap.WindowMinutes
+	}
+	var rows []agyQuotaObservationModel
+	query := db.Where("observed_at_ms >= ?", start)
+	if current {
+		query = query.Where(`(account_scope, limit_id, window_kind, observed_at_ms) IN (
+			SELECT account_scope, limit_id, window_kind, observed_at_ms FROM (
+				SELECT account_scope, limit_id, window_kind, observed_at_ms,
+					ROW_NUMBER() OVER (PARTITION BY account_scope, limit_id, window_kind ORDER BY observed_at_ms DESC) AS rank
+				FROM agy_quota_observations WHERE observed_at_ms >= ?
+			) WHERE rank = 1
+		)`, start)
+	}
+	if after != "" {
+		query = query.Where(
+			"observed_at_ms > ? OR (observed_at_ms = ? AND account_scope > ?) OR (observed_at_ms = ? AND account_scope = ? AND limit_id > ?) OR (observed_at_ms = ? AND account_scope = ? AND limit_id = ? AND window_kind > ?)",
+			cursor.At,
+			cursor.At, cursor.Scope,
+			cursor.At, cursor.Scope, cursor.Key,
+			cursor.At, cursor.Scope, cursor.Key, cursor.Window,
+		)
+	}
+	if err := query.Order("observed_at_ms, account_scope, limit_id, window_kind").Limit(100).Find(&rows).Error; err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		page.Done = true
+		if after == "" {
+			for _, snap := range snapshots {
+				if snap.DataAsOfMS < start || snap.UsedPercent == nil {
+					continue
+				}
+				rows = append(rows, agyQuotaObservationModel{
+					AccountScope: snap.AccountScope,
+					LimitID:      snap.LimitID,
+					WindowKind:   snap.WindowKind,
+					ObservedAtMS: snap.DataAsOfMS,
+					UsedPercent:  *snap.UsedPercent,
+					ResetsAtMS:   snap.ResetsAtMS,
+				})
+			}
+		}
+	}
+	for _, row := range rows {
+		winMins := windowMinutes[row.AccountScope+"\x00"+row.LimitID+"\x00"+row.WindowKind]
+		if winMins <= 0 {
+			if row.WindowKind == "secondary" {
+				winMins = 10080
+			} else {
+				winMins = 300
+			}
+		}
+		resetKey := "none"
+		if row.ResetsAtMS != nil {
+			resetKey = strconv.FormatInt(*row.ResetsAtMS, 10)
+		}
+		id := reportingv1.Key(
+			"quota", "agy",
+			row.AccountScope, row.LimitID, row.WindowKind,
+			strconv.FormatInt(row.ObservedAtMS, 10),
+			resetKey,
+			strconv.FormatInt(row.UsedPercent, 10),
+		)
+		obs := reportingv1.QuotaObservation{
+			Provider:      "agy",
+			ID:            id,
+			LocalScope:    row.AccountScope,
+			LimitID:       row.LimitID,
+			WindowKind:    row.WindowKind,
+			WindowMinutes: new(winMins),
+			ResetsAtMS:    row.ResetsAtMS,
+			ObservedAtMS:  row.ObservedAtMS,
+			UsedPercent:   new(float64(row.UsedPercent)),
+			Validity:      "unknown",
+			Source:        "agy_ls_rpc",
+			HistoryOrigin: "pending_association",
+		}
+		if row.ResetsAtMS != nil {
+			obs.Validity = "accepted"
+			if winStart := *row.ResetsAtMS - winMins*60000; winStart >= 0 && winStart < *row.ResetsAtMS {
+				obs.WindowStartAtMS = new(winStart)
+			}
+		}
+		page.Batch.Quotas = append(page.Batch.Quotas, obs)
+		cursor = reportingQuotaCursor{
+			Stage:  "quota",
+			At:     row.ObservedAtMS,
+			Scope:  row.AccountScope,
+			Key:    row.LimitID,
+			Window: row.WindowKind,
+		}
+	}
+	if current {
+		page.Done = true
+	}
+	if len(rows) > 0 && !page.Done {
+		page.Next = encodeQuotaCursor(cursor)
+	}
+	return nil
 }
 
 func grokReportingCurrent(db *gorm.DB, start int64) ([]cursorDashboardQuotaObservationModel, error) {

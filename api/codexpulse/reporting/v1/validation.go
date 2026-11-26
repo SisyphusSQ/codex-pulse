@@ -15,7 +15,7 @@ var ErrVersion = errors.New("unsupported reporting version")
 var ErrInvalid = errors.New("invalid reporting facts")
 
 func provider(value string) bool {
-	return value == "codex" || value == "cursor" || value == "grok" || value == "dsh"
+	return value == "codex" || value == "cursor" || value == "grok" || value == "dsh" || value == "agy"
 }
 func text(value string, max int) bool {
 	return utf8.ValidString(value) && utf8.RuneCountInString(value) <= max && !strings.ContainsRune(value, 0)
@@ -53,7 +53,7 @@ func (b Batch) validate(factBudget int) error {
 	if b.Version != Version {
 		return ErrVersion
 	}
-	if !identifier(b.ID, 36) || len(b.ID) != 36 || len(b.Sessions) > 32 || len(b.Accounts) > 32 || len(b.Bindings) > 32 || len(b.Quotas) > 1000 || len(b.Credits) > 100 || len(b.Status) > 4 || len(b.AccountUsage) > 32 {
+	if !identifier(b.ID, 36) || len(b.ID) != 36 || len(b.Sessions) > 32 || len(b.Accounts) > 32 || len(b.Bindings) > 32 || len(b.Quotas) > 1000 || len(b.Credits) > 100 || len(b.Status) > 5 || len(b.AccountUsage) > 32 {
 		return ErrInvalid
 	}
 	if len(b.Sessions)+len(b.Accounts)+len(b.Bindings)+len(b.Quotas)+len(b.Credits)+len(b.Status)+len(b.AccountUsage)+len(b.PaidCredits) == 0 {
@@ -68,7 +68,7 @@ func (b Batch) validate(factBudget int) error {
 	}
 	seen := make(map[string]bool)
 	for _, snapshot := range b.Sessions {
-		if !provider(snapshot.Provider) || !slices.Contains([]string{"", "light_index", "strict_index", "cursor_local", "cursor_dashboard", "grok_local", "dsh_local"}, snapshot.SourceKind) || !slices.Contains([]string{"", "session", "unassigned_usage"}, snapshot.SessionKind) || !identifier(snapshot.HomeID, 128) || !identifier(snapshot.SessionID, 255) || snapshot.Revision <= 0 || !timestamp(snapshot.CollectedAtMS) || !timestamp(snapshot.HistoryStartAtMS) || !text(snapshot.Title, 512) || !identifier(snapshot.ProjectID, 255) || !text(snapshot.ProjectName, 255) || !optionalTimestamp(snapshot.CreatedAtMS) || !optionalTimestamp(snapshot.LastActiveAtMS) || len(snapshot.Contributions)+len(snapshot.Invocations) > factBudget {
+		if !provider(snapshot.Provider) || !slices.Contains([]string{"", "light_index", "strict_index", "cursor_local", "cursor_dashboard", "grok_local", "dsh_local", "agy_local"}, snapshot.SourceKind) || !slices.Contains([]string{"", "session", "unassigned_usage"}, snapshot.SessionKind) || !identifier(snapshot.HomeID, 128) || !identifier(snapshot.SessionID, 255) || snapshot.Revision <= 0 || !timestamp(snapshot.CollectedAtMS) || !timestamp(snapshot.HistoryStartAtMS) || !text(snapshot.Title, 512) || !identifier(snapshot.ProjectID, 255) || !text(snapshot.ProjectName, 255) || !optionalTimestamp(snapshot.CreatedAtMS) || !optionalTimestamp(snapshot.LastActiveAtMS) || len(snapshot.Contributions)+len(snapshot.Invocations) > factBudget {
 			return ErrInvalid
 		}
 		if snapshot.Chunk != nil && !validChunk(snapshot) {
@@ -159,7 +159,7 @@ func (b Batch) validate(factBudget int) error {
 			return ErrInvalid
 		}
 		quotasSeen[key] = true
-		if !provider(q.Provider) || !identifier(q.ID, 128) || !optionalID(q.AccountID, 255) || !identifier(q.LocalScope, 128) || !identifier(q.LimitID, 128) || !identifier(q.WindowKind, 64) || !timestamp(q.ObservedAtMS) || !optionalTimestamp(q.ResetsAtMS) || !slices.Contains([]string{"accepted", "suspicious", "rejected", "unknown"}, q.Validity) || !slices.Contains([]string{"app_server", "local_jsonl", "legacy_wham", "cursor_dashboard", "grok_billing"}, q.Source) || !slices.Contains([]string{"confirmed", "pending_association", "legacy_unassigned", "linked_history"}, q.HistoryOrigin) {
+		if !provider(q.Provider) || !identifier(q.ID, 128) || !optionalID(q.AccountID, 255) || !identifier(q.LocalScope, 128) || !identifier(q.LimitID, 128) || !identifier(q.WindowKind, 64) || !timestamp(q.ObservedAtMS) || !optionalTimestamp(q.ResetsAtMS) || !slices.Contains([]string{"accepted", "suspicious", "rejected", "unknown"}, q.Validity) || !slices.Contains([]string{"app_server", "local_jsonl", "legacy_wham", "cursor_dashboard", "grok_billing", "agy_ls_rpc"}, q.Source) || !slices.Contains([]string{"confirmed", "pending_association", "legacy_unassigned", "linked_history"}, q.HistoryOrigin) {
 			return ErrInvalid
 		}
 		if !optionalID(q.AssociationScope, 128) || !optionalTimestamp(q.WindowStartAtMS) {

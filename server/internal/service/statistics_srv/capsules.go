@@ -12,6 +12,10 @@ import (
 	statistics_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/statistics_vo"
 )
 
+func supportsLifecycleCapsules(provider string) bool {
+	return provider == "codex" || provider == "dsh" || provider == "agy"
+}
+
 func capsuleSnapshot(row reporting_do.SessionCapsule) (out reportingv1.SessionSnapshot, err error) {
 	out.Complete, out.Deleted = row.Complete, row.Deleted
 	if row.Throughput != nil {
@@ -35,7 +39,7 @@ func (s *Statistics) attachThroughput(ctx context.Context, q statistics_dto.Stat
 	result = statistics_vo.ThroughputTurnsView{Items: []statistics_vo.ThroughputTurnView{}, Limit: limit}
 	ids := []string{}
 	for _, item := range items {
-		if item.Provider == "codex" || item.Provider == "dsh" {
+		if supportsLifecycleCapsules(item.Provider) {
 			ids = append(ids, item.ID)
 		}
 	}
@@ -54,7 +58,7 @@ func (s *Statistics) attachThroughput(ctx context.Context, q statistics_dto.Stat
 	}
 	// 旧库摘要首次补建期间，维持原有指标语义；后台只需重建一次。
 	for _, item := range items {
-		if item.Provider != "codex" && item.Provider != "dsh" {
+		if !supportsLifecycleCapsules(item.Provider) {
 			continue
 		}
 		id := item.ID
@@ -80,7 +84,7 @@ func (s *Statistics) attachThroughput(ctx context.Context, q statistics_dto.Stat
 		}
 		item.CacheHitRate = cacheHitRateView(chosen, owner, item.Provider, nil)
 		reason := "not_reported"
-		if item.Provider != "codex" && item.Provider != "dsh" {
+		if !supportsLifecycleCapsules(item.Provider) {
 			reason = "unsupported_provider"
 		}
 		view := throughputView(reportingv1.ThroughputMeasures{Status: "unavailable", Reason: reason})

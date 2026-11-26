@@ -43,3 +43,25 @@ func TestCacheUsageKeepsInt64DecimalPrecision(t *testing.T) {
 		t.Fatal("decimal counters incorrectly constrained to JavaScript numbers")
 	}
 }
+
+func TestCacheUsageAllowsAGYLocalAndRejectsMismatchedSourceKind(t *testing.T) {
+	s := SessionSnapshot{
+		Provider:      "agy",
+		SourceKind:    "agy_local",
+		Contributions: []Contribution{{InputTokens: new(int64(1000)), CachedTokens: new(int64(600))}},
+		CacheUsage:    &CacheUsageCapsule{Version: 1, Basis: "lifetime_cached_input", InputTokens: new(int64(1000)), CachedInputTokens: new(int64(600))},
+	}
+	if !validCacheUsage(s) {
+		t.Fatal("valid agy_local cache_usage rejected")
+	}
+	s.SourceKind = "light_index"
+	if validCacheUsage(s) {
+		t.Fatal("mismatched agy source_kind accepted for cache_usage")
+	}
+	s.SourceKind = "agy_local"
+	s.HistoryStartAtMS = 1000
+	s.CacheUsage = &CacheUsageCapsule{Version: 1, Basis: "lifetime_cached_input", Reason: "history_filtered"}
+	if !validCacheUsage(s) {
+		t.Fatal("history_filtered agy_local cache_usage rejected")
+	}
+}
