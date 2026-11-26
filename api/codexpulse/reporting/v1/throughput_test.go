@@ -49,3 +49,42 @@ func TestThroughputProtocolUnknownZeroBudgetsAndOutputReconciliation(t *testing.
 		t.Fatal("pending unknown rejected", err)
 	}
 }
+
+func TestThroughputAllowsAGYLocalStepMetadata(t *testing.T) {
+	c := Contribution{ObservedAtMS: new(int64(1000)), OutputTokens: new(int64(500)), CostStatus: "unpriced"}
+	c.ID = ContributionID("agy", "agy-session", c, 0)
+	b := Batch{
+		Version: Version,
+		ID:      "00000000-0000-0000-0000-000000000003",
+		Sessions: []SessionSnapshot{{
+			Provider:      "agy",
+			HomeID:        "home-agy",
+			SessionID:     "agy-session",
+			Revision:      1,
+			CollectedAtMS: 2000,
+			ProjectID:     "project-agy",
+			SourceKind:    "agy_local",
+			Contributions: []Contribution{c},
+			Throughput: &ThroughputCapsule{
+				Version: 1,
+				Basis:   "closed_turn_lifetime_output",
+				Measures: ThroughputMeasures{
+					OutputTokens:     new(int64(500)),
+					ActiveDurationMS: new(int64(2500)),
+					IncludedTurns:    1,
+					CoverageKnown:    true,
+					Status:           "complete",
+					DurationSource:   "step_metadata",
+				},
+				TurnsTotal: 1,
+			},
+		}},
+	}
+	if err := b.Validate(); err != nil {
+		t.Fatalf("valid AGY throughput rejected: %v", err)
+	}
+	b.Sessions[0].SourceKind = "dsh_local"
+	if !errors.Is(b.Validate(), ErrInvalid) {
+		t.Fatal("mismatched AGY source_kind accepted for throughput")
+	}
+}

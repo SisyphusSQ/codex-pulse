@@ -3,7 +3,7 @@ import {useState} from 'react';
 import {Card,Collapse,Descriptions,Input,Segmented,Select,Table,Tag,Typography} from 'antd';
 import {Link} from 'react-router-dom';
 import {referenceAmount,sourceLink,type ModelPrice} from '../api/catalog';
-import {dayjs,dateTime,providerNames} from '../format';
+import {dayjs,dateTime,providerLabel,providerTagColor} from '../format';
 
 // https://learn.chatgpt.com/docs/models；旧型号可从实际用量和历史证据查阅。
 const codexReferenceModels=new Set(['gpt-6.2-astra','gpt-6.2-sol','gpt-6.1-terra','gpt-6.1-sol','gpt-6-astra','gpt-6-sol','gpt-6-luna','gpt-5.6-sol','gpt-5.6-terra','gpt-5.6-luna']);
@@ -33,6 +33,7 @@ function releaseOrder(a:ModelPrice,b:ModelPrice):number {
  return left===right?a.model.localeCompare(b.model)||a.provider.localeCompare(b.provider):right-left;
 }
 function source(url:string,label='官方来源') {
+ if(url==='agy_provider_api_pricing')return <Typography.Text type="secondary">Antigravity 版本化 API 参考目录</Typography.Text>;
  const href=sourceLink(url);
  return href?<a href={href} target="_blank" rel="noopener noreferrer">{label}</a>:<Typography.Text type="secondary">无公开来源</Typography.Text>;
 }
@@ -79,7 +80,7 @@ export function ModelPriceCatalog({models,used,provider,initialSearch='',initial
   const candidates=rates.filter(r=>scope==='history'?r.evidence==='historical'&&(!version||r.version===version):r.evidence==='observed'||r.evidence==='current'&&isReferenceRate(r,isUsed));
   const primary=[...candidates].sort(baselineOrder)[0];
   if(!primary||provider&&primary.provider!==provider)continue;
-  const relevant=primary.evidence==='observed'||isUsed||rates.some(r=>r.model.toLowerCase()===search.trim().toLowerCase())||primary.provider==='cursor'||primary.provider==='grok'||primary.provider==='dsh'||primary.provider==='codex'&&codexReferenceModels.has(modelKey(primary).slice('codex:'.length));
+  const relevant=primary.evidence==='observed'||isUsed||rates.some(r=>r.model.toLowerCase()===search.trim().toLowerCase())||primary.provider==='cursor'||primary.provider==='grok'||primary.provider==='dsh'||primary.provider==='agy'||primary.provider==='codex'&&codexReferenceModels.has(modelKey(primary).slice('codex:'.length));
   if(scope==='related'&&!relevant||scope==='used'&&!isUsed)continue;
   if(search&&!rates.some(r=>r.model.toLowerCase().includes(search.toLowerCase())))continue;
   const usageKey=[...used].find(value=>{const split=value.indexOf(':');return modelKey({provider:value.slice(0,split),model:value.slice(split+1)})===key;});
@@ -87,17 +88,18 @@ export function ModelPriceCatalog({models,used,provider,initialSearch='',initial
  }
  rows.sort(releaseOrder);
  const versions=[...new Set(models.filter(r=>r.evidence==='historical'&&(!provider||r.provider===provider)).map(r=>r.version).filter(Boolean))];
+ const hasAgy=provider==='agy'||rows.some(r=>r.provider==='agy');
  return <>
   <div className="catalog-toolbar"><Segmented aria-label="使用目录" value={scope} onChange={value=>setScope(value as Scope)} options={[{value:'related',label:'相关模型'},{value:'used',label:'近30天已使用'},{value:'history',label:'历史计价'}]}/><Input.Search aria-label="搜索模型价格" placeholder="搜索模型" value={search} onChange={event=>setSearch(event.target.value)} allowClear style={{maxWidth:320}}/>{scope==='history'&&<Select aria-label="价格版本" value={version} onChange={setVersion} showSearch={{optionFilterProp:'label'}} options={[{value:'',label:'全部历史价格版本'},...versions.map(value=>({value,label:value}))]}/>}</div>
 
-  <div className="metric-note catalog-note">{scope==='history'?'历史费率证据 · 展开查看各版本 · 不改写已记录成本':`API 参考折算 · ${rows.some(r=>r.evidence!=='observed'&&r.unit!=='1M tokens')?'价格单位见模型说明':'USD / 百万 Token'} · 默认基础文本价，特殊条件展开查看`}<span className="catalog-order-note">按发布时间从新到旧 · 未确认日期置后</span></div>
+  <div className="metric-note catalog-note">{scope==='history'?'历史费率证据 · 展开查看各版本 · 不改写已记录成本':provider==='agy'?'Antigravity 版本化 API 参考目录（agy-api-2026-11-25）· USD / 百万 Token · 按请求时间适用阶段单价（Carbon/Argon 2026-12-01、Flash 3.6–3.8 2027-01-01 切段）· 模型 API 公价估算，非实际账单':`API 参考折算 · ${rows.some(r=>r.evidence!=='observed'&&r.unit!=='1M tokens')?'价格单位见模型说明':'USD / 百万 Token'} · 默认基础文本价，特殊条件展开查看`}<span className="catalog-order-note">按发布时间从新到旧 · 未确认日期置后</span></div>
   <Card className="catalog-table"><Table<ModelGroup> rowKey={row=>modelKey(row)} size="small" dataSource={rows} loading={scope==='used'&&usageLoading} pagination={{pageSize:25,showSizeChanger:true,showTotal:n=>`共 ${n} 个模型`}} scroll={{x:920}} locale={{emptyText:scope==='used'&&usageError?'无法确认已使用模型':'没有符合条件的模型'}} expandable={{expandedRowRender:row=><RateDetails row={row}/>}} columns={[
    {title:'模型',width:250,render:(_,row)=><><Typography.Text strong>{row.model}</Typography.Text><div className="metric-note">{row.evidence==='observed'?'参考价未知':row.mode}{row.used&&<Tag>已使用</Tag>}</div>{row.evidence!=='observed'&&row.unit!=='1M tokens'&&<div className="metric-note">{row.currency} / {row.unit}</div>}</>},
    {title:'发布时间',...decimalSorter<ModelGroup>(r=>r.released_at_ms,true),width:115,render:(_,row)=>releaseDate(row)},
-   {title:'平台',width:90,render:(_,row)=>providerNames[row.provider]??row.provider},
+   {title:'平台',width:110,render:(_,row)=><Tag color={providerTagColor(row.provider)}>{providerLabel(row.provider)}</Tag>},
    ...priceColumns(['input_price','cached_price','output_price']),
    {title:'用量',width:90,render:(_,row)=><Link to={`/usage/models?provider=${encodeURIComponent(row.provider)}&model=${encodeURIComponent(row.usageModel)}`}>查看用量</Link>},
   ]}/></Card>
-  <Collapse ghost size="small" items={[{key:'comparison',label:'API 参考折算与订阅费用怎么比较',children:<Typography.Paragraph type="secondary">API 参考折算按模型 Token 与适用的历史费率估算，缓存输入按缓存价计算；订阅费用是账号的套餐支出，两者可以比较同一时间范围的使用强度。参考折算不代表实际账单，不用于反推订阅剩余额度。默认展示 Standard 基础文本参考价；Fast、长上下文和缓存写入条件可展开核对，订阅倍率不直接套用 API 金额。当前价目不重新计算过去费用。</Typography.Paragraph>}]} />
+  <Collapse ghost size="small" items={[{key:'comparison',label:'API 参考折算与订阅费用怎么比较',children:<Typography.Paragraph type="secondary">API 参考折算按模型 Token 与适用的历史费率估算，缓存输入按缓存价计算；订阅费用是账号的套餐支出，两者可以比较同一时间范围的使用强度。参考折算不代表实际账单，不用于反推订阅剩余额度。默认展示 Standard 基础文本参考价；Fast、长上下文和缓存写入条件可展开核对，订阅倍率不直接套用 API 金额。{hasAgy?' Antigravity 目录（agy-api-2026-11-25）按请求时间左闭右开分段适用公开 API 参考单价（例如 Carbon/Argon 2026-12-01、Flash 3.6–3.8 2027-01-01 切段），展开模型行可核对各阶段费率；该金额仅为模型 API 公价估算，不代表订阅扣费。':''}当前价目不重新计算过去费用。</Typography.Paragraph>}]} />
  </>;
 }

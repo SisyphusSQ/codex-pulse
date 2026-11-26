@@ -122,6 +122,7 @@ type StatisticsSession struct {
 	SessionID      *string            `json:"session_id"`
 	Title          string             `json:"title"`
 	SessionKind    string             `json:"session_kind"`
+	SessionRole    *string            `json:"session_role,omitempty"`
 	ProjectID      string             `json:"project_id"`
 	ProjectGroupID string             `json:"project_group_id"`
 	ProjectName    string             `json:"project_name"`

@@ -19,12 +19,13 @@ internal sealed class QuotaPage:FeaturePage
     private readonly StackPanel current=new(){Spacing=14},paceView=new(){Spacing=14};
     private readonly TextBlock feedback;
     private readonly Button refresh,resetRefresh;
+    private string? selectedPacePool;
     private bool disposed,refreshing;
     public QuotaPage(MainWindow host):base(host)
     {
         provider=host.Workspace.Provider??"codex";
         feedback=Text("");feedback.Visibility=Visibility.Collapsed;
-        refresh=new(){Content=L.Text("刷新当前额度","Refresh current quota")};refresh.Click+=async(_,_)=>await Refresh("quota");
+        refresh=new(){Content=provider=="agy"?L.Text("刷新额度","Refresh quota"):L.Text("刷新当前额度","Refresh current quota")};refresh.Click+=async(_,_)=>await Refresh("quota");
         resetRefresh=new(){Content=L.Text("刷新重置次数","Refresh reset credits"),Visibility=provider=="codex"?Visibility.Visible:Visibility.Collapsed};resetRefresh.Click+=async(_,_)=>await Refresh("reset_credits");
         if(provider!="dsh")
         {
@@ -93,7 +94,7 @@ internal sealed class QuotaPage:FeaturePage
         paceView.Children.Add(PresentationControls.Caption(L.Text("当前额度与账号身份尚未确认，暂不展示节奏数据。","Current quota and account identity are not confirmed yet; pace data is withheld.")));
         current.Children.Add(Text(L.Text("当前额度","Current quota"),"SubtitleTextBlockStyle"));
         if(quota.State.Kind!=LoadKind.Ready)current.Children.Add(PresentationControls.Caption(L.State(quota.State.Kind)));
-        if(provider is "cursor" or "grok")current.Children.Add(Text(TrayPresentation.Identity(provider,account.State.Kind==LoadKind.Ready?account.State.Value:null,false,L)));
+        if(provider is "cursor" or "grok" or "agy")current.Children.Add(Text(TrayPresentation.Identity(provider,account.State.Kind==LoadKind.Ready?account.State.Value:null,false,L)));
         if(quota.State.Value is not {} response || response.ProviderContext?.EffectiveProvider!=provider){current.Children.Add(Text(L.Text("当前额度暂不可用。","Current quota is unavailable.")));return;}
         if(provider=="codex")
         {
@@ -104,73 +105,97 @@ internal sealed class QuotaPage:FeaturePage
             if(identity.Subscription is {} subscription)accountText+=" · "+QuotaPresentation.SubscriptionDate(subscription,L);
             current.Children.Add(PresentationControls.Caption(accountText));
         }
-        if(QuotaPresentation.Windows(response.Current).Count==0)current.Children.Add(Text(L.Text("尚未获得可展示的额度窗口。","No quota windows are available yet.")));
-        var windows=new List<UIElement>();
-        foreach(var window in QuotaPresentation.Windows(response.Current))
+        if(provider=="agy")
         {
-            var name=QuotaPresentation.WindowName(window.LimitId,window.HasLimitName?window.LimitName:null,window.HasWindowMinutes?window.WindowMinutes:null,L);
-            var expired=window.HasResetsAtMs && window.ResetsAtMs<=response.Current.EvaluatedAtMs;
-            var remaining=expired?null:QuotaPresentation.Percent(window.HasRemainingPercent,window.RemainingPercent);
-            var row=new StackPanel{Spacing=8};row.Children.Add(PresentationControls.Caption(name));
-            var amount=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};
-            var number=Text(QuotaPresentation.PercentText(remaining,L));number.FontSize=32;number.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;
-            amount.Children.Add(number);
-            var remainingLabel=PresentationControls.Caption(L.Text("剩余","remaining"));remainingLabel.VerticalAlignment=VerticalAlignment.Center;amount.Children.Add(remainingLabel);row.Children.Add(amount);
-            AddProgress(row,name,remaining);
-            row.Children.Add(PresentationControls.Caption(expired?L.Text("周期已结束，等待新周期确认。","Period ended; awaiting confirmation of a new cycle."):L.Text("重置 ","Resets ")+L.Timestamp(window.HasResetsAtMs?window.ResetsAtMs:null)+" · "+QuotaPresentation.Freshness(window.Freshness,L)));
-            ToolTipService.SetToolTip(number,L.Text("来源 ","Source ")+window.SelectedSource+" · "+L.Text("上次成功 ","Last success ")+L.Timestamp(window.HasLastSuccessAtMs?window.LastSuccessAtMs:null));
-            if(!string.IsNullOrEmpty(window.Conflict) && window.Conflict!="none")row.Children.Add(Text(L.Text("来源存在冲突：","Sources conflict: ")+window.Conflict));
-            if(window.HasUnknownReason)row.Children.Add(Text(L.Text("状态原因：","State reason: ")+window.UnknownReason));
-            if(window.Explanations.Count>0)row.Children.Add(PresentationControls.DataButton(L.Text("来源证据","Source evidence"),PresentationControls.Table([L.Text("来源","Source"),L.Text("剩余","Remaining"),L.Text("观察时间","Observed"),L.Text("可信状态","Trust")],window.Explanations.Select(item=>new[]{item.Source,QuotaPresentation.PercentText(QuotaPresentation.Percent(item.HasRemainingPercent,item.RemainingPercent),L),L.Timestamp(item.ObservedAtMs),item.Validity+" · "+item.Disposition}))));
-            windows.Add(row);
+            var pools=QuotaPresentation.AgyPools(response.Current,L);
+            if(pools.Count==0)current.Children.Add(Text(L.Text("尚未获得可展示的额度窗口。","No quota windows are available yet.")));
+            else
+            {
+                var poolCards=new List<UIElement>();
+                foreach(var pool in pools)
+                {
+                    var card=new StackPanel{Spacing=12};
+                    card.Children.Add(PresentationControls.Heading(pool.DisplayName));
+                    var sideBySide=new List<UIElement>();
+                    if(pool.Primary is {} primary)sideBySide.Add(RenderWindowColumn(primary,QuotaPresentation.WindowShortLabel(primary.WindowKind,primary.HasWindowMinutes?primary.WindowMinutes:null,L),response.Current.EvaluatedAtMs));
+                    if(pool.Secondary is {} secondary)sideBySide.Add(RenderWindowColumn(secondary,QuotaPresentation.WindowShortLabel(secondary.WindowKind,secondary.HasWindowMinutes?secondary.WindowMinutes:null,L),response.Current.EvaluatedAtMs));
+                    if(sideBySide.Count>1)card.Children.Add(PresentationControls.Columns(sideBySide,200));
+                    else if(sideBySide.Count==1)card.Children.Add(sideBySide[0]);
+                    poolCards.Add(PresentationControls.Card(card));
+                }
+                current.Children.Add(PresentationControls.Columns(poolCards,420));
+            }
         }
-        var quotaWindows=PresentationControls.Columns(windows,280);
-        if(provider=="codex")foreach(var credit in response.Current.PaidCredits)
+        else
         {
-            var content=new StackPanel {Spacing=8};
-            content.Children.Add(PresentationControls.Heading(credit.LimitId=="codex"?"Credits":"Credits · "+credit.LimitId));
-            content.Children.Add(Text(PaidCreditsPresentation.Balance(credit,L),"TitleTextBlockStyle"));
-            content.Children.Add(PresentationControls.Caption(L.Text("最后观测 ","Last observed ")+L.Timestamp(credit.ObservedAtMs>0?credit.ObservedAtMs:null)+" · "+QuotaPresentation.Freshness(credit.Freshness,L)));
-            content.Children.Add(PresentationControls.Caption(L.Text("今日 / 近7天 / 近30天消耗：—","Today / 7-day / 30-day consumption: —")));
-            content.Children.Add(PresentationControls.Caption(L.Text("官方暂未提供实际消耗统计，余额变化不等于实际扣费。","Actual consumption is not provided by the source. Balance changes are not charges.")));
-            if(credit.History.Count>0)content.Children.Add(PresentationControls.DataButton(L.Text("近30天余额历史（UTC每日最后观测）","30-day balance history (last observation per UTC day)"),PresentationControls.Table([L.Text("观测时间","Observed"),"Credits"],credit.History.Select(point=>new[]{L.Timestamp(point.ObservedAtMs),PaidCreditsPresentation.Amount(point.HasBalance?point.Balance:null,point.Unlimited,L)}))));
-            current.Children.Add(PresentationControls.Card(content));
+            if(QuotaPresentation.Windows(response.Current).Count==0)current.Children.Add(Text(L.Text("尚未获得可展示的额度窗口。","No quota windows are available yet.")));
+            var windows=new List<UIElement>();
+            foreach(var window in QuotaPresentation.Windows(response.Current))
+            {
+                var name=QuotaPresentation.WindowName(window.LimitId,window.HasLimitName?window.LimitName:null,window.HasWindowMinutes?window.WindowMinutes:null,L);
+                windows.Add(RenderWindowColumn(window,name,response.Current.EvaluatedAtMs));
+            }
+            var quotaWindows=PresentationControls.Columns(windows,280);
+            if(provider=="codex")foreach(var credit in response.Current.PaidCredits)
+            {
+                var content=new StackPanel {Spacing=8};
+                content.Children.Add(PresentationControls.Heading(credit.LimitId=="codex"?"Credits":"Credits · "+credit.LimitId));
+                content.Children.Add(Text(PaidCreditsPresentation.Balance(credit,L),"TitleTextBlockStyle"));
+                content.Children.Add(PresentationControls.Caption(L.Text("最后观测 ","Last observed ")+L.Timestamp(credit.ObservedAtMs>0?credit.ObservedAtMs:null)+" · "+QuotaPresentation.Freshness(credit.Freshness,L)));
+                content.Children.Add(PresentationControls.Caption(L.Text("今日 / 近7天 / 近30天消耗：—","Today / 7-day / 30-day consumption: —")));
+                content.Children.Add(PresentationControls.Caption(L.Text("官方暂未提供实际消耗统计，余额变化不等于实际扣费。","Actual consumption is not provided by the source. Balance changes are not charges.")));
+                if(credit.History.Count>0)content.Children.Add(PresentationControls.DataButton(L.Text("近30天余额历史（UTC每日最后观测）","30-day balance history (last observation per UTC day)"),PresentationControls.Table([L.Text("观测时间","Observed"),"Credits"],credit.History.Select(point=>new[]{L.Timestamp(point.ObservedAtMs),PaidCreditsPresentation.Amount(point.HasBalance?point.Balance:null,point.Unlimited,L)}))));
+                current.Children.Add(PresentationControls.Card(content));
+            }
+            if(provider=="codex" && response.Current.ResetCredits is {} credits)
+            {
+                var inventory=new StackPanel {Spacing=8};
+                inventory.Children.Add(PresentationControls.Caption(L.Text("可用重置次数","Available reset credits")));
+                var count=Text(credits.HasAvailableCount?credits.AvailableCount.ToString(L.Culture):"—");count.FontSize=32;count.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;inventory.Children.Add(count);
+                inventory.Children.Add(PresentationControls.Caption(L.Text("最近到期 ","Next expiry ")+L.Timestamp(credits.HasNextExpiresAtMs?credits.NextExpiresAtMs:null)));
+                var inventoryDetails=new StackPanel {Spacing=12};
+                var freshness=QuotaPresentation.Freshness(credits.Freshness,L)+" · "+L.Text("上次成功 ","Last success ")+L.Timestamp(credits.HasLastSuccessAtMs?credits.LastSuccessAtMs:null);
+                if(credits.Freshness is not ("fresh" or "current"))inventory.Children.Add(PresentationControls.Caption(QuotaPresentation.Freshness(credits.Freshness,L)));
+                ToolTipService.SetToolTip(count,freshness);
+                inventoryDetails.Children.Add(PresentationControls.Caption(freshness));
+                inventoryDetails.Children.Add(PresentationControls.Caption(L.Text("仅当前库存；不代表累计领取或已使用次数","Current inventory; not cumulative allocation or consumption")));
+                if(credits.HasCumulativeRemainingMs)inventoryDetails.Children.Add(Text(L.Text("库存累计剩余时长：","Cumulative remaining inventory time: ")+(credits.CumulativeRemainingMs>=0 && credits.CumulativeRemainingMs<=TimeSpan.MaxValue.TotalMilliseconds?TimeSpan.FromMilliseconds(credits.CumulativeRemainingMs).ToString("g",L.Culture):"—")));
+                if(credits.Items.Count>0)inventoryDetails.Children.Add(PresentationControls.Table([L.Text("类型","Type"),L.Text("状态","Status"),L.Text("发放时间","Granted"),L.Text("到期时间","Expires")],credits.Items.Select(item=>new[]{item.Type,item.Status,L.Timestamp(item.GrantedAtMs),L.Timestamp(item.HasExpiresAtMs?item.ExpiresAtMs:null)})));
+                inventory.Children.Add(PresentationControls.DataButton(L.Text("重置库存明细","Reset inventory details"),inventoryDetails));
+                current.Children.Add(windows.Count>0?PresentationControls.Split(quotaWindows,inventory,700):inventory);
+            }
+            else if(windows.Count>0)current.Children.Add(quotaWindows);
         }
-        if(provider=="codex" && response.Current.ResetCredits is {} credits)
-        {
-            var inventory=new StackPanel {Spacing=8};
-            inventory.Children.Add(PresentationControls.Caption(L.Text("可用重置次数","Available reset credits")));
-            var count=Text(credits.HasAvailableCount?credits.AvailableCount.ToString(L.Culture):"—");count.FontSize=32;count.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;inventory.Children.Add(count);
-            inventory.Children.Add(PresentationControls.Caption(L.Text("最近到期 ","Next expiry ")+L.Timestamp(credits.HasNextExpiresAtMs?credits.NextExpiresAtMs:null)));
-            var inventoryDetails=new StackPanel {Spacing=12};
-            var freshness=QuotaPresentation.Freshness(credits.Freshness,L)+" · "+L.Text("上次成功 ","Last success ")+L.Timestamp(credits.HasLastSuccessAtMs?credits.LastSuccessAtMs:null);
-            if(credits.Freshness is not ("fresh" or "current"))inventory.Children.Add(PresentationControls.Caption(QuotaPresentation.Freshness(credits.Freshness,L)));
-            ToolTipService.SetToolTip(count,freshness);
-            inventoryDetails.Children.Add(PresentationControls.Caption(freshness));
-            inventoryDetails.Children.Add(PresentationControls.Caption(L.Text("仅当前库存；不代表累计领取或已使用次数","Current inventory; not cumulative allocation or consumption")));
-            if(credits.HasCumulativeRemainingMs)inventoryDetails.Children.Add(Text(L.Text("库存累计剩余时长：","Cumulative remaining inventory time: ")+(credits.CumulativeRemainingMs>=0 && credits.CumulativeRemainingMs<=TimeSpan.MaxValue.TotalMilliseconds?TimeSpan.FromMilliseconds(credits.CumulativeRemainingMs).ToString("g",L.Culture):"—")));
-            if(credits.Items.Count>0)inventoryDetails.Children.Add(PresentationControls.Table([L.Text("类型","Type"),L.Text("状态","Status"),L.Text("发放时间","Granted"),L.Text("到期时间","Expires")],credits.Items.Select(item=>new[]{item.Type,item.Status,L.Timestamp(item.GrantedAtMs),L.Timestamp(item.HasExpiresAtMs?item.ExpiresAtMs:null)})));
-            inventory.Children.Add(PresentationControls.DataButton(L.Text("重置库存明细","Reset inventory details"),inventoryDetails));
-            current.Children.Add(windows.Count>0?PresentationControls.Split(quotaWindows,inventory,700):inventory);
-        }
-        else if(windows.Count>0)current.Children.Add(quotaWindows);
         paceView.Children.Clear();
         paceView.Children.Add(Text(L.Text("额度节奏与历史","Quota pace and history"),"SubtitleTextBlockStyle"));
         if(pace.State.Kind!=LoadKind.Ready)paceView.Children.Add(PresentationControls.Caption(L.State(pace.State.Kind)));
         if(pace.State.Value is not {} p || p.ProviderContext?.EffectiveProvider!=provider || provider=="codex" && !QuotaPresentation.SameAccount(response.Current.Binding,p.Pace.Binding))
         {paceView.Children.Add(Text(L.Text("同一账号的节奏数据尚未确认。","Pace data for the same account is not confirmed yet.")));return;}
         if(p.Pace.Windows.Count==0)paceView.Children.Add(Text(L.Text("尚无足够的节奏观察。","There are not enough pace observations yet.")));
-        foreach(var window in p.Pace.Windows)
+        else if(provider=="agy")
         {
-            var panel=new StackPanel{Spacing=10};panel.Children.Add(Text(QuotaPresentation.WindowName(window.LimitId,null,window.HasWindowMinutes?window.WindowMinutes:null,L)));
-            panel.Children.Add(PresentationControls.MetricStrip((L.Text("周期已过","Period elapsed"),QuotaPresentation.PercentText(QuotaPresentation.Percent(window.HasElapsedPercent,window.ElapsedPercent),L)),(L.Text("剩余额度","Remaining quota"),QuotaPresentation.PercentText(QuotaPresentation.Percent(window.HasRemainingPercent,window.RemainingPercent),L)),(L.Text("历史周期数","History cycles"),window.HistoryCycleCount.ToString(L.Culture))));
-            if(window.HasPaceDeltaPp)panel.Children.Add(Text(L.Text("相对均匀节奏的消耗差：","Consumption difference from even pace: ")+window.PaceDeltaPp.ToString("+0.##;-0.##;0",L.Culture)+" pp"));
-            panel.Children.Add(PaceChart.Create(window,L));
-            var forecast=window.Forecast;
-            panel.Children.Add(Text(forecast is null?L.Text("预测未知","Forecast unknown"):QuotaPresentation.Forecast(forecast.State,L)+(forecast.HasExhaustAtMs?L.Text(" · 预计耗尽 "," · Expected exhaustion ")+L.Timestamp(forecast.ExhaustAtMs):"")+L.Text(" · 证据点 "," · Evidence points ")+forecast.EvidenceCount.ToString(L.Culture)+(forecast.HasUnknownReason?" · "+forecast.UnknownReason:"")));
-            panel.Children.Add(PresentationControls.Disclosure(L.Text("节奏数据明细","Pace data details"),PresentationControls.Table([L.Text("时间","Time"),L.Text("周期已过","Elapsed"),L.Text("剩余","Remaining"),L.Text("归属","Attribution")],window.CurrentPoints.Select(point=>new[]{L.Timestamp(point.ObservedAtMs),QuotaPresentation.PercentText(QuotaPresentation.Percent(true,point.ElapsedPercent),L),QuotaPresentation.PercentText(QuotaPresentation.Percent(true,point.RemainingPercent),L),point.LinkedHistory?L.Text("显式关联旧历史","Explicitly linked history"):L.Text("当前账号","Current account")}))));
-            paceView.Children.Add(panel);
+            var pacePools=QuotaPresentation.AgyPacePools(p.Pace,response.Current,L);
+            paceView.Children.Add(PaceChart.CreatePoolSwitcher(pacePools,L,selectedPacePool,limitId=>selectedPacePool=limitId));
         }
+        else foreach(var window in p.Pace.Windows)
+            paceView.Children.Add(PaceChart.CreateWindowDetail(window,QuotaPresentation.WindowName(window.LimitId,null,window.HasWindowMinutes?window.WindowMinutes:null,L),L));
+    }
+    private StackPanel RenderWindowColumn(CurrentWindow window,string label,long evaluatedAtMs)
+    {
+        var expired=QuotaPresentation.IsExpired(window,evaluatedAtMs);
+        var remaining=QuotaPresentation.EffectiveRemaining(window,evaluatedAtMs);
+        var row=new StackPanel{Spacing=8};row.Children.Add(PresentationControls.Caption(label));
+        var amount=new StackPanel{Orientation=Orientation.Horizontal,Spacing=8};
+        var number=Text(QuotaPresentation.PercentText(remaining,L));number.FontSize=32;number.FontWeight=Microsoft.UI.Text.FontWeights.SemiBold;
+        amount.Children.Add(number);
+        var remainingLabel=PresentationControls.Caption(L.Text("剩余","remaining"));remainingLabel.VerticalAlignment=VerticalAlignment.Center;amount.Children.Add(remainingLabel);row.Children.Add(amount);
+        AddProgress(row,label,remaining);
+        row.Children.Add(PresentationControls.Caption(expired?L.Text("周期已结束，等待新周期确认。","Period ended; awaiting confirmation of a new cycle."):L.Text("重置 ","Resets ")+L.Timestamp(window.HasResetsAtMs?window.ResetsAtMs:null)+" · "+QuotaPresentation.Freshness(window.Freshness,L)));
+        ToolTipService.SetToolTip(number,L.Text("来源 ","Source ")+window.SelectedSource+" · "+L.Text("上次成功 ","Last success ")+L.Timestamp(window.HasLastSuccessAtMs?window.LastSuccessAtMs:null));
+        if(!string.IsNullOrEmpty(window.Conflict) && window.Conflict!="none")row.Children.Add(Text(L.Text("来源存在冲突：","Sources conflict: ")+window.Conflict));
+        if(window.HasUnknownReason)row.Children.Add(Text(L.Text("状态原因：","State reason: ")+window.UnknownReason));
+        if(window.Explanations.Count>0)row.Children.Add(PresentationControls.DataButton(L.Text("来源证据","Source evidence"),PresentationControls.Table([L.Text("来源","Source"),L.Text("剩余","Remaining"),L.Text("观察时间","Observed"),L.Text("可信状态","Trust")],window.Explanations.Select(item=>new[]{item.Source,QuotaPresentation.PercentText(QuotaPresentation.Percent(item.HasRemainingPercent,item.RemainingPercent),L),L.Timestamp(item.ObservedAtMs),item.Validity+" · "+item.Disposition}))));
+        return row;
     }
     internal static void AddProgress(StackPanel panel,string name,double? remaining)
     {

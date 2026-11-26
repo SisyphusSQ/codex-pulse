@@ -1,6 +1,6 @@
 # 中心配额与周期 API
 
-`GET /api/v1/quotas` 只允许已授权管理浏览器。可选 `provider=codex|cursor|grok`、`account_key=<中心账号键>`、`client_id=<采集客户端UUID>`；未知、重复或非法参数返回 400。collector Bearer 返回 403，匿名返回 401。
+`GET /api/v1/quotas` 只允许已授权管理浏览器。可选 `provider=codex|cursor|grok|dsh|agy`、`account_key=<中心账号键>`、`client_id=<采集客户端UUID>`；未知、重复或非法参数返回 400。collector Bearer 返回 403，匿名返回 401。
 
 响应为标准 envelope 的 `data`：`evaluated_at_ms`、规则版本、账号资料、`windows`、`credits` 和 `coverage=observed_only`。没有数据时数组为空，不造 0 或完整历史。
 
@@ -57,3 +57,10 @@ Pace 接受 window_key，当前与历史每周期最多 512 个真实显示点�
 `GET /api/v1/quotas` 增加 `paid_credits` 数组，与既有 Reset Credits 的 `credits` 分开。每项为 `{account_key, credit}`；credit 使用共享 camelCase 字段：`limitId`、`state`、可空 `balance` / `hasCredits` / `unlimited`、`observedAtMs`、`checkedAtMs`、`freshness`、`consumptionState` 和 `history`。history 点为 `{observedAtMs, balance?, unlimited}`，每天最后有效 UTC 观测，近 30 天缺口不补值。余额为精确十进制字符串，客户端只格式化。
 
 账号、provider、设备筛选均在选样前生效；不同账号/bucket 分开，三台机器的相同账号余额只选原始时间最新值，不求和。同时间不同值为 conflict，余额未知；超过十分钟为 stale。`consumptionState=source_unavailable` 时今日/7天/30天实际消耗保持未知。Web 显示观测时间与历史，不从余额差分推定扣费，不将 Token 价格或 Reset 次数混入余额。
+
+## Antigravity (AGY) 多配额池
+
+`provider=agy` 支持来自 `agy_ls_rpc` 的多配额池观测（`agy.gemini`、`agy.argon`、`agy.carbon`、`agy.claude_gpt` 及未知池 `agy.pool.<slug>`）× `primary`（5h / 300m）与 `secondary`（周 / 10080m）窗口。
+
+- 账号身份仅使用 64 位 SHA-256 `account_scope` 摘要与非敏感标准化 `plan`（不含邮箱原文）；多机同账号观测按 `(provider, account_key, limit_id, window_kind, window_minutes)` 聚合仲裁，不相加设备百分比，同时保留各设备 `client_id` 证据供 `client_id` 筛选。
+- 复用共享 `ComputeQuotaWindow` 与 `ComputePaceWindow`，支持 `/api/v1/quotas`、`view=summary`/`evidence`、`/api/v1/quotas/accounts` 与 `/api/v1/quotas/pace`。

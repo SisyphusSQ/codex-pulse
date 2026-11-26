@@ -20,6 +20,9 @@ var publicReleases []byte
 //go:embed releases-20261118.json
 var publicReleases20261118 []byte
 
+//go:embed releases-20261126.json
+var publicReleases20261126 []byte
+
 func applyModelReleases(models []catalog_vo.Model) error {
 	var records []catalog_dto.ModelRelease
 	if err := json.Unmarshal(publicReleases, &records, json.RejectUnknownMembers(true)); err != nil {
@@ -30,6 +33,11 @@ func applyModelReleases(models []catalog_vo.Model) error {
 		return fmt.Errorf("read model release additions: %w", err)
 	}
 	records = append(records, additions...)
+	var agyAdditions []catalog_dto.ModelRelease
+	if err := json.Unmarshal(publicReleases20261126, &agyAdditions, json.RejectUnknownMembers(true)); err != nil {
+		return fmt.Errorf("read agy model release additions: %w", err)
+	}
+	records = append(records, agyAdditions...)
 	releases := make(map[string]catalog_dto.ReleaseInfo)
 	for _, record := range records {
 		date, err := time.Parse(time.DateOnly, record.ReleasedOn)
@@ -59,6 +67,13 @@ func applyModelReleases(models []catalog_vo.Model) error {
 				if rate, ok := pricing.GrokRateForModel(model); ok {
 					model = rate.ModelID
 				}
+			case "agy":
+				if canonical, _ := pricing.ResolveAGYModelID(model, ""); canonical != "" {
+					model = canonical
+				}
+				if _, ok := releases[releaseModelKey(model)]; !ok {
+					model = agyReleaseBaseModel(model)
+				}
 			}
 		}
 		if release, exists := releases[releaseModelKey(model)]; exists {
@@ -67,6 +82,23 @@ func applyModelReleases(models []catalog_vo.Model) error {
 		}
 	}
 	return nil
+}
+
+func agyReleaseBaseModel(model string) string {
+	key := releaseModelKey(model)
+	if key == "claude-opus-4-7" {
+		return "claude-4.7-opus"
+	}
+	if key == "gemini-3-pro-image" {
+		return "gemini-3-pro-image-preview"
+	}
+	for _, suffix := range []string{"-thinking", "-xhigh", "-high", "-medium", "-low", "-max", "-tiered", "-extra-low", "-preview"} {
+		key = strings.TrimSuffix(key, suffix)
+	}
+	if key == "claude-opus-4-7" {
+		return "claude-4.7-opus"
+	}
+	return key
 }
 
 func releaseModelKey(model string) string {

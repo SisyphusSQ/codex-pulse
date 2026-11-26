@@ -4,7 +4,7 @@ import { Collapse, Descriptions, Select, Statistic, Table, Tag, Typography, them
 import type { EChartsCoreOption } from 'echarts/core';
 import type { PacePoint, PaceWindow, QuotaAccount, QuotaCredits } from '../api/quotas';
 import type { Device } from '../api/statistics';
-import { dateTime, integer, providerNames } from '../format';
+import { dateTime, integer, providerLabel, providerTagColor } from '../format';
 import { EvidenceIcon } from './EvidenceIcon';
 import { LoadingState } from './QueryState';
 
@@ -21,7 +21,10 @@ export const duration=(ms:number|null|undefined)=>{
 };
 export function QuotaStatus({state,conflict}:{state:string;conflict:boolean}){return <><Tag color={['fresh','stale','expired_unknown'].includes(state)&&!conflict?'blue':'gold'}>{freshness[state]??'状态未知'}</Tag>{conflict&&<Tag color="red">来源冲突</Tag>}</>;}
 export function AccountIdentity({account,provider,showDetails=true}:{account?:QuotaAccount;provider:string;showDetails?:boolean}){
- return <div className="account-identity"><Tag>{providerNames[provider]??provider}</Tag><strong>{account?.email??(account?'邮箱未提供':'账号待关联')}</strong><div className="record-id">原始账号 ID：{account?.raw_id??'尚未确认'}</div>{showDetails&&<div className="metric-note">套餐：{account?.plan??'未知'}{account?` · 资料采集：${dateTime(account.collected_at_ms)}`:''}</div>}</div>;
+ if(provider==='agy'){
+  return <div className="account-identity"><Tag color={providerTagColor(provider)}>{providerLabel(provider)}</Tag><strong>{account?.plan??(account?'Antigravity 账号':'账号待关联')}</strong><div className="record-id">账号摘要 ID：{account?.raw_id??'尚未确认'}</div>{showDetails&&<div className="metric-note">{account?`资料采集：${dateTime(account.collected_at_ms)}`:'等待账号确认'}</div>}</div>;
+ }
+ return <div className="account-identity"><Tag color={providerTagColor(provider)}>{providerLabel(provider)}</Tag><strong>{account?.email??(account?'邮箱未提供':'账号待关联')}</strong><div className="record-id">原始账号 ID：{account?.raw_id??'尚未确认'}</div>{showDetails&&<div className="metric-note">套餐：{account?.plan??'未知'}{account?` · 资料采集：${dateTime(account.collected_at_ms)}`:''}</div>}</div>;
 }
 export function paceChartOption(window:PaceWindow, color='#2678f5'):EChartsCoreOption{
  const points=(name:string,values:PacePoint[],color:string,width:number)=>({name,type:'line',showSymbol:values.length===1,symbolSize:5,smooth:false,lineStyle:{width,color,type:'solid'},itemStyle:{color},connectNulls:true,data:values.map(p=>({value:[p.elapsed_percent,p.remaining_percent],observedAt:p.observed_at_ms,linked:p.linked_history}))});
@@ -34,7 +37,7 @@ export function paceChartOption(window:PaceWindow, color='#2678f5'):EChartsCoreO
  {name:'理想节奏',type:'line',symbol:'none',lineStyle:{type:'dotted',width:1.3,color:'#a8b2c1'},itemStyle:{color:'#a8b2c1'},data:[[0,100],[100,0]]},
  ]};
 }
-export function PacePanel({window,evaluatedAt}:{window:PaceWindow;evaluatedAt:number}){
+export function PacePanel({window,evaluatedAt,title='节奏评估',sourceLabel}:{window:PaceWindow;evaluatedAt:number;title?:string;sourceLabel?:string}){
  const {token}=theme.useToken();
  const [cycleID,setCycleID]=useState('current');
  const option=useMemo(()=>paceChartOption(window,token.colorPrimary),[window,token.colorPrimary]);
@@ -49,7 +52,7 @@ export function PacePanel({window,evaluatedAt}:{window:PaceWindow;evaluatedAt:nu
  const reason=quotaReasons[f.unknown_reason??window.unknown_reason??window.current.reason??'unavailable']??'暂缺预测证据';
  const hasSamples=window.current_points.length||previous?.points.length||window.history_band.length;
  return <section className="pace-section">
- <div className="section-heading"><div><strong>节奏评估</strong><EvidenceIcon warning={unavailable||f.state==='at_risk'} label="节奏评估说明"><p>{unavailable?reason:'根据最后一次有效更新时已收到的采样评估，随新观测更新。'}</p><p>实线连接相邻已知观测，仅作趋势参照；缺口不新增观测或预测证据，不延伸到最后采样之外。历史中位数与理想线不是当前采样。</p><div className="metric-note">数据截至：{dateTime(snapshotAt)} · 中心读取：{dateTime(evaluatedAt)} · 推算规则由中心返回</div></EvidenceIcon>{window.pace_delta_pp!=null&&<Tag color={window.pace_delta_pp>0?'gold':'green'}>{window.pace_delta_pp>0?'消耗快于均匀节奏':'消耗慢于均匀节奏'}</Tag>}</div><span className="metric-note">最后更新 {dateTime(snapshotAt)}</span></div>
+ <div className="section-heading"><div><strong>{title}</strong>{sourceLabel&&<Tag>{sourceLabel}</Tag>}<EvidenceIcon warning={unavailable||f.state==='at_risk'} label="节奏评估说明"><p>{unavailable?reason:'根据最后一次有效更新时已收到的采样评估，随新观测更新。'}</p><p>实线连接相邻已知观测，仅作趋势参照；缺口不新增观测或预测证据，不延伸到最后采样之外。历史中位数与理想线不是当前采样。</p><div className="metric-note">数据截至：{dateTime(snapshotAt)} · 中心读取：{dateTime(evaluatedAt)} · 推算规则由中心返回</div></EvidenceIcon>{window.pace_delta_pp!=null&&<Tag color={window.pace_delta_pp>0?'gold':'green'}>{window.pace_delta_pp>0?'消耗快于均匀节奏':'消耗慢于均匀节奏'}</Tag>}</div><span className="metric-note">最后更新 {dateTime(snapshotAt)}</span></div>
  <div className="pace-metrics"><div><div className="metric-label">已使用</div><Statistic value={percent(window.current.used_percent)} /><div className="metric-note">最后观测的额度窗口</div></div><div><div className="metric-label">周期进度</div><Statistic value={percent(window.elapsed_percent)} /><div className="metric-note">截至最后更新时刻</div></div><div><div className="metric-label">节奏差</div><Statistic aria-label="节奏偏差（百分点）" value={window.pace_delta_pp??'未知'} formatter={()=>window.pace_delta_pp==null?'未知':`${window.pace_delta_pp.toFixed(2)} pp`} /><div className="metric-note">正值代表使用快于均匀节奏</div></div><div><div className="metric-label">历史基线</div><Statistic value={window.history_cycle_count?`${integer(window.history_cycle_count)}个周期`:'未知'} /><div className="metric-note">首尾覆盖的历史周期</div></div></div>
  {hasSamples?<Suspense fallback={<LoadingState label="正在加载节奏图…" />}><Chart option={option} label="观测周期、上一周期、历史中位数与理想节奏" height={300} /></Suspense>:<div className="quiet-empty">尚无可绘制的可信周期采样</div>}
  <div className="pace-axes"><span>横轴：周期进度</span><span>纵轴：剩余额度</span></div>

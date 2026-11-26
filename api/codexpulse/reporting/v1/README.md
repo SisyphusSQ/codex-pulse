@@ -36,7 +36,7 @@ Reset Credits 上传库存、详情状态、按到期时间汇总的 `expiry_sch
 
 ## 预算
 
-每请求最多 8 MiB；最多 32 个 Session 快照、32 个账号/关联、1,000 个配额观测、100 个 Reset Credits 记录、4 个 Provider 状态。每个传输片段最多 20,000 条用量与调用事实之和；完整快照最多 200,000 条事实 / 64 MiB（包括片段重复元数据），最多 256 个片段。时间限制在 JavaScript 安全整数范围，Token/金额使用十进制字符串保留 int64 精度和 NULL/零差异。未知字段、重复字段与非法枚举由接收端拒绝，错误不回显内容。
+每请求最多 8 MiB；最多 32 个 Session 快照、32 个账号/关联、1,000 个配额观测、100 个 Reset Credits 记录、5 个 Provider 状态。每个传输片段最多 20,000 条用量与调用事实之和；完整快照最多 200,000 条事实 / 64 MiB（包括片段重复元数据），最多 256 个片段。时间限制在 JavaScript 安全整数范围，Token/金额使用十进制字符串保留 int64 精度和 NULL/零差异。未知字段、重复字段与非法枚举由接收端拒绝，错误不回显内容。
 
 本协议首次发布前仍与实现同时演进，当前版本没有已发布的跨版本兼容承诺；正式发布后改动须设计升级与版本拒绝语义。
 
@@ -110,3 +110,12 @@ Helper schema v4 追加每批重试时间/有限状态。先提取并发送当�
 snapshot 包含 `limitId`、`state=known|unavailable|invalid`、可空十进制字符串 `balance`、可空 `hasCredits` / `unlimited`、原始 UTC 毫秒 `observedAtMs`。已知余额最多 30 位整数、18 位小数，规范化尾零；0 与缺失不同。未知/非法状态不携带数值或布尔值。账号必须匹配同 collector 的已确认关系；相同事实 ID 内容不能改变，receipt 重放不刷新观测或接收时间。导出最近 30 天每日每 bucket/状态最后观测，独立于 Session cursor，超预算明确失败。
 
 中心按账号/bucket 合并原观测，不相加设备余额。同时间冲突保留未知。没有实际扣费事件，不新增消耗数字或美元换算；`estimatedUsageCreditsMicros` 不进入实际消耗合同。
+
+## Antigravity (AGY)
+
+Provider 白名单新增 `agy`，Session SourceKind 为 `agy_local`，配额来源新增 `agy_ls_rpc`；DeviceStatus 每批最多五个独立客户端。
+
+- AGY Contribution 沿用 Uncached Input 语义映射：`input_tokens = uncached_input + cache_read`、`cached_tokens = cache_read`、`output_tokens = outputTokens`、`reasoning_tokens = thinkingOutputTokens`（输出子集，不重复计费）、`total_tokens = uncached_input + cache_read + outputTokens`；采用 `event_cost`，携带版本化公价估算微美元与 `agy-api-2026-11-25`（及 `:phase1` / `:phase2` 阶段后缀），未知模型保持 `unpriced`。不导出工具/技能调用。
+- `agy_local` 支持 `cache_usage` 与 `throughput` v1 安全胶囊（`duration_source` 允许 `step_metadata`），生命周期基准与 `history_filtered` 边界与 Codex / DSH 一致。
+- AGY 配额按 `agy.gemini`、`agy.argon`、`agy.carbon`、`agy.claude_gpt`（未知池 `agy.pool.<slug>`）× `primary` / `secondary` 上报多配额池观测；账号使用 64 位 SHA-256 `account_scope` 摘要与标准化非敏感 `plan`，严禁携带邮箱原文、CSRF Token、完整路径或任何对话正文/思考过程。多机观测按账号/设备/窗口保留，不在中心相加百分比。
+- AGY 被用户显式禁用（`provider_disabled`）时仅上报 `status="disabled"`，不将设备多机同步状态降级为 `partial` 错误。Server 应先于 App 升级；旧中心拒绝 AGY 时保留不可变队列，不能误当确认。

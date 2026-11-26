@@ -65,6 +65,11 @@ func NewController(reader PreferencesReader, probes ProbeSet) (*Controller, erro
 			return ProbeResult{State: DiscoveryMissing, ReasonCode: ReasonNotFound}
 		}
 	}
+	if probes.AGY == nil {
+		probes.AGY = func(context.Context) ProbeResult {
+			return ProbeResult{State: DiscoveryMissing, ReasonCode: ReasonNotFound}
+		}
+	}
 	controller := &Controller{
 		preferences: reader, probes: probes,
 		providers: make(map[string]*providerRuntime, len(providerOrder)),
@@ -170,6 +175,7 @@ func (controller *Controller) RefreshDiscovery(ctx context.Context, _ string) ([
 		agentprovider.Cursor: controller.probes.Cursor(ctx),
 		agentprovider.Grok:   controller.probes.Grok(ctx),
 		agentprovider.DSH:    controller.probes.DSH(ctx),
+		agentprovider.AGY:    controller.probes.AGY(ctx),
 	}
 	var drains []disableDrain
 	controller.mu.Lock()
@@ -231,12 +237,14 @@ func (controller *Controller) Apply(ctx context.Context, update preferences.Prov
 		agentprovider.Cursor: controller.probes.Cursor(ctx),
 		agentprovider.Grok:   controller.probes.Grok(ctx),
 		agentprovider.DSH:    controller.probes.DSH(ctx),
+		agentprovider.AGY:    controller.probes.AGY(ctx),
 	}
 	intents := map[string]preferences.ProviderIntent{
 		agentprovider.Codex:  update.Codex.Intent,
 		agentprovider.Cursor: update.Cursor.Intent,
 		agentprovider.Grok:   update.Grok.Intent,
 		agentprovider.DSH:    update.DSH.Intent,
+		agentprovider.AGY:    update.AGY.Intent,
 	}
 	var drains []disableDrain
 	reconcilePending := false
@@ -637,15 +645,20 @@ func intentOf(value preferences.ProviderPreferences, provider string) preference
 		return value.Codex.Intent
 	case agentprovider.Cursor:
 		return value.Cursor.Intent
+	case agentprovider.Grok:
+		return value.Grok.Intent
 	case agentprovider.DSH:
 		return value.DSH.Intent
+	case agentprovider.AGY:
+		return value.AGY.Intent
 	default:
-		return value.Grok.Intent
+		return ""
 	}
 }
 
 func preferencesIntentValid(value preferences.ProviderPreferences) bool {
-	return validIntent(value.Codex.Intent) && validIntent(value.Cursor.Intent) && validIntent(value.Grok.Intent) && validIntent(value.DSH.Intent)
+	return validIntent(value.Codex.Intent) && validIntent(value.Cursor.Intent) &&
+		validIntent(value.Grok.Intent) && validIntent(value.DSH.Intent) && validIntent(value.AGY.Intent)
 }
 
 func validIntent(value preferences.ProviderIntent) bool {

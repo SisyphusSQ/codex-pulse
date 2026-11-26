@@ -42,6 +42,7 @@ type SessionSnapshot struct {
 	Deleted          bool               `json:"deleted"`
 	SourceKind       string             `json:"source_kind"`
 	SessionKind      string             `json:"session_kind"`
+	SessionRole      string             `json:"session_role,omitempty"`
 	HistoryStartAtMS int64              `json:"history_start_at_ms"`
 	Contributions    []Contribution     `json:"contributions"`
 	Invocations      []Invocation       `json:"invocations,omitempty"`

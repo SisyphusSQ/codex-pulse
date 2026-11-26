@@ -371,7 +371,7 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 	missing := false
 	retryRequired := false
 	record := func(provider string, err error) {
-		if errors.Is(err, errReportingSourceDisabled) {
+		if errors.Is(err, store.ErrReportingProviderDisabled) {
 			return
 		}
 		if errors.Is(err, store.ErrReportingSource) {
@@ -385,7 +385,7 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 			}
 		}
 	}
-	providers := []string{"codex", "cursor", "grok", "dsh"}
+	providers := []string{"codex", "cursor", "grok", "dsh", "agy"}
 	if source, ok := r.source.(interface {
 		PaidCreditFacts(context.Context, int64) ([]FactsGroup, error)
 	}); ok {
@@ -406,7 +406,7 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 	}); ok {
 		for _, provider := range providers {
 			page, err := current.CurrentFacts(ctx, provider, cfg.HistoryStartAtMS)
-			if errors.Is(err, errReportingSourceDisabled) {
+			if errors.Is(err, store.ErrReportingProviderDisabled) {
 				continue
 			}
 			if errors.Is(err, store.ErrReportingSource) {
@@ -522,7 +522,7 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 func (r *Runtime) exportFacts(ctx context.Context, cfg credentialSettings, provider string, now int64) (bool, bool, error) {
 	partition, err := r.source.FactsPartition(ctx, provider)
 	if errors.Is(err, store.ErrReportingSource) {
-		return false, !errors.Is(err, errReportingSourceDisabled), nil
+		return false, !errors.Is(err, store.ErrReportingProviderDisabled), nil
 	}
 	if err != nil {
 		return false, false, err
@@ -536,7 +536,7 @@ func (r *Runtime) exportFacts(ctx context.Context, cfg credentialSettings, provi
 	}
 	page, err := r.source.Facts(ctx, provider, cursor.After, cfg.HistoryStartAtMS)
 	if errors.Is(err, store.ErrReportingSource) {
-		return false, !errors.Is(err, errReportingSourceDisabled), nil
+		return false, !errors.Is(err, store.ErrReportingProviderDisabled), nil
 	}
 	if err != nil {
 		return false, false, err
@@ -566,7 +566,7 @@ func (r *Runtime) exportFacts(ctx context.Context, cfg credentialSettings, provi
 func (r *Runtime) exportSessions(ctx context.Context, cfg credentialSettings, provider string, now int64) (again, missing bool, err error) {
 	homeID, err := r.source.Partition(ctx, provider)
 	if errors.Is(err, store.ErrReportingSource) {
-		return false, !errors.Is(err, errReportingSourceDisabled), nil
+		return false, !errors.Is(err, store.ErrReportingProviderDisabled), nil
 	}
 	if err != nil {
 		return false, false, err
@@ -580,7 +580,7 @@ func (r *Runtime) exportSessions(ctx context.Context, cfg credentialSettings, pr
 	}
 	page, err := r.source.Page(ctx, provider, cursor.After, cfg.HistoryStartAtMS)
 	if errors.Is(err, store.ErrReportingSource) {
-		return false, !errors.Is(err, errReportingSourceDisabled), nil
+		return false, !errors.Is(err, store.ErrReportingProviderDisabled), nil
 	}
 	if err != nil {
 		return false, false, err

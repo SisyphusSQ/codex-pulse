@@ -26,6 +26,11 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 	wantTables := []string{
 		"agent_provider_snapshots",
 		"agent_provider_sources",
+		"agy_quota_observations",
+		"agy_quota_snapshots",
+		"agy_session_lineage",
+		"agy_sessions",
+		"agy_usage_events",
 		"api_subscription_balance_observations",
 		"api_subscription_quota_observations",
 		"app_runtime_samples",
@@ -34,6 +39,7 @@ func TestEnsureApplicationSchemaCreatesStrictRuntimeTables(t *testing.T) {
 		"codex_account_binding",
 		"codex_account_scope_key",
 		"codex_account_scopes",
+		"codex_paid_credits",
 		"codex_quota_history_association_generations",
 		"codex_quota_history_associations",
 		"codex_subscription_detected_accounts",
@@ -133,6 +139,28 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 	wantColumns := map[string][]string{
 		"agent_provider_snapshots": {
 			"provider", "generation", "collected_at_ms",
+		},
+		"agy_quota_observations": {
+			"account_scope", "limit_id", "window_kind", "observed_at_ms", "used_percent", "resets_at_ms",
+		},
+		"agy_quota_snapshots": {
+			"account_scope", "generation", "plan_type", "limit_id", "limit_name", "window_kind",
+			"window_minutes", "used_percent", "resets_at_ms", "data_as_of_ms", "updated_at_ms",
+		},
+		"agy_session_lineage": {
+			"session_id", "source_key", "lineage_key", "content_digest", "observed_at_ms",
+		},
+		"agy_sessions": {
+			"id", "provider", "external_session_id", "display_title", "title_source",
+			"parent_external_session_id", "session_role", "project_key", "project_display_name",
+			"project_source", "created_at_ms", "last_activity_at_ms", "model_key", "request_count",
+			"lineage_conflict", "coverage_state", "throughput", "updated_at_ms",
+		},
+		"agy_usage_events": {
+			"event_id", "external_session_id", "step_index", "occurred_at_ms", "model_key",
+			"uncached_input_tokens", "cache_read_tokens", "output_tokens", "reasoning_tokens",
+			"total_tokens", "cache_read_known", "reasoning_known", "total_known",
+			"started_at_ms", "ended_at_ms", "provenance", "updated_at_ms",
 		},
 		"api_subscription_balance_observations": {
 			"service", "credential_epoch", "observed_at_ms", "currency", "is_available",
@@ -408,6 +436,7 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		},
 	}
 	wantForeignKeys := []string{
+		"agy_session_lineage.session_id->agy_sessions.id/CASCADE",
 		"bootstrap_jobs.job_id->job_runs.job_id/CASCADE",
 		"bootstrap_plan_items.job_id->bootstrap_jobs.job_id/CASCADE",
 		"codex_account_binding.account_scope->codex_account_scopes.account_scope/RESTRICT",
@@ -452,6 +481,10 @@ func TestRuntimeSchemaColumnsForeignKeysAndIndexes(t *testing.T) {
 		"source_refresh_claims.source_instance_id->source_refresh_schedules.source_instance_id/CASCADE",
 	}
 	wantIndexes := []string{
+		"idx_agy_quota_observations_window",
+		"idx_agy_sessions_activity",
+		"idx_agy_sessions_project",
+		"idx_agy_usage_time",
 		"idx_api_subscription_balance_period",
 		"idx_api_subscription_quota_period",
 		"idx_app_runtime_samples_retention",

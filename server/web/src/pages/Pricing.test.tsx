@@ -9,6 +9,7 @@ import {referenceAmount,sourceLink} from '../api/catalog';
 import Pricing from './Pricing';
 import {summaryFixture} from '../test/statisticsFixture';
 import publicPlans from '../../../internal/service/catalog_srv/plans-20261002.json';
+import agyPlans from '../../../internal/service/catalog_srv/plans-20261126.json';
 beforeEach(()=>api.setSession({client_id:'test',name:'测试',purpose:'admin',csrf:'synthetic',expires_at_ms:null}));afterEach(()=>vi.unstubAllGlobals());
 it('retains observed unpriced models and escapes model names',async()=>{
  const row={key:'one',provider:'codex',model:'<img src=x onerror=alert(1)>',mode:'已观测 · 参考价未知',currency:'USD',unit:'未知',input_price:null,cached_price:null,cache_write_price:null,output_price:null,version:'',source_url:'javascript:alert(1)',verified_at_ms:0,effective_from_ms:null,evidence:'observed',notes:'未定价'};
@@ -110,4 +111,45 @@ it('shows both GPT-6.2 models before use and distinguishes the Ultrafast rate pe
  await user.click(screen.getByRole('button',{name:'订阅 Credits 参考'}));
  expect(screen.getByText(/购买 Credits 和符合条件的企业 PAYG 促销适用至 2027-02-28/)).toBeInTheDocument();
  expect(within(screen.getByText('Ultrafast · 促销期 · Codex Credits').closest('tr')!).getByText('无单独收费')).toBeInTheDocument();
+});
+
+it('shows Antigravity versioned phased API reference catalog and estimate disclosure',async()=>{
+ const base={provider:'agy',model:'gemini-4-carbon',currency:'USD',unit:'1M tokens',cache_write_price:null,source_url:'agy_provider_api_pricing',verified_at_ms:Date.UTC(2026,10,25),notes:'Antigravity 公开 API 参考价格目录，按请求时间适用生效阶段单价；不是实际订阅账单，未收录模型保持未定价。'};
+ const models=[
+  {...base,key:'agy:gemini-4-carbon:agy-api-2026-11-25:phase1:reference',mode:'Antigravity · API 参考目录 (phase1)',input_price:'2',cached_price:'0.1',output_price:'10',version:'agy-api-2026-11-25:phase1',effective_from_ms:Date.UTC(2026,10,25),evidence:'current'},
+  {...base,key:'agy:gemini-4-carbon:agy-api-2026-11-25:phase1',mode:'Antigravity · API 公价估算 (phase1)',input_price:'2',cached_price:'0.1',output_price:'10',version:'agy-api-2026-11-25:phase1',effective_from_ms:Date.UTC(2026,10,25),evidence:'historical'},
+  {...base,key:'agy:gemini-4-carbon:agy-api-2026-11-25:phase2',mode:'Antigravity · API 公价估算 (phase2)',input_price:'4',cached_price:'0.2',output_price:'20',version:'agy-api-2026-11-25:phase2',effective_from_ms:Date.UTC(2026,11,1),evidence:'historical'},
+ ];
+ vi.stubGlobal('fetch',async(path:RequestInfo|URL)=>new Response(JSON.stringify({code:200,data:String(path).includes('/statistics/usage')?{...summaryFixture(),models:[],model_days:[],cursor_pools:[],model_cost_rounding_delta_micro_usd:'0'}:{version:'reference-2026-11-18',models,plans:[]}})));
+ render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={['/pricing?provider=agy']}><Pricing /></MemoryRouter></QueryClientProvider>);
+ const row=await screen.findByRole('row',{name:/gemini-4-carbon/});
+ expect(within(row).getByText('Antigravity')).toBeInTheDocument();
+ expect(within(row).getByText('$2.00')).toBeInTheDocument();
+ expect(within(row).getByRole('link',{name:'查看用量'})).toHaveAttribute('href','/usage/models?provider=agy&model=gemini-4-carbon');
+ expect(screen.getByText(/agy-api-2026-11-25/)).toBeInTheDocument();
+ expect(screen.getByText(/模型 API 公价估算，非实际账单/)).toBeInTheDocument();
+ const user=userEvent.setup();
+ await user.click(within(row).getByRole('button',{name:/展开行|Expand row/}));
+ expect(await screen.findByText('Antigravity 版本化 API 参考目录')).toBeInTheDocument();
+ await user.click(screen.getByRole('button',{name:'历史计价证据（2）'}));
+ expect(screen.getByText('agy-api-2026-11-25:phase2')).toBeInTheDocument();
+ expect(screen.getByText('$4.00')).toBeInTheDocument();
+});
+
+it('shows Antigravity subscription tiers with Google AI Ultra switcher and Enterprise contract',async()=>{
+ expect(sourceLink('https://one.google.com/about/google-ai-plans/')).toBeTruthy();
+ expect(sourceLink('https://antigravity.google/')).toBeTruthy();
+ vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({code:200,data:{version:'test',models:[],plans:[...publicPlans,...agyPlans]}})));
+ render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={['/pricing?provider=agy&tab=plans']}><Pricing /></MemoryRouter></QueryClientProvider>);
+ await screen.findByRole('heading',{name:'Google AI Ultra'});
+ expect(screen.getByRole('heading',{name:'Free'})).toBeInTheDocument();
+ expect(screen.getByRole('heading',{name:'Google AI Pro'})).toBeInTheDocument();
+ expect(screen.getByText('$99.99')).toBeInTheDocument();
+ const user=userEvent.setup();
+ await user.click(screen.getByRole('combobox',{name:'Google AI Ultra套餐档位'}));
+ await user.click(screen.getByText('Google AI Ultra 20x · $199.99 · 月付',{exact:true}));
+ expect(await screen.findByText('$199.99')).toBeInTheDocument();
+ await user.click(screen.getByText('团队与企业'));
+ expect(await screen.findByRole('heading',{name:'Gemini Enterprise'})).toBeInTheDocument();
+ expect(screen.getByText('联系销售')).toBeInTheDocument();
 });

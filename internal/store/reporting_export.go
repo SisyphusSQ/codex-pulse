@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strconv"
 
@@ -13,6 +14,7 @@ import (
 )
 
 var ErrReportingSource = errors.New("reporting source is not ready")
+var ErrReportingProviderDisabled = fmt.Errorf("%w: provider_disabled", ErrReportingSource)
 var ErrReportingBudget = errors.New("reporting session exceeds fact budget")
 
 // ReportingPage 只包含白名单事实。游标是当前来源的 Session ID，删除扫描只在
@@ -40,7 +42,7 @@ func (r *Repository) ReportingPage(ctx context.Context, provider string, source 
 		switch provider {
 		case "codex":
 			return exportReportingCodex(db, source, after, &page)
-		case "cursor", "grok", "dsh":
+		case "cursor", "grok", "dsh", "agy":
 			return exportReportingAgent(db, provider, source, after, &page)
 		default:
 			return ErrReportingSource
@@ -237,11 +239,20 @@ func exportReportingAgent(db *gorm.DB, provider string, source ReportingSource, 
 	}
 	page.Authority = true
 	var adverse, totalSources int64
-	if err := db.Table("agent_provider_sources").Where("provider = ?", provider).Count(&totalSources).Error; err != nil {
-		return err
-	}
-	if err := db.Table("agent_provider_sources").Where("provider = ? AND (state <> 'available' OR coverage_state <> 'exact')", provider).Count(&adverse).Error; err != nil {
-		return err
+	if provider == "agy" {
+		if err := db.Table("agent_provider_sources").Where("provider = ? AND state <> 'not_configured' AND source_key <> ?", provider, "agy.ls_rpc").Count(&totalSources).Error; err != nil {
+			return err
+		}
+		if err := db.Table("agent_provider_sources").Where("provider = ? AND state <> 'not_configured' AND source_key <> ? AND (state <> 'available' OR coverage_state <> 'exact')", provider, "agy.ls_rpc").Count(&adverse).Error; err != nil {
+			return err
+		}
+	} else {
+		if err := db.Table("agent_provider_sources").Where("provider = ?", provider).Count(&totalSources).Error; err != nil {
+			return err
+		}
+		if err := db.Table("agent_provider_sources").Where("provider = ? AND (state <> 'available' OR coverage_state <> 'exact')", provider).Count(&adverse).Error; err != nil {
+			return err
+		}
 	}
 	page.Authority = totalSources > 0 && adverse == 0
 	var dashboard int64
@@ -305,7 +316,7 @@ func exportReportingAgent(db *gorm.DB, provider string, source ReportingSource, 
 		}
 		assignReportingIDs(&s)
 		s.Contributions = reportingRange(s.Contributions, source.StartAtMS)
-		if provider == "dsh" && source.StartAtMS > 0 {
+		if (provider == "dsh" || provider == "agy") && source.StartAtMS > 0 {
 			s.HistoryStartAtMS = source.StartAtMS
 			if s.CacheUsage != nil {
 				s.CacheUsage.InputTokens = nil
@@ -325,6 +336,9 @@ func exportReportingAgent(db *gorm.DB, provider string, source ReportingSource, 
 func exportReportingAgentUsage(db *gorm.DB, provider, id string, s *reportingv1.SessionSnapshot) error {
 	if provider == "dsh" {
 		return exportReportingDSHUsage(db, id, s)
+	}
+	if provider == "agy" {
+		return exportReportingAGYUsage(db, id, s)
 	}
 	var rows []struct {
 		OccurredAtMS                                                                                   int64
@@ -446,7 +460,7 @@ func (r *Repository) ReportingPartition(ctx context.Context, provider string) (k
 
 // ReportingStatus reads coverage independently of online/pairing state.
 func (r *Repository) ReportingStatus(ctx context.Context, provider string, source ReportingSource) (status reportingv1.DeviceStatus, err error) {
-	if provider != "codex" && provider != "cursor" && provider != "grok" && provider != "dsh" {
+	if provider != "codex" && provider != "cursor" && provider != "grok" && provider != "dsh" && provider != "agy" {
 		return status, ErrReportingSource
 	}
 	status = reportingv1.DeviceStatus{Provider: provider, Status: "source_unavailable"}
@@ -494,11 +508,20 @@ func (r *Repository) ReportingStatus(ctx context.Context, provider string, sourc
 			status.CollectedAtMS = &snapshot.CollectedAtMS
 			status.Status = "partial"
 			var known, partial int64
-			if err := db.Table("agent_provider_sources").Where("provider = ?", provider).Count(&known).Error; err != nil {
-				return err
-			}
-			if err := db.Table("agent_provider_sources").Where("provider = ? AND (state <> 'available' OR coverage_state <> 'exact')", provider).Count(&partial).Error; err != nil {
-				return err
+			if provider == "agy" {
+				if err := db.Table("agent_provider_sources").Where("provider = ? AND state <> 'not_configured' AND source_key <> ?", provider, "agy.ls_rpc").Count(&known).Error; err != nil {
+					return err
+				}
+				if err := db.Table("agent_provider_sources").Where("provider = ? AND state <> 'not_configured' AND source_key <> ? AND (state <> 'available' OR coverage_state <> 'exact')", provider, "agy.ls_rpc").Count(&partial).Error; err != nil {
+					return err
+				}
+			} else {
+				if err := db.Table("agent_provider_sources").Where("provider = ?", provider).Count(&known).Error; err != nil {
+					return err
+				}
+				if err := db.Table("agent_provider_sources").Where("provider = ? AND (state <> 'available' OR coverage_state <> 'exact')", provider).Count(&partial).Error; err != nil {
+					return err
+				}
 			}
 			if known > 0 && partial == 0 {
 				status.Status = "ready"

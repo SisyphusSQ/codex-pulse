@@ -177,7 +177,7 @@ private struct SourceSplitView: View {
 							ForEach(group.items, id: \.sourceKey) { item in
 					VStack(alignment: .leading, spacing: 5) {
 						HStack {
-							Text(item.hasSourceType ? item.sourceType : ProductCopy.sourceName(item.kind)).font(.headline).lineLimit(1)
+							Text(sourceDisplayTitle(item)).font(.headline).lineLimit(1)
 							Spacer()
 							StatusPill(text: item.state)
 						}
@@ -221,6 +221,14 @@ private struct SourceSplitView: View {
 			return matches.isEmpty ? nil : (provider, matches)
 		}
 	}
+
+	private func sourceDisplayTitle(_ item: Codexpulse_Core_V1_SourceItem) -> String {
+		if item.hasProvider && item.provider == AgentProvider.agy.rawValue {
+			let known = ProductCopy.sourceName(item.sourceKey)
+			return "\(known) (\(item.sourceKey))"
+		}
+		return item.hasSourceType ? item.sourceType : ProductCopy.sourceName(item.kind)
+	}
 }
 
 private struct SourceDetailView: View {
@@ -230,12 +238,15 @@ private struct SourceDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
-					Text(item.hasSourceType ? item.sourceType : ProductCopy.sourceName(item.kind)).font(.title2.bold())
+					Text(detailTitle).font(.title2.bold())
                     Spacer()
                     StatusPill(text: item.state)
                 }
                 SectionCard(title: "数据概览") {
-					KeyValueRow(key: "客户端", value: item.hasProvider ? item.provider.capitalized : "Codex")
+					KeyValueRow(key: "客户端", value: providerDisplayName)
+					if item.hasProvider && item.provider == AgentProvider.agy.rawValue {
+						KeyValueRow(key: "来源标识", value: item.sourceKey)
+					}
 					if item.hasSourceType { KeyValueRow(key: "内部来源", value: item.sourceType) }
 					if item.hasCoverageState { KeyValueRow(key: "覆盖度", value: item.coverageState) }
 					if item.hasCheckpointKind { KeyValueRow(key: "Checkpoint", value: item.checkpointKind) }
@@ -255,6 +266,18 @@ private struct SourceDetailView: View {
             .padding(18)
         }
         .accessibilityIdentifier("source.detail")
+    }
+
+    private var detailTitle: String {
+        if item.hasProvider && item.provider == AgentProvider.agy.rawValue {
+            return ProductCopy.sourceName(item.sourceKey)
+        }
+        return item.hasSourceType ? item.sourceType : ProductCopy.sourceName(item.kind)
+    }
+
+    private var providerDisplayName: String {
+        guard item.hasProvider else { return "Codex" }
+        return AgentProvider(rawValue: item.provider)?.title ?? item.provider.capitalized
     }
 }
 
@@ -468,7 +491,8 @@ struct SettingsView: View {
                     providerSection(.codex, response: response)
                     providerSection(.cursor, response: response)
                     providerSection(.grok, response: response)
- providerSection(.dsh, response: response)
+                    providerSection(.dsh, response: response)
+                    providerSection(.agy, response: response)
                     refreshSection(response)
                     updatesSection(response)
                     uiSection(response)
@@ -482,7 +506,7 @@ struct SettingsView: View {
                         )
                     )
                     LabeledContent("当前状态", value: ProductCopy.status(response.snapshot.home.switchStatus))
-                    Text("没有 Codex Home 时，Cursor、Grok、DSH 和设置仍然可用。")
+                    Text("没有 Codex Home 时，Cursor、Grok、DSH、Antigravity 和设置仍然可用。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text("Codex Pulse 只读取本机已启用客户端的数据。")
@@ -601,9 +625,20 @@ struct SettingsView: View {
         let state = ProviderCatalog(response).state(for: provider)
         let subSwitchesEnabled = state?.effective == .enabled
         return Section(provider.title) {
-            Toggle(providerMasterTitle(provider), isOn: providerMasterBinding(provider))
+            if provider == .agy {
+                Picker("启用模式", selection: providerIntentBinding(provider)) {
+                    Text("自动发现").tag(Codexpulse_Core_V1_ProviderIntent.auto)
+                    Text("始终启用").tag(Codexpulse_Core_V1_ProviderIntent.enabled)
+                    Text("已停用").tag(Codexpulse_Core_V1_ProviderIntent.disabled)
+                }
+                .pickerStyle(.segmented)
                 .disabled(!editable(provider.settingsIntentFieldKey, response) || settingsAreBusy)
-                .accessibilityIdentifier("settings.provider.\(provider.rawValue).master")
+                .accessibilityIdentifier("settings.provider.agy.intent")
+            } else {
+                Toggle(providerMasterTitle(provider), isOn: providerMasterBinding(provider))
+                    .disabled(!editable(provider.settingsIntentFieldKey, response) || settingsAreBusy)
+                    .accessibilityIdentifier("settings.provider.\(provider.rawValue).master")
+            }
             if let state {
                 Text(ProviderStatusCopy.statusLabel(state))
                     .font(.caption)
@@ -648,8 +683,19 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             case .dsh:
- Text("读取 DSH 本机 Session 的用量与工具统计；按模型路由和请求时间估算美元 API 公价，订阅实际扣费与额度以官方为准。")
- case .grok:
+                Text("读取 DSH 本机 Session 的用量与工具统计；按模型路由和请求时间估算美元 API 公价，订阅实际扣费与额度以官方为准。")
+            case .agy:
+                Toggle("启用本机配额与账号采集", isOn: draftBinding(\.agyOnlineEnabled))
+                    .disabled(
+                        !subSwitchesEnabled
+                            || !editable("online.agyOnlineEnabled", response)
+                            || settingsAreBusy
+                    )
+                    .accessibilityIdentifier("settings.provider.agy.online")
+                Text("通过本机回环 Language Server 读取账号与多池配额；关闭后停止所有本机 LS RPC 请求，不影响本地轨迹统计。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .grok:
                 Toggle("启用 Grok 额度采集", isOn: draftBinding(\.grokQuotaEnabled))
                     .disabled(
                         !subSwitchesEnabled || !editable("online.grokQuotaEnabled", response) || settingsAreBusy
@@ -672,8 +718,20 @@ struct SettingsView: View {
         case .codex: "启用 Codex"
         case .cursor: "启用 Cursor"
         case .grok: "启用 Grok"
- case .dsh: "启用 DSH"
+        case .dsh: "启用 DSH"
+        case .agy: "启用 Antigravity"
         }
+    }
+
+    private func providerIntentBinding(_ provider: AgentProvider) -> Binding<Codexpulse_Core_V1_ProviderIntent> {
+        Binding(
+            get: { model.settingsDraft?.intent(for: provider) ?? .auto },
+            set: { intent in
+                guard var draft = model.settingsDraft else { return }
+                draft.setIntent(intent, for: provider)
+                model.settingsDraft = draft
+            }
+        )
     }
 
     private func providerMasterBinding(_ provider: AgentProvider) -> Binding<Bool> {

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
@@ -26,9 +27,22 @@ var publicModels20261118 []byte
 //go:embed plans-20261002.json
 var publicPlans []byte
 
-type Catalog struct{ repository *catalog_repo.Catalog }
+//go:embed plans-20261126.json
+var publicPlans20261126 []byte
 
-func NewCatalog(repository *catalog_repo.Catalog) *Catalog { return &Catalog{repository: repository} }
+var (
+	agyCarbonPhaseCutoffMS = time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+	agyFlashPhaseCutoffMS  = time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
+)
+
+type Catalog struct {
+	repository *catalog_repo.Catalog
+	now        func() time.Time
+}
+
+func NewCatalog(repository *catalog_repo.Catalog) *Catalog {
+	return &Catalog{repository: repository, now: time.Now}
+}
 func (s *Catalog) Current(ctx context.Context, p access_dto.Principal) (out catalog_vo.Response, err error) {
 	if err = access_srv.RequireAdmin(p); err != nil {
 		return
@@ -55,6 +69,11 @@ func (s *Catalog) current(ctx context.Context) (out catalog_vo.Response, err err
 	if err = json.Unmarshal(publicPlans, &out.Plans, json.RejectUnknownMembers(true)); err != nil {
 		return out, fmt.Errorf("read public plan catalog: %w", err)
 	}
+	var planAdditions []catalog_vo.Plan
+	if err = json.Unmarshal(publicPlans20261126, &planAdditions, json.RejectUnknownMembers(true)); err != nil {
+		return out, fmt.Errorf("read public plan catalog additions: %w", err)
+	}
+	out.Plans = append(out.Plans, planAdditions...)
 	openAICatalog := pricing.BuiltinOpenAICatalog()
 	for _, version := range openAICatalog {
 		for _, m := range version.Models {
@@ -86,6 +105,11 @@ func (s *Catalog) current(ctx context.Context) (out catalog_vo.Response, err err
 	for _, m := range pricing.DSHReferenceRates() {
 		out.Models = append(out.Models, catalog_vo.Model{Key: "dsh:" + m.ModelID + ":" + pricing.DSHPriceVersion, Provider: "dsh", Model: m.ModelID, Mode: "按请求时间适用峰谷价", Currency: "USD", Unit: "1M tokens", InputPrice: amount(new(m.InputMicros)), CachedPrice: amount(new(m.CachedMicros)), OutputPrice: amount(new(m.OutputMicros)), Version: pricing.DSHPriceVersion, SourceURL: pricing.DSHPriceSource, VerifiedAtMS: pricing.DSHPricingVerifiedAtMS, Evidence: "historical", Notes: "北京时间工作日09–12、14–18为峰时；周末、中国法定节假日和其余时间为谷时。缺少历史价格或缓存计数时不估价。"})
 	}
+	nowMS := time.Now().UnixMilli()
+	if s.now != nil {
+		nowMS = s.now().UnixMilli()
+	}
+	out.Models = append(out.Models, agyCatalogModels(nowMS)...)
 	evidence, err := s.repository.Prices(ctx)
 	if err != nil {
 		return out, err
@@ -113,6 +137,11 @@ func (s *Catalog) current(ctx context.Context) (out catalog_vo.Response, err err
 	for _, m := range observed {
 		if known[m.Provider+"\x00"+strings.ToLower(m.Model)] {
 			continue
+		}
+		if m.Provider == "agy" {
+			if _, ok := pricing.AGYRateAt(m.Model, nowMS); ok {
+				continue
+			}
 		}
 		out.Models = append(out.Models, catalog_vo.Model{Key: m.Provider + ":observed:" + m.Model, Provider: m.Provider, Model: m.Model, Mode: "已观测 · 参考价未知", Currency: "USD", Unit: "未知", Evidence: "observed", Notes: "保留实际模型名；没有匹配公开价格证据，不猜价或视为免费。"})
 	}
@@ -142,4 +171,84 @@ func value(v *string) string {
 }
 func sameAmount(a, b *string) bool {
 	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+}
+
+func agyCatalogModels(nowMS int64) []catalog_vo.Model {
+	rates := pricing.AGYReferenceRatesAt(nowMS)
+	out := make([]catalog_vo.Model, 0, len(rates)*2)
+	const agyNotes = "Antigravity 公开 API 参考价格目录，按请求时间适用生效阶段单价；不是实际订阅账单，未收录模型保持未定价。"
+	probes := []struct {
+		atMS            int64
+		effectiveFromMS int64
+	}{
+		{atMS: pricing.AGYPricingVerifiedAtMS, effectiveFromMS: pricing.AGYPricingVerifiedAtMS},
+		{atMS: agyCarbonPhaseCutoffMS, effectiveFromMS: agyCarbonPhaseCutoffMS},
+		{atMS: agyFlashPhaseCutoffMS, effectiveFromMS: agyFlashPhaseCutoffMS},
+	}
+	for _, ref := range rates {
+		seenVersions := map[string]bool{}
+		var activeEffective int64 = pricing.AGYPricingVerifiedAtMS
+		currentRate, ok := pricing.AGYRateAt(ref.ModelID, nowMS)
+		if !ok {
+			continue
+		}
+		currentVersion := currentRate.PricingVersion()
+		for _, probe := range probes {
+			rate, ok := pricing.AGYRateAt(ref.ModelID, probe.atMS)
+			if !ok {
+				continue
+			}
+			version := rate.PricingVersion()
+			if seenVersions[version] {
+				continue
+			}
+			seenVersions[version] = true
+			if version == currentVersion {
+				activeEffective = probe.effectiveFromMS
+			}
+			mode := "Antigravity · API 公价估算"
+			if rate.Phase != "" {
+				mode = "Antigravity · API 公价估算 (" + rate.Phase + ")"
+			}
+			out = append(out, catalog_vo.Model{
+				Key:             "agy:" + ref.ModelID + ":" + version,
+				Provider:        "agy",
+				Model:           ref.ModelID,
+				Mode:            mode,
+				Currency:        "USD",
+				Unit:            "1M tokens",
+				InputPrice:      amount(new(rate.InputMicros)),
+				CachedPrice:     amount(new(rate.CachedMicros)),
+				OutputPrice:     amount(new(rate.OutputMicros)),
+				Version:         version,
+				SourceURL:       pricing.AGYPriceSource,
+				VerifiedAtMS:    pricing.AGYPricingVerifiedAtMS,
+				EffectiveFromMS: new(probe.effectiveFromMS),
+				Evidence:        "historical",
+				Notes:           agyNotes,
+			})
+		}
+		mode := "Antigravity · API 参考目录"
+		if currentRate.Phase != "" {
+			mode = "Antigravity · API 参考目录 (" + currentRate.Phase + ")"
+		}
+		out = append(out, catalog_vo.Model{
+			Key:             "agy:" + ref.ModelID + ":" + currentVersion + ":reference",
+			Provider:        "agy",
+			Model:           ref.ModelID,
+			Mode:            mode,
+			Currency:        "USD",
+			Unit:            "1M tokens",
+			InputPrice:      amount(new(currentRate.InputMicros)),
+			CachedPrice:     amount(new(currentRate.CachedMicros)),
+			OutputPrice:     amount(new(currentRate.OutputMicros)),
+			Version:         currentVersion,
+			SourceURL:       pricing.AGYPriceSource,
+			VerifiedAtMS:    pricing.AGYPricingVerifiedAtMS,
+			EffectiveFromMS: new(activeEffective),
+			Evidence:        "current",
+			Notes:           agyNotes,
+		})
+	}
+	return out
 }

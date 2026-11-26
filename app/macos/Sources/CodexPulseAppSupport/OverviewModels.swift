@@ -193,7 +193,7 @@ public struct CodexAccountPresentation: Equatable, Sendable {
         email = normalizedEmail
         planType = normalizedPlan
 
-		guard normalizedType == "chatgpt" || normalizedType == "cursor" || normalizedType == "grok" else {
+		guard normalizedType == "chatgpt" || normalizedType == "cursor" || normalizedType == "grok" || normalizedType == "agy" else {
             planText = "--"
             emailText = "--"
             accessibilityLabel = localization.format(
@@ -206,11 +206,17 @@ public struct CodexAccountPresentation: Equatable, Sendable {
 				planType: normalizedPlan,
 				snapshot: response.proTier
 			)
+		} else if normalizedType == "agy" {
+			planText = normalizedPlan ?? "--"
 		} else {
 			planText = Self.planDisplayName(normalizedPlan)
 		}
         emailText = normalizedEmail ?? "--"
-        accessibilityLabel = localization.format("account.plan", planText, emailText)
+        if normalizedType == "agy", normalizedEmail == nil, let normalizedPlan {
+            accessibilityLabel = normalizedPlan
+        } else {
+            accessibilityLabel = localization.format("account.plan", planText, emailText)
+        }
     }
 
     private static func nonEmpty(_ value: String) -> String? {
@@ -668,16 +674,18 @@ public enum UsageModelTrendResolver {
 
 public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
     public let id: String
+    public let windowKind: String
     public let limitID: String
     public let limitName: String?
     public let title: String
-	public let usedPercent: Double?
+    public let usedPercent: Double?
     public let remainingPercent: Double?
     public let freshness: String
     public let unknownReason: String?
     public let windowMinutes: Int64?
     public let resetsAtMS: Int64?
     public let resetRemainingMS: Int64?
+    public let lastSuccessAtMS: Int64?
 
     public init(_ window: Codexpulse_Core_V1_CurrentWindow) {
         self.init(
@@ -690,7 +698,8 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
             unknownReason: window.hasUnknownReason ? window.unknownReason : nil,
             windowMinutes: window.hasWindowMinutes ? window.windowMinutes : nil,
             resetsAtMS: window.hasResetsAtMs ? window.resetsAtMs : nil,
-            resetRemainingMS: window.hasResetRemainingMs ? window.resetRemainingMs : nil
+            resetRemainingMS: window.hasResetRemainingMs ? window.resetRemainingMs : nil,
+            lastSuccessAtMS: window.hasLastSuccessAtMs ? window.lastSuccessAtMs : nil
         )
     }
 
@@ -705,7 +714,8 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
             unknownReason: nil,
             windowMinutes: window.hasWindowMinutes ? window.windowMinutes : nil,
             resetsAtMS: window.hasResetsAtMs ? window.resetsAtMs : nil,
-            resetRemainingMS: nil
+            resetRemainingMS: nil,
+            lastSuccessAtMS: nil
         )
     }
 
@@ -719,10 +729,12 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
         unknownReason: String?,
         windowMinutes: Int64?,
         resetsAtMS: Int64?,
-        resetRemainingMS: Int64?
+        resetRemainingMS: Int64?,
+        lastSuccessAtMS: Int64?
     ) {
         let localization = AppLocalizationRegistry.shared.current
         self.id = "\(windowKind):\(limitID)"
+        self.windowKind = windowKind
         self.limitID = limitID
         self.limitName = limitName
         let quotaName = Self.quotaName(
@@ -731,8 +743,8 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
         if Self.isCursorGrokBotLimit(limitID) {
             self.title = "\(quotaName) · \(localization.textValue("周额度"))"
         } else if Self.isCursorMonthlyLimit(limitID) {
-			self.title = "\(quotaName) · \(localization.textValue("月额度"))"
-		} else if let duration = Self.durationTitle(
+            self.title = "\(quotaName) · \(localization.textValue("月额度"))"
+        } else if let duration = Self.durationTitle(
             windowMinutes: windowMinutes,
             localization: localization
         ) {
@@ -740,13 +752,14 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
         } else {
             self.title = quotaName
         }
-		self.usedPercent = usedPercent
+        self.usedPercent = usedPercent
         self.remainingPercent = remainingPercent
         self.freshness = freshness
         self.unknownReason = unknownReason
         self.windowMinutes = windowMinutes
         self.resetsAtMS = resetsAtMS
         self.resetRemainingMS = resetRemainingMS
+        self.lastSuccessAtMS = lastSuccessAtMS
     }
 
     public var unknownMessage: String? {
@@ -779,6 +792,14 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
             window.limitID = limitID.isEmpty ? "cursor.grok_bot" : limitID
             return QuotaWindowPresentation(window).title
         }
+        if limitID.hasPrefix("agy.") {
+            let poolName = AGYQuotaPoolResolver.displayPoolName(limitID: limitID, limitName: nil)
+            let windowLabel = AGYQuotaPoolResolver.isPrimaryWindow(
+                windowKind: windowKind, windowMinutes: nil
+            ) ? localization.quantity("copy.count.hour", count: 5)
+              : localization.quantity("copy.count.day", count: 7)
+            return "\(poolName) · \(windowLabel)"
+        }
         return localization.textValue(windowKind == "primary" ? "主额度窗口" : "次额度窗口")
     }
 
@@ -789,6 +810,9 @@ public struct QuotaWindowPresentation: Equatable, Sendable, Identifiable {
     ) -> String {
         if isCursorGrokBotLimit(limitID) {
             return localization.textValue("Grok Bot")
+        }
+        if limitID.hasPrefix("agy.") {
+            return AGYQuotaPoolResolver.displayPoolName(limitID: limitID, limitName: limitName)
         }
         let trimmedName = limitName?.trimmingCharacters(in: .whitespacesAndNewlines)
         if limitID == "codex" {
@@ -911,7 +935,44 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
 
     public init?(_ overview: OverviewPresentation) {
         let localization = AppLocalizationRegistry.shared.current
-        if overview.provider == .dsh {
+        switch overview.provider {
+        case .agy:
+            if let tightest = AGYQuotaPoolResolver.tightestNonExpiredWindow(
+                from: overview.quotaWindows,
+                evaluatedAtMS: overview.evaluatedAtMS
+            ), let remaining = tightest.remainingPercent {
+                let compactPoolLabel = AGYQuotaPoolResolver.compactMenuBarLabel(
+                    for: tightest,
+                    localization: localization
+                )
+                let percentText = localization.percent(remaining)
+                self.periodLabel = compactPoolLabel
+                self.remainingPercent = remaining
+                self.remainingText = percentText
+                self.usageText = compactPoolLabel
+                self.freshness = tightest.freshness
+                self.dataState = StatusBarQuotaDataState(freshness: tightest.freshness)
+                self.accessibilityLabel = localization.format(
+                    "status.agy.accessibility.quota",
+                    compactPoolLabel,
+                    percentText
+                ) + dataState.accessibilitySuffix
+            } else {
+                let todayCompact = Self.compact(overview.todayTotalTokens)
+                let todayText = localization.format("status.today_tokens", todayCompact)
+                self.periodLabel = localization.textValue("今天")
+                self.remainingPercent = nil
+                self.remainingText = "--"
+                self.usageText = todayText
+                self.freshness = "unavailable"
+                self.dataState = .unavailable
+                self.accessibilityLabel = localization.format(
+                    "status.agy.accessibility.fallback",
+                    todayText
+                ) + dataState.accessibilitySuffix
+            }
+            return
+        case .dsh:
             self.periodLabel = overview.requestedRange.title
             self.remainingPercent = nil
             self.remainingText = overview.requestedRange.title
@@ -925,113 +986,112 @@ public struct StatusBarQuotaPresentation: Equatable, Sendable {
             let coverage = dataState == .stale ? localization.textValue("，用量覆盖不足") : ""
             self.accessibilityLabel = remainingText + "，" + usageText + coverage
             return
-        }
-		if overview.provider == .grok {
-			guard let window = overview.quotaWindows.first else { return nil }
-			let periodLabel = Self.grokPeriodLabel(window, localization: localization)
-			let remainingSummary = window.remainingPercent.map { localization.percent($0) } ?? "--"
-			self.periodLabel = periodLabel
-			self.remainingPercent = window.remainingPercent
-			self.remainingText = "\(periodLabel) \(remainingSummary)"
-			self.freshness = window.freshness
-			self.dataState = StatusBarQuotaDataState(freshness: window.freshness)
-			if overview.usageAvailable, Self.grokUsageAlignedToBillingPeriod(overview) {
-				let total = Self.compact(overview.totalTokens)
-				self.usageText = localization.format("status.used", total)
-				self.accessibilityLabel = localization.format(
-					"status.accessibility.used",
-					periodLabel,
-					remainingSummary,
-					Self.compactWithUnit(overview.totalTokens, localization: localization)
-				) + dataState.accessibilitySuffix
-			} else {
-				self.usageText = localization.textValue("已用 --")
-				self.accessibilityLabel = localization.format(
-					"status.accessibility.unavailable", periodLabel, remainingSummary
-				) + dataState.accessibilitySuffix
-			}
-			return
-		}
-		if overview.provider == .cursor {
-			let windows = ["cursor.models", "cursor.other_models"].compactMap { limitID in
-				overview.quotaWindows.first(where: { $0.limitID == limitID })
-			}
-			guard let primaryWindow = windows.first else { return nil }
-			let remainingValues = windows.map {
-				$0.remainingPercent.map { localization.percent($0) } ?? "--"
-			}
-			let remainingSummary = remainingValues.joined(separator: " · ")
-			let periodLabel = localization.textValue("月剩")
-			self.periodLabel = periodLabel
-			self.remainingPercent = primaryWindow.remainingPercent
-			self.remainingText = "\(periodLabel) \(remainingSummary)"
-			self.freshness = primaryWindow.freshness
-			self.dataState = StatusBarQuotaDataState(freshness: primaryWindow.freshness)
+        case .grok:
+            guard let window = overview.quotaWindows.first else { return nil }
+            let periodLabel = Self.grokPeriodLabel(window, localization: localization)
+            let remainingSummary = window.remainingPercent.map { localization.percent($0) } ?? "--"
+            self.periodLabel = periodLabel
+            self.remainingPercent = window.remainingPercent
+            self.remainingText = "\(periodLabel) \(remainingSummary)"
+            self.freshness = window.freshness
+            self.dataState = StatusBarQuotaDataState(freshness: window.freshness)
+            if overview.usageAvailable, Self.grokUsageAlignedToBillingPeriod(overview) {
+                let total = Self.compact(overview.totalTokens)
+                self.usageText = localization.format("status.used", total)
+                self.accessibilityLabel = localization.format(
+                    "status.accessibility.used",
+                    periodLabel,
+                    remainingSummary,
+                    Self.compactWithUnit(overview.totalTokens, localization: localization)
+                ) + dataState.accessibilitySuffix
+            } else {
+                self.usageText = localization.textValue("已用 --")
+                self.accessibilityLabel = localization.format(
+                    "status.accessibility.unavailable", periodLabel, remainingSummary
+                ) + dataState.accessibilitySuffix
+            }
+            return
+        case .cursor:
+            let windows = ["cursor.models", "cursor.other_models"].compactMap { limitID in
+                overview.quotaWindows.first(where: { $0.limitID == limitID })
+            }
+            guard let primaryWindow = windows.first else { return nil }
+            let remainingValues = windows.map {
+                $0.remainingPercent.map { localization.percent($0) } ?? "--"
+            }
+            let remainingSummary = remainingValues.joined(separator: " · ")
+            let periodLabel = localization.textValue("月剩")
+            self.periodLabel = periodLabel
+            self.remainingPercent = primaryWindow.remainingPercent
+            self.remainingText = "\(periodLabel) \(remainingSummary)"
+            self.freshness = primaryWindow.freshness
+            self.dataState = StatusBarQuotaDataState(freshness: primaryWindow.freshness)
 
-			if overview.usageAvailable,
-			   overview.requestedRange == .quotaMonth,
-			   overview.effectiveRange == .quotaMonth,
-			   let cursorModels = overview.cursorUsagePools.first(where: { $0.id == "cursor.models" }),
-			   let otherModels = overview.cursorUsagePools.first(where: { $0.id == "cursor.other_models" })
-			{
-				let cursorModelsText = Self.compact(cursorModels.tokens)
-				let otherModelsText = Self.compact(otherModels.tokens)
-				self.usageText = localization.format(
-					"status.used", "\(cursorModelsText) · \(otherModelsText)"
-				)
-				let cursorModelsAccessibility = localization.format(
-					"status.used",
-					Self.compactWithUnit(cursorModels.tokens, localization: localization)
-				)
-				let otherModelsAccessibility = localization.format(
-					"status.used",
-					Self.compactWithUnit(otherModels.tokens, localization: localization)
-				)
-				var accessibility = "\(periodLabel) \(remainingSummary)，"
-				accessibility += "Cursor Models \(cursorModelsAccessibility)，"
-				accessibility += "Other Models \(otherModelsAccessibility)"
-				if let unclassified = overview.cursorUsagePools.first(where: { $0.id == "cursor.unknown" }) {
-					let unclassifiedAccessibility = localization.format(
-						"status.used",
-						Self.compactWithUnit(unclassified.tokens, localization: localization)
-					)
-					accessibility += "，未归类 \(unclassifiedAccessibility)"
-				}
-				self.accessibilityLabel = accessibility + dataState.accessibilitySuffix
-			} else {
-				self.usageText = localization.textValue("已用 --")
-				self.accessibilityLabel = localization.format(
-					"status.accessibility.unavailable", periodLabel, remainingSummary
-				) + dataState.accessibilitySuffix
-			}
-			return
-		}
-        guard let window = Self.preferredWindow(overview.quotaWindows) else { return nil }
-        let periodLabel = Self.periodLabel(window.windowMinutes, localization: localization)
-        self.periodLabel = periodLabel
-        self.remainingPercent = window.remainingPercent
-        self.freshness = window.freshness
-        self.dataState = StatusBarQuotaDataState(freshness: window.freshness)
+            if overview.usageAvailable,
+               overview.requestedRange == .quotaMonth,
+               overview.effectiveRange == .quotaMonth,
+               let cursorModels = overview.cursorUsagePools.first(where: { $0.id == "cursor.models" }),
+               let otherModels = overview.cursorUsagePools.first(where: { $0.id == "cursor.other_models" })
+            {
+                let cursorModelsText = Self.compact(cursorModels.tokens)
+                let otherModelsText = Self.compact(otherModels.tokens)
+                self.usageText = localization.format(
+                    "status.used", "\(cursorModelsText) · \(otherModelsText)"
+                )
+                let cursorModelsAccessibility = localization.format(
+                    "status.used",
+                    Self.compactWithUnit(cursorModels.tokens, localization: localization)
+                )
+                let otherModelsAccessibility = localization.format(
+                    "status.used",
+                    Self.compactWithUnit(otherModels.tokens, localization: localization)
+                )
+                var accessibility = "\(periodLabel) \(remainingSummary)，"
+                accessibility += "Cursor Models \(cursorModelsAccessibility)，"
+                accessibility += "Other Models \(otherModelsAccessibility)"
+                if let unclassified = overview.cursorUsagePools.first(where: { $0.id == "cursor.unknown" }) {
+                    let unclassifiedAccessibility = localization.format(
+                        "status.used",
+                        Self.compactWithUnit(unclassified.tokens, localization: localization)
+                    )
+                    accessibility += "，未归类 \(unclassifiedAccessibility)"
+                }
+                self.accessibilityLabel = accessibility + dataState.accessibilitySuffix
+            } else {
+                self.usageText = localization.textValue("已用 --")
+                self.accessibilityLabel = localization.format(
+                    "status.accessibility.unavailable", periodLabel, remainingSummary
+                ) + dataState.accessibilitySuffix
+            }
+            return
+        case .codex:
+            guard let window = Self.preferredWindow(overview.quotaWindows) else { return nil }
+            let periodLabel = Self.periodLabel(window.windowMinutes, localization: localization)
+            self.periodLabel = periodLabel
+            self.remainingPercent = window.remainingPercent
+            self.freshness = window.freshness
+            self.dataState = StatusBarQuotaDataState(freshness: window.freshness)
 
-        let remainingText = window.remainingPercent.map { localization.percent($0) } ?? "--"
-		self.remainingText = "\(periodLabel) \(remainingText)"
-        let baseAccessibilityLabel: String
-        if let tokens = Self.matchingPeriodTokens(window: window, overview: overview) {
-            let total = Self.compact(tokens.total)
-            self.usageText = localization.format("status.used", total)
-            baseAccessibilityLabel = localization.format(
-                "status.accessibility.used",
-                periodLabel,
-                remainingText,
-                Self.compactWithUnit(tokens.total, localization: localization)
-            )
-        } else {
-            self.usageText = localization.textValue("已用 --")
-            baseAccessibilityLabel = localization.format(
-                "status.accessibility.unavailable", periodLabel, remainingText
-            )
+            let remainingText = window.remainingPercent.map { localization.percent($0) } ?? "--"
+            self.remainingText = "\(periodLabel) \(remainingText)"
+            let baseAccessibilityLabel: String
+            if let tokens = Self.matchingPeriodTokens(window: window, overview: overview) {
+                let total = Self.compact(tokens.total)
+                self.usageText = localization.format("status.used", total)
+                baseAccessibilityLabel = localization.format(
+                    "status.accessibility.used",
+                    periodLabel,
+                    remainingText,
+                    Self.compactWithUnit(tokens.total, localization: localization)
+                )
+            } else {
+                self.usageText = localization.textValue("已用 --")
+                baseAccessibilityLabel = localization.format(
+                    "status.accessibility.unavailable", periodLabel, remainingText
+                )
+            }
+            self.accessibilityLabel = baseAccessibilityLabel + dataState.accessibilitySuffix
         }
-        self.accessibilityLabel = baseAccessibilityLabel + dataState.accessibilitySuffix
     }
 
 	private static func grokUsageAlignedToBillingPeriod(_ overview: OverviewPresentation) -> Bool {
@@ -2308,6 +2368,7 @@ public enum TrendSelectionResolver {
 public struct SessionPresentation: Equatable, Sendable, Identifiable {
     public let id: String
     public let title: String
+    public let role: SessionRolePresentation?
     public let activity: String
     public let tokens: DisplayMetric
     public let tokenBreakdown: TokenBreakdownPresentation
@@ -2320,6 +2381,7 @@ public struct SessionPresentation: Equatable, Sendable, Identifiable {
         self.title = item.displayTitle.isEmpty
             ? AppLocalizationRegistry.shared.current.textValue("未命名会话")
             : item.displayTitle
+        self.role = SessionRolePresentation(titleReason: item.titleReason)
         self.activity = item.activity
         self.tokens = DisplayMetric(item.totals.totalTokens)
         self.tokenBreakdown = TokenBreakdownPresentation(item.totals)
@@ -3182,8 +3244,9 @@ public struct OverviewRequestSet: Sendable {
 		provider: AgentProvider = .codex,
 		limit: Int32 = 5
 	) -> Codexpulse_Core_V1_ListProjectsRequest? {
-		guard [.quotaWeek, .quotaMonth].contains(range.effectivePreset),
-			!range.fellBackFromQuotaWeek
+		let supportsCalendarSevenDays = (provider == .agy || provider == .dsh) && range.effectivePreset == .sevenDays
+		guard ([.quotaWeek, .quotaMonth].contains(range.effectivePreset) && !range.fellBackFromQuotaWeek)
+			|| supportsCalendarSevenDays
 		else { return nil }
 
         var exactRange = Codexpulse_Core_V1_UTCTimeRange()

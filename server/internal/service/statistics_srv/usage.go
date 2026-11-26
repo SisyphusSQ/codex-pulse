@@ -43,11 +43,11 @@ func (read *statisticsRead) usageView(now time.Time) (out statistics_vo.UsageRes
 	totals, _ := read.total.finish(known)
 	out = statistics_vo.UsageResponse{Range: statisticsRange(read.q), Scope: read.scope(), Totals: totals, Coverage: read.coverage(now), Models: []statistics_vo.UsageModel{}, ModelDays: []statistics_vo.UsageModelDay{}, Trend: read.trend(), Providers: statisticsSlices(read.providers, known), CursorPools: statisticsSlices(read.cursorPools, known)}
 	cacheProvider := read.q.Provider
-	if cacheProvider == "" && len(read.providerSeen) == 1 && (read.providerSeen["codex"] || read.providerSeen["dsh"]) {
-		if read.providerSeen["dsh"] {
-			cacheProvider = "dsh"
-		} else {
-			cacheProvider = "codex"
+	if cacheProvider == "" && len(read.providerSeen) == 1 {
+		for seen := range read.providerSeen {
+			if supportsLifecycleCapsules(seen) {
+				cacheProvider = seen
+			}
 		}
 	}
 	out.CacheHitRate = rangeCacheHitRate(read.total, cacheProvider)

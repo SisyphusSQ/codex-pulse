@@ -40,6 +40,7 @@ const (
 	CurrentSourceCursorDashboard        CurrentSourceKind = "cursor_dashboard"
 	CurrentSourceCursorDashboardGrokBot CurrentSourceKind = "cursor.dashboard.grok_bot"
 	CurrentSourceGrokBilling            CurrentSourceKind = "grok_billing"
+	CurrentSourceAGYLS                  CurrentSourceKind = "agy_ls_rpc"
 )
 
 type CurrentRefreshState string

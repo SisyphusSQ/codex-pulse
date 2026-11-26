@@ -77,7 +77,11 @@ export function installReviewApi(scenario:ReviewScenario,modelUsage?:ReviewModel
     if(scenario==='empty'){data.accounts=[];data.windows=[];if('credits' in data){data.credits=[];data.paid_credits=[];}}
     return response(data);
    }
-   if(path==='/api/v1/sessions')return response(recordPage(scenario==='empty'?[]:reviewSessions));
+   if(path==='/api/v1/sessions'){
+    const search=(url.searchParams.get('search')??'').trim().toLowerCase();
+    const items=scenario==='empty'?[]:reviewSessions.filter(s=>(!filter.provider||s.provider===filter.provider)&&(!filter.client_id||s.sources.some(src=>src.client_id===filter.client_id))&&(!search||s.title.toLowerCase().includes(search)||(s.session_id??'').toLowerCase().includes(search)));
+    return response(recordPage(items));
+   }
    if(path==='/api/v1/projects')return response(recordPage(scenario==='empty'?[]:reviewProjects));
    if(path.startsWith('/api/v1/sessions/')){const session=reviewSessions.find(s=>s.id===decodeURIComponent(path.split('/').pop()??''));return session?response({session,range:summary().range,trend:summary().trend,tools:summary().tools,skills:summary().skills,coverage:summary().coverage}):response(null,404);}
    if(path.startsWith('/api/v1/projects/')){const project=reviewProjects.find(p=>p.id===decodeURIComponent(path.split('/').pop()??''));return project?response({project,sessions:recordPage(reviewSessions.filter(s=>s.project_id===project.id)),trend:summary().trend,models:summary().models}):response(null,404);}

@@ -12,6 +12,7 @@ const (
 	Cursor = "cursor"
 	Grok   = "grok"
 	DSH    = "dsh"
+	AGY    = "agy"
 )
 
 var ErrInvalidProvider = errors.New("agent provider is invalid")
@@ -30,6 +31,8 @@ func Normalize(value string) (string, error) {
 		return Grok, nil
 	case DSH:
 		return DSH, nil
+	case AGY:
+		return AGY, nil
 	default:
 		return "", ErrInvalidProvider
 	}
@@ -76,6 +79,27 @@ func GrokContext() Context {
 			{Capability: "sessions", State: "available", Source: "grok.summary", Reason: "summary_json"},
 			{Capability: "tokens", State: "available", Source: "grok.updates", Reason: "turn_completed_usage"},
 			{Capability: "quota", State: "available", Source: "grok.billing", Reason: "cli_proxy_credits"},
+		},
+	}
+}
+
+// AGYContext 返回 Antigravity 客户端的基础数据源与能力声明；不包含 tools 调用统计。
+func AGYContext() Context {
+	return Context{
+		EffectiveProvider: AGY,
+		Sources: []string{
+			"agy.conversation_summaries",
+			"agy.conversation_steps",
+			"agy.transcript_fallback",
+			"agy.language_server",
+		},
+		Capabilities: []string{
+			"account", "quota", "sessions", "projects", "models", "tokens", "estimated_cost",
+		},
+		Coverage: []Coverage{
+			{Capability: "sessions", State: "available", Source: "agy.conversation_summaries", Reason: "sqlite_summaries"},
+			{Capability: "tokens", State: "available", Source: "agy.conversation_steps", Reason: "step_usage_metadata"},
+			{Capability: "quota", State: "available", Source: "agy.language_server", Reason: "local_ls_rpc"},
 		},
 	}
 }

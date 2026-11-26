@@ -11,6 +11,7 @@ struct QuotaUsageView: View {
 		case .cursor: "Cursor 额度与用量"
 		case .grok: "Grok 额度与用量"
 		case .dsh: "DSH 用量"
+		case .agy: "Antigravity 额度与用量"
 		case .codex, .none: "Codex 额度与用量"
 		}
 	}
@@ -20,6 +21,7 @@ struct QuotaUsageView: View {
 		case .cursor: "跟踪月度模型额度、Grok Bot 周额度、Token 趋势、费用明细和参考价格"
 		case .grok: "跟踪 credits 周期、Token 趋势、上报费用和 xAI 参考价"
 		case .dsh: "跟踪本机 Session、Token 趋势与模型 API 公价估算"
+		case .agy: "跟踪多配额池双窗状态、消耗节奏、Token 趋势与 API 参考价"
 		case .codex, .none: "跟踪当前账号额度、Token 趋势、API 折算成本和参考价格"
 		}
 	}
@@ -274,6 +276,44 @@ private struct QuotaContentView: View {
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
+            if provider == .agy {
+                let pools = AGYQuotaPoolResolver.groupPools(displayWindows.map(QuotaWindowPresentation.init))
+                ForEach(pools) { pool in
+                    SectionCard(title: pool.displayName) {
+                        if pool.isStale {
+                            Label(
+                                pool.lastSuccessAtMS.map {
+                                    localization.format("当前显示上次观测数据（%@）", timestampText($0))
+                                } ?? localization.textValue("当前显示上次观测数据"),
+                                systemImage: "clock.badge.exclamationmark"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        }
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 250), spacing: 12)],
+                            alignment: .leading,
+                            spacing: 12
+                        ) {
+                            if let primary = pool.primaryWindow {
+                                agyWindowColumn(
+                                    window: primary,
+                                    heading: "5h",
+                                    localization: localization
+                                )
+                            }
+                            if let secondary = pool.secondaryWindow {
+                                agyWindowColumn(
+                                    window: secondary,
+                                    heading: localization.textValue("周额度"),
+                                    localization: localization
+                                )
+                            }
+                        }
+                    }
+                    .accessibilityIdentifier("quota.agy.pool.\(pool.limitID)")
+                }
+            } else {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)], spacing: 12) {
                 ForEach(Array(displayWindows.enumerated()), id: \.offset) { _, window in
                     let presentation = QuotaWindowPresentation(window)
@@ -325,13 +365,15 @@ private struct QuotaContentView: View {
                     }
                 }
             }
+            }
             if displayWindows.isEmpty {
                 Text("没有窗口；这不等于额度充足。")
                     .foregroundStyle(.secondary)
             }
             QuotaPaceStateView(
                 state: paceState,
-                currentWindows: displayWindows
+                currentWindows: displayWindows,
+                provider: provider
             )
 			if provider == .codex {
                 if response.current.paidCredits.isEmpty {
@@ -360,11 +402,56 @@ private struct QuotaContentView: View {
         }
     }
 
+	private func agyWindowColumn(
+		window: QuotaWindowPresentation,
+		heading: String,
+		localization: AppLocalization
+	) -> some View {
+		let reset = QuotaResetPresentation(
+			resetsAtMS: window.resetsAtMS,
+			resetRemainingMS: window.resetRemainingMS
+		)
+		let progress = QuotaProgressPresentation(
+			remainingPercent: window.remainingPercent,
+			localization: localization
+		)
+		return VStack(alignment: .leading, spacing: 8) {
+			HStack(alignment: .firstTextBaseline) {
+				Text(heading)
+					.font(.headline)
+				Spacer()
+				Text(progress.percentText)
+					.font(.system(size: 24, weight: .semibold, design: .rounded))
+					.monospacedDigit()
+					.foregroundStyle(quotaLevelColor(progress.level))
+			}
+			ProgressView(value: progress.fraction)
+				.tint(quotaLevelColor(progress.level))
+				.accessibilityLabel(heading)
+				.accessibilityValue(progress.accessibilityValue)
+			KeyValueRow(key: "距离重置", value: reset.remainingText)
+			KeyValueRow(key: "重置时间", value: reset.resetTimeText)
+				.accessibilityIdentifier("quota.window.reset-time.\(window.id)")
+			KeyValueRow(key: "数据状态", value: freshnessText(window.freshness))
+			if let lastSuccess = window.lastSuccessAtMS {
+				KeyValueRow(key: "最近成功更新", value: timestampText(lastSuccess))
+			}
+			if let message = window.unknownMessage {
+				Text(message)
+					.font(.caption)
+					.foregroundStyle(.orange)
+			}
+		}
+		.padding(12)
+		.background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+	}
+
 	private var quotaTitle: String {
 		switch provider {
 		case .cursor: "额度窗口"
 		case .grok: "额度窗口"
 		case .dsh: "额度不可用"
+		case .agy: "多池额度状态"
 		case .codex: "当前账号额度"
 		}
 	}
@@ -384,7 +471,12 @@ private struct QuotaContentView: View {
     private func failureText(_ code: String) -> String {
         switch code {
         case "timeout": "请求超时"
-        case "network_unavailable": provider == .codex ? "Codex CLI、Node 或网络暂不可用" : "网络不可用"
+        case "network_unavailable":
+            switch provider {
+            case .codex: "Codex CLI、Node 或网络暂不可用"
+            case .agy: "Antigravity 本机服务未运行或不可达"
+            default: "网络不可用"
+            }
         case "auth_required": "需要重新登录"
         case "http_429": "请求过于频繁"
         case "schema_incompatible": provider == .codex ? "Codex App Server 接口暂不兼容" : "数据格式暂不兼容"
@@ -462,7 +554,7 @@ private struct UsageContentView: View {
 		switch provider {
 		case .cursor: "文档价目估算 \(costText(value))"
 		case .grok: "xAI 参考价估算 \(costText(value))"
-		case .dsh: "模型 API 公价估算 \(costText(value))"
+		case .dsh, .agy: "模型 API 公价估算 \(costText(value))"
 		case .codex: "API 折算成本 \(costText(value))"
 		}
 	}
@@ -506,7 +598,16 @@ private struct UsageContentView: View {
 				if provider == .grok { MetricCard(
 					title: "完成轮次", value: numericText(response.totals.turnCount), detail: "turn_completed 计数",
 					systemImage: "arrow.triangle.2.circlepath") }
-				if provider == .codex { MetricCard(
+				if provider == .agy { MetricCard(
+					title: "模型 API 公价估算", value: costText(response.totals.estimatedUsdMicros),
+					detail: response.totals.estimatedUsdMicros.hasValue ? "固定版本公开 API 价目" : "部分模型未列入价目", systemImage: "dollarsign.circle") }
+				if provider == .agy { MetricCard(
+					title: "缓存命中率", value: agyCacheHitRateText,
+					detail: "缓存输入 ÷ 全部输入", systemImage: "bolt.horizontal.circle") }
+				if provider == .agy { MetricCard(
+					title: "活动步骤", value: numericText(response.totals.turnCount),
+					detail: "已采集的生成步骤", systemImage: "arrow.triangle.2.circlepath") }
+				if provider == .codex || provider == .agy { MetricCard(
                     title: "暂未折算", value: numericText(response.totals.unpricedTurnCount), detail: "等待价格信息",
 					systemImage: "questionmark.circle") }
 			}
@@ -651,7 +752,7 @@ private struct UsageContentView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            if provider == .codex, !response.unpricedReasons.isEmpty {
+            if (provider == .codex || provider == .agy), !response.unpricedReasons.isEmpty {
                 SectionCard(title: "未计价原因") {
                     ForEach(response.unpricedReasons, id: \.reason) { reason in
                         KeyValueRow(key: "等待价格信息", value: numericText(reason.count))
@@ -659,6 +760,16 @@ private struct UsageContentView: View {
                 }
             }
         }
+    }
+
+    private var agyCacheHitRateText: String {
+        guard response.totals.inputTokens.hasValue,
+              response.totals.cachedInputTokens.hasValue,
+              response.totals.inputTokens.value > 0,
+              response.totals.cachedInputTokens.value >= 0
+        else { return "--" }
+        let pct = min(max(Double(response.totals.cachedInputTokens.value) / Double(response.totals.inputTokens.value) * 100, 0), 100)
+        return AppLocalizationRegistry.shared.current.percent(pct, fractionDigits: 1)
     }
 
     private func selectedTrendDetail(
@@ -721,7 +832,7 @@ private struct PricingCatalogView: View {
 	}
 
 	private var usesPublishedCatalog: Bool {
-		catalogProvider.usesOfficialPeriodRing
+		catalogProvider.usesOfficialPeriodRing || catalogProvider == .agy || catalogProvider == .dsh
 	}
 
     private var rows: [ReferencePriceTableRow] {
@@ -786,6 +897,13 @@ private struct PricingCatalogView: View {
                         Link("OpenAI 官方价格", destination: URL(string: "https://developers.openai.com/api/docs/pricing")!)
                     }
                     .font(.caption)
+                } else if catalogProvider == .agy {
+                    HStack(spacing: 8) {
+                        Text("Antigravity 版本化 API 参考目录")
+                            .foregroundStyle(.secondary)
+                        Link("Antigravity 官网", destination: URL(string: "https://antigravity.google/")!)
+                    }
+                    .font(.caption)
                 } else if let sourceURL = ReferencePriceFormatter.sourceURL(response) {
 					Link(catalogSourceLinkTitle, destination: sourceURL)
                         .font(.caption)
@@ -802,6 +920,8 @@ private struct PricingCatalogView: View {
 			return "Cursor 模型参考价 · \(response.currency) / 100 万 Token"
 		case .grok:
 			return "xAI 模型参考价 · \(response.currency) / 100 万 Token"
+		case .agy:
+			return "Antigravity 模型 API 参考价 · \(response.currency) / 100 万 Token"
 		case .codex:
 			return "OpenAI API Standard 基础文本参考价 · \(response.currency) / 100 万 Token"
 		}
@@ -814,6 +934,8 @@ private struct PricingCatalogView: View {
 			return "来自 Cursor 官方 Models & Pricing。实际费用优先使用 Dashboard 上报值；Grok 4.6 在 2026-08-12 至 2026-08-19 的限时折扣仅用于对应时间内的费用估算。"
 		case .grok:
 			return "来自 xAI 官方定价页的固定版本参考价。reported cost 与 estimated cost 分开展示，不进入 Codex 或 Cursor catalog。"
+		case .agy:
+			return "来自 Antigravity 公开 API 参考定价快照（按生效时间分段）。仅用于本地 API 等价估算，不代表 Google AI 订阅账单；未知模型保持未计价，不猜价。"
 		case .codex:
 			return "仅用于 API 等价折算，不是 Codex 订阅账单。按 Standard 基础文本估算，缓存写入费用未计入；长上下文、Batch、Flex、Fast mode（原 Priority）和区域处理等可能适用不同费率。"
 		}
@@ -824,6 +946,7 @@ private struct PricingCatalogView: View {
 		case .cursor: "Cursor 官方价格"
 		case .grok: "xAI 官方价格"
 		case .dsh: "DeepSeek 官方价格"
+		case .agy: "Antigravity 参考价格"
 		case .codex: "OpenAI 官方价格"
 		}
 	}

@@ -16,7 +16,7 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/query/usagecost"
 )
 
-var summaryProviders = []string{agentprovider.Codex, agentprovider.Cursor, agentprovider.Grok, agentprovider.DSH}
+var summaryProviders = []string{agentprovider.Codex, agentprovider.Cursor, agentprovider.Grok, agentprovider.DSH, agentprovider.AGY}
 
 type UsageQuery interface {
 	UsageCost(context.Context, usagecost.UsageCostRequest) (usagecost.UsageCostResponse, error)
@@ -622,6 +622,8 @@ func providerContext(provider string) agentprovider.Context {
 		return agentprovider.CodexContext()
 	case agentprovider.Grok:
 		return agentprovider.GrokContext()
+	case agentprovider.AGY:
+		return agentprovider.AGYContext()
 	default:
 		return agentprovider.Context{EffectiveProvider: provider}
 	}

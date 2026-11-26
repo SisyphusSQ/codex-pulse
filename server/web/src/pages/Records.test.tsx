@@ -133,4 +133,38 @@ describe('server records and explicit project relationship',()=>{
   await user.click(screen.getByRole('button',{name:'返回项目列表'}));expect(screen.getByRole('region',{name:'项目列表'})).toBeVisible();
  });
 
+ it('renders Antigravity sessions with role tags, step_metadata TPS, cache hit rate, mapped agy_local source and no tool/invocation UI',async()=>{
+  const agySession:SessionRecord={
+   ...session('agy-1','AGY Swarm 子任务'),
+   provider:'agy',
+   session_role:'swarm_worker',
+   conflict:false,
+   complete:true,
+   sources:[{id:'src-1',client_id:'mac-1',client_name:'MacBook Pro',collected_at_ms:1790812800000,revision:3,source_kind:'agy_local',complete:true,deleted:false}],
+   cache_hit_rate:{basis_points:'7500',input_tokens:'1000',cached_input_tokens:'750',unit:'basis_points',basis:'lifetime_cached_input',status:'complete',reason:'',source_client_id:'mac-1',conflict:false},
+   throughput:{average_output_milli_tps:'100000',output_tokens:'200',active_duration_ms:'2000',included_turns:'1',excluded_turns:'0',open_turns:'0',unattributed_events:'0',status:'complete',reason:'',duration_source:'step_metadata',basis:'closed_turn_lifetime_output',average_unit:'milli_tokens_per_second',duration_unit:'milliseconds',source_client_id:'mac-1',conflict:false},
+  };
+  fetcher.mockImplementation(async path=>{
+   const url=new URL(String(path),'http://localhost');
+   if(url.pathname==='/api/v1/devices/status')return success([]);
+   if(url.pathname==='/api/v1/sessions/agy-1')return success({session:agySession,range:summary.range,trend:[],tools:[],skills:[],coverage:partialCoverage,throughput_turns:{items:[],total:'1',limit:20,truncated:false}});
+   return success(records([agySession],1,1));
+  });
+  render(<OperationNotifications><QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={['/sessions?provider=agy']}><Sessions /></MemoryRouter></QueryClientProvider></OperationNotifications>);
+  await screen.findByRole('button',{name:'AGY Swarm 子任务'});
+  expect(screen.getByText('Swarm 成员')).toBeInTheDocument();
+  expect(screen.getByText(/模型 API 公价估算/)).toBeInTheDocument();
+  expect(screen.getByText('75.0%')).toBeInTheDocument();
+  expect(screen.getByText(/100\.00\s*TPS/)).toBeInTheDocument();
+  const user=userEvent.setup();
+  await user.click(screen.getByRole('button',{name:'AGY Swarm 子任务'}));
+  await screen.findByRole('heading',{name:'AGY Swarm 子任务'});
+  expect(screen.queryByRole('tab',{name:/工具|技能|调用/})).not.toBeInTheDocument();
+  await user.click(screen.getByRole('tab',{name:'输出 TPS'}));
+  expect(await screen.findByText(/步骤级元数据计时/)).toBeInTheDocument();
+  await user.click(screen.getByRole('tab',{name:'采集来源 (1)'}));
+  expect(await screen.findByText(/Antigravity 本地轨迹 \/ 3/)).toBeInTheDocument();
+  expect(screen.queryByText(/agy_local/)).not.toBeInTheDocument();
+ });
+
 });

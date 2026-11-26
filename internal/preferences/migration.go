@@ -19,6 +19,7 @@ func preferencesFromOnboarding(onboarding OnboardingSnapshot) (Snapshot, error) 
 		OnlinePreferences{
 			QuotaEnabled: onboarding.OnlineQuotaEnabled, ResetCreditsEnabled: onboarding.ResetCreditsEnabled,
 			CursorOnlineEnabled: true, GrokQuotaEnabled: true, GrokAutoRefreshEnabled: true,
+			AGYOnlineEnabled: true,
 		},
 	)
 	if err := validatePreferences(value); err != nil {
@@ -137,28 +138,44 @@ func decodePreferences(content []byte) (Snapshot, bool, error) {
 		}
 		migrated, err := migrateV3ToV4(legacy)
 		return migrated, true, err
-	case preferencesSchemaV4:
-		if err := validateV4OrCurrentJSONShape(content, false); err != nil {
-			return Snapshot{}, false, err
-		}
-		var value Snapshot
-		decoder := json.NewDecoder(bytes.NewReader(content))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&value); err != nil {
-			return Snapshot{}, false, ErrInvalidPreferences
-		}
-		value.SchemaVersion = CurrentPreferencesSchemaVersion
-		value.Providers.DSH = ProviderPreference{Intent: ProviderIntentAuto}
-		if err := validatePreferences(value); err != nil {
-			return Snapshot{}, false, err
-		}
-		return value, true, nil
+	case preferencesSchemaV4, preferencesSchemaV5:
+		value, err := decodeLegacyTypedPreferences(content, *discriminator.SchemaVersion)
+		return value, err == nil, err
 	case CurrentPreferencesSchemaVersion:
 		current, err := decodeCurrentPreferences(content)
 		return current, false, err
 	default:
 		return Snapshot{}, false, fmt.Errorf("%w: unsupported schema version", ErrInvalidPreferences)
 	}
+}
+
+// decodeLegacyTypedPreferences 解码与当前 Snapshot 同构、但缺少后续版本字段的 v4/v5 文档。
+// 严格 shape 校验保证旧文档不含新字段，随后显式补齐新版本默认值。
+func decodeLegacyTypedPreferences(content []byte, version int) (Snapshot, error) {
+	if err := validateTypedJSONShape(content, version); err != nil {
+		return Snapshot{}, err
+	}
+	var value Snapshot
+	decoder := json.NewDecoder(bytes.NewReader(content))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil {
+		return Snapshot{}, ErrInvalidPreferences
+	}
+	value.SchemaVersion = CurrentPreferencesSchemaVersion
+	if version == preferencesSchemaV4 {
+		value.Providers.DSH = ProviderPreference{Intent: ProviderIntentAuto}
+	}
+	applyAGYDefaults(&value.Providers, &value.Online)
+	if err := validatePreferences(value); err != nil {
+		return Snapshot{}, err
+	}
+	return value, nil
+}
+
+// applyAGYDefaults 为 v6 之前的文档补齐 AGY 默认值：客户端意图 auto、在线能力开启。
+func applyAGYDefaults(providers *ProviderPreferences, online *OnlinePreferences) {
+	providers.AGY = ProviderPreference{Intent: ProviderIntentAuto}
+	online.AGYOnlineEnabled = true
 }
 
 func decodeV3Preferences(content []byte) (v3Snapshot, error) {
@@ -176,6 +193,7 @@ func decodeV3Preferences(content []byte) (v3Snapshot, error) {
 		return v3Snapshot{}, fmt.Errorf("%w: trailing JSON", ErrInvalidPreferences)
 	}
 	value.Providers.DSH = ProviderPreference{Intent: ProviderIntentAuto}
+	applyAGYDefaults(&value.Providers, &value.Online)
 	current := Snapshot{
 		SchemaVersion: CurrentPreferencesSchemaVersion,
 		Revision:      value.Revision, Onboarding: value.Onboarding, CodexHome: CloneCodexHome(value.CodexHome),
@@ -253,6 +271,7 @@ func migrateV2ToV3(value v2Snapshot) (Snapshot, error) {
 		CursorOnlineEnabled:    true,
 		GrokQuotaEnabled:       true,
 		GrokAutoRefreshEnabled: true,
+		AGYOnlineEnabled:       true,
 	}
 	if value.Online.GrokQuotaEnabled != nil {
 		online.GrokQuotaEnabled = *value.Online.GrokQuotaEnabled

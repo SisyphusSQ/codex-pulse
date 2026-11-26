@@ -6,20 +6,21 @@ import {referenceAmount,sourceLink} from '../api/catalog';
 import {dayjs,providerNames} from '../format';
 
 type Audience='personal'|'business'|'other';
-const captions:Record<string,string>={codex:'ChatGPT 套餐包含 Codex，按使用强度选择档位。',cursor:'从个人开发到团队协作，按 Agent 使用量选择。',grok:'Grok 订阅、X 会员和 API 分别计费，实际额度在账号页查看。'};
+const captions:Record<string,string>={codex:'ChatGPT 套餐包含 Codex，按使用强度选择档位。',cursor:'从个人开发到团队协作，按 Agent 使用量选择。',grok:'Grok 订阅、X 会员和 API 分别计费，实际额度在账号页查看。',agy:'Google AI Ultra / Pro / Free 订阅与 Antigravity 多配额池观测分开展示，详见账号额度页。'};
 function audience(plan:PlanPrice):Audience {
  if(plan.currency!=='USD'||(plan.provider==='grok'&&plan.name==='SuperGrok Plus'))return 'other';
- return /^(Business|Enterprise|Edu|Teams)/i.test(plan.name)?'business':'personal';
+ return /^(Business|Enterprise|Edu|Teams|Gemini Enterprise)/i.test(plan.name)?'business':'personal';
 }
 function groupName(plan:PlanPrice):string {
  if(plan.provider==='codex'&&/^Pro(?:\s|$)/.test(plan.name))return 'Pro';
  if(plan.provider==='codex'&&['Free','Go'].includes(plan.name))return 'Free / Go';
  if(plan.provider==='cursor'&&['Pro','Pro Plus','Ultra'].includes(plan.name))return 'Individual';
  if(plan.provider==='cursor'&&plan.name.startsWith('Teams '))return 'Teams';
+ if(plan.provider==='agy'&&/^Google AI Ultra(?:\s|$)/.test(plan.name))return 'Google AI Ultra';
  return plan.name;
 }
 function PlanCard({name,plans}:{name:string;plans:PlanPrice[]}) {
- const preferred=plans.find(p=>(name==='Pro'&&p.price==='200')||(name==='Individual'&&p.price==='60'))??plans[0];
+ const preferred=plans.find(p=>(name==='Pro'&&p.price==='200')||(name==='Individual'&&p.price==='60')||(name==='Google AI Ultra'&&p.price==='99.99'))??plans[0];
  const [selected,setSelected]=useState(preferred.key);
  const plan=plans.find(p=>p.key===selected)??preferred;
  const source=sourceLink(plan.source_url);
@@ -33,7 +34,7 @@ function PlanCard({name,plans}:{name:string;plans:PlanPrice[]}) {
  </Card>;
 }
 export function SubscriptionPlans({plans,initialProvider='codex'}:{plans:PlanPrice[];initialProvider?:string}) {
- const platforms=[...new Set(['codex','cursor','grok',...plans.map(p=>p.provider)])];
+ const platforms=[...new Set(['codex','cursor','grok','agy',...plans.map(p=>p.provider)])];
  const [platform,setPlatform]=useState(platforms.includes(initialProvider)?initialProvider:'codex');
  const [category,setCategory]=useState<Audience>('personal');
  const groups=new Map<string,PlanPrice[]>();

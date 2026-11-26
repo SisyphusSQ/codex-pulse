@@ -250,7 +250,7 @@ struct NoEnabledProviderView: View {
         ContentUnavailableView {
             Label("尚未启用客户端", systemImage: "switch.2")
         } description: {
-            Text("打开设置后可以启用 Codex、Cursor、Grok 或 DSH。")
+            Text("打开设置后可以启用 Codex、Cursor、Grok、DSH 或 Antigravity。")
         } actions: {
             Button("打开设置") { onOpenSettings() }
                 .accessibilityIdentifier("empty-providers.open-settings")
@@ -310,45 +310,48 @@ struct OverviewStateView: View {
 
     @ViewBuilder
     private func overviewContent(_ overview: OverviewPresentation) -> some View {
-        if let provider = model.selectedProvider, provider == .cursor || provider == .grok || provider == .dsh {
-            CursorOverviewContentView(
-                provider: provider,
-                overview: overview,
-				selectedRange: model.overviewRange,
-				onSelectRange: model.selectOverviewRange,
-				onNavigate: onNavigate,
-				onSelectProject: { projectKey in
-					model.projectOptions.range = model.overviewRange
-					model.projectOptions.exactRange = overview.contentRange
-					model.navigate(to: .projects)
-					model.selectProject(projectKey)
-				},
-				onSelectSession: { sessionID in
-					model.sessionOptions.range = model.overviewRange
-					model.sessionOptions.exactRange = overview.contentRange
-					model.navigate(to: .sessions)
-					model.selectSession(sessionID)
-				},
-				localization: model.localization
-            )
-        } else {
+        switch model.selectedProvider {
+        case .cursor, .grok, .dsh, .agy:
+            if let provider = model.selectedProvider {
+                CursorOverviewContentView(
+                    provider: provider,
+                    overview: overview,
+                    selectedRange: model.overviewRange,
+                    onSelectRange: model.selectOverviewRange,
+                    onNavigate: onNavigate,
+                    onSelectProject: { projectKey in
+                        model.projectOptions.range = model.overviewRange
+                        model.projectOptions.exactRange = overview.contentRange
+                        model.navigate(to: .projects)
+                        model.selectProject(projectKey)
+                    },
+                    onSelectSession: { sessionID in
+                        model.sessionOptions.range = model.overviewRange
+                        model.sessionOptions.exactRange = overview.contentRange
+                        model.navigate(to: .sessions)
+                        model.selectSession(sessionID)
+                    },
+                    localization: model.localization
+                )
+            }
+        case .codex, .none:
             OverviewContentView(
-            overview: overview,
-            selectedRange: model.overviewRange,
-            onSelectRange: model.selectOverviewRange,
-            onNavigate: onNavigate,
-            onSelectProject: { projectKey in
-                model.projectOptions.range = model.overviewRange
-                model.projectOptions.exactRange = overview.contentRange
-                model.navigate(to: .projects)
-                model.selectProject(projectKey)
-            },
-            onSelectSession: { sessionID in
-                model.sessionOptions.range = model.overviewRange
-                model.sessionOptions.exactRange = overview.contentRange
-                model.navigate(to: .sessions)
-                model.selectSession(sessionID)
-            },
+                overview: overview,
+                selectedRange: model.overviewRange,
+                onSelectRange: model.selectOverviewRange,
+                onNavigate: onNavigate,
+                onSelectProject: { projectKey in
+                    model.projectOptions.range = model.overviewRange
+                    model.projectOptions.exactRange = overview.contentRange
+                    model.navigate(to: .projects)
+                    model.selectProject(projectKey)
+                },
+                onSelectSession: { sessionID in
+                    model.sessionOptions.range = model.overviewRange
+                    model.sessionOptions.exactRange = overview.contentRange
+                    model.navigate(to: .sessions)
+                    model.selectSession(sessionID)
+                },
                 localization: model.localization
             )
         }
@@ -379,7 +382,7 @@ private struct CursorOverviewContentView: View {
 	private var ranges: [DateRangePreset] {
 		switch provider {
 		case .grok: [.quotaWeek, .quotaMonth, .today, .sevenDays, .thirtyDays]
-		case .dsh: [.today, .sevenDays, .thirtyDays]
+		case .dsh, .agy: [.today, .sevenDays, .thirtyDays]
 		case .cursor: [.quotaMonth, .today, .sevenDays, .thirtyDays]
 		case .codex: [.quotaWeek, .today, .sevenDays, .thirtyDays]
 		}
@@ -397,7 +400,14 @@ private struct CursorOverviewContentView: View {
 					if summary.showsRecentActivityFallback || summary.usesLastKnownTodayData {
 						activityNotice(summary)
 					}
-					if provider != .dsh { cursorQuotaStatusStrip }
+					switch provider {
+					case .agy:
+						agyQuotaStatusStrip
+					case .dsh:
+						EmptyView()
+					case .cursor, .grok, .codex:
+						cursorQuotaStatusStrip
+					}
 					tokenActivitySection
 					consumptionSection(summary)
 					modelSection(summary, fillsProposedHeight: false)
@@ -448,7 +458,7 @@ private struct CursorOverviewContentView: View {
 		HStack(alignment: .center, spacing: 20) {
 			VStack(alignment: .leading, spacing: 4) {
 				Text("\(provider.title) 概览").font(.largeTitle.bold())
-				Text(provider == .grok ? "额度周期、近期趋势与工作归属" : "今日状态、近期趋势与工作归属").foregroundStyle(.secondary)
+				Text(pageSubtitle).foregroundStyle(.secondary)
 			}
 			Spacer()
 			VStack(alignment: .trailing, spacing: 6) {
@@ -492,6 +502,107 @@ private struct CursorOverviewContentView: View {
 			.padding(.vertical, 8)
 			.background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 9))
 			.accessibilityIdentifier("cursor.overview.activity-notice")
+	}
+
+	private var pageSubtitle: String {
+		switch provider {
+		case .grok: localization.textValue("额度周期、近期趋势与工作归属")
+		case .agy: localization.textValue("多池额度状态、近期趋势与工作归属")
+		case .cursor, .dsh, .codex: localization.textValue("今日状态、近期趋势与工作归属")
+		}
+	}
+
+	private var agyQuotaStatusStrip: some View {
+		let pools = AGYQuotaPoolResolver.groupPools(overview.quotaWindows)
+		return VStack(alignment: .leading, spacing: 12) {
+			HStack(spacing: 12) {
+				Label("多池额度状态", systemImage: "gauge.with.dots.needle.67percent")
+					.font(.headline)
+				Spacer(minLength: 12)
+				Button("额度详情") { onNavigate(.quotaUsage) }.buttonStyle(.link)
+			}
+			if !overview.quotaAvailable || pools.isEmpty {
+				Text("暂时无法获取额度").foregroundStyle(.secondary)
+			} else {
+				LazyVGrid(
+					columns: [GridItem(.adaptive(minimum: 230), spacing: 12)],
+					alignment: .leading,
+					spacing: 12
+				) {
+					ForEach(pools) { pool in
+						VStack(alignment: .leading, spacing: 8) {
+							HStack(spacing: 6) {
+								Text(pool.displayName)
+									.font(.subheadline.weight(.semibold))
+								Spacer(minLength: 4)
+								if pool.isStale {
+									Text(localization.textValue("上次观测"))
+										.font(.caption2.weight(.medium))
+										.foregroundStyle(.orange)
+										.padding(.horizontal, 6)
+										.padding(.vertical, 2)
+										.background(Color.orange.opacity(0.14), in: Capsule())
+								}
+							}
+							if let primary = pool.primaryWindow {
+								agyOverviewPoolWindowRow(window: primary, label: "5h")
+							}
+							if let secondary = pool.secondaryWindow {
+								agyOverviewPoolWindowRow(
+									window: secondary,
+									label: localization.textValue("周额度")
+								)
+							}
+						}
+						.padding(12)
+						.background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+						.accessibilityIdentifier("agy.overview.quota.pool.\(pool.limitID)")
+					}
+				}
+			}
+		}
+		.padding(.horizontal, 16)
+		.padding(.vertical, 12)
+		.background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+		.overlay {
+			RoundedRectangle(cornerRadius: 12, style: .continuous)
+				.stroke(.quaternary, lineWidth: 1)
+		}
+		.accessibilityIdentifier("agy.overview.quota")
+	}
+
+	private func agyOverviewPoolWindowRow(
+		window: QuotaWindowPresentation,
+		label: String
+	) -> some View {
+		let reset = QuotaResetPresentation(
+			resetsAtMS: window.resetsAtMS,
+			resetRemainingMS: window.resetRemainingMS
+		)
+		let progress = QuotaProgressPresentation(
+			remainingPercent: window.remainingPercent,
+			localization: localization
+		)
+		return VStack(alignment: .leading, spacing: 4) {
+			HStack(spacing: 6) {
+				Text(label)
+					.font(.caption.weight(.medium))
+					.foregroundStyle(.secondary)
+				Spacer()
+				Text(progress.percentText)
+					.font(.subheadline.bold())
+					.monospacedDigit()
+					.foregroundStyle(quotaLevelColor(progress.level))
+			}
+			ProgressView(value: progress.fraction)
+				.tint(quotaLevelColor(progress.level))
+				.accessibilityLabel(label)
+				.accessibilityValue(progress.accessibilityValue)
+			Text(reset.compactText)
+				.font(.caption2)
+				.foregroundStyle(.secondary)
+				.lineLimit(1)
+		}
 	}
 
 	private var cursorQuotaStatusStrip: some View {
@@ -672,7 +783,17 @@ private struct CursorOverviewContentView: View {
 					Button { onSelectSession(session.id) } label: {
 						HStack(spacing: 10) {
 							VStack(alignment: .leading, spacing: 3) {
-								Text(session.title).lineLimit(1)
+								HStack(spacing: 6) {
+									Text(session.title).lineLimit(1)
+									if let role = session.role {
+										Text(role.badgeTitle(localization: localization))
+											.font(.caption2.weight(.medium))
+											.foregroundStyle(.secondary)
+											.padding(.horizontal, 6)
+											.padding(.vertical, 2)
+											.background(Color.secondary.opacity(0.12), in: Capsule())
+									}
+								}
 								Text(sessionSecondaryText(session))
 									.font(.caption).foregroundStyle(.secondary).lineLimit(1)
 							}
@@ -713,9 +834,17 @@ private struct CursorOverviewContentView: View {
 					usageBreakdownMetric(
 						title: "输出",
 						value: overview.tokenBreakdown.output,
-						detailTitle: nil,
-						detailValue: nil
+						detailTitle: provider == .agy ? "推理" : nil,
+						detailValue: provider == .agy ? overview.tokenBreakdown.reasoning : nil
 					)
+					if provider == .agy, let hitRateText = agyCacheHitRateText {
+						VStack(alignment: .leading, spacing: 3) {
+							Text(localization.textValue("缓存命中率")).font(.caption).foregroundStyle(.secondary)
+							Text(hitRateText).font(.headline).monospacedDigit()
+						}
+						.frame(minWidth: 92, alignment: .leading)
+						.accessibilityElement(children: .combine)
+					}
 				}
 				if let unclassified = metricValue(summary.unclassifiedTokens), unclassified > 0 {
 					Label(
@@ -744,8 +873,7 @@ private struct CursorOverviewContentView: View {
 			} else {
 				Divider()
 				VStack(alignment: .leading, spacing: 5) {
-					Text(provider == .dsh ? "模型 API 公价估算" : (summary.rangeCostBasis == .reported
-						? "Grok 上报费用" : "xAI 参考价估算"))
+					Text(nonCursorCostTitle(summary))
 						.font(.subheadline.weight(.medium))
 						.foregroundStyle(.secondary)
 					Text(metricText(summary.rangePrimaryCost, cost: true))
@@ -759,6 +887,25 @@ private struct CursorOverviewContentView: View {
 				.frame(minWidth: 180, idealWidth: 210, maxWidth: 240, alignment: .leading)
 			}
 		}
+	}
+
+	private func nonCursorCostTitle(_ summary: CursorOverviewSummaryPresentation) -> String {
+		switch provider {
+		case .dsh, .agy: localization.textValue("模型 API 公价估算")
+		case .grok:
+			localization.textValue(summary.rangeCostBasis == .reported ? "Grok 上报费用" : "xAI 参考价估算")
+		case .codex, .cursor:
+			localization.textValue("API 折算成本")
+		}
+	}
+
+	private var agyCacheHitRateText: String? {
+		guard case .known(let input, _) = overview.tokenBreakdown.input,
+		      case .known(let cached, _) = overview.tokenBreakdown.cachedInput,
+		      input > 0, cached >= 0
+		else { return nil }
+		let pct = min(max(Double(cached) / Double(input) * 100, 0), 100)
+		return localization.percent(pct, fractionDigits: 1)
 	}
 
 	private func cursorPoolCostMetric(

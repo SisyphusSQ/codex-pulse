@@ -108,3 +108,10 @@ Credits 以最后观测库存为主；观测时可用数量与最近到期由中
 刷新失败保留同一查询键的最后成功数据与原时间。首次读取失败使用中性、紧凑的“数据未能读取 / 重新读取”状态，不显示空结果或整块红黄提示条；改变筛选等待新范围，不使用旧范围结果。页脚提供当前页面失败项的查看和重试入口，关闭通知后仍可处理失败。字段校验仍在字段附近；陈旧、未知、TPS 来源冲突保持紧凑状态，详细原因可点击展开。
 
 Storybook 的 `TOO-530 查询反馈验收` 使用正式页面与合成 API，覆盖正常、接口失败和额度冲突。相关验证与运行入口见 [查询通知 runbook](../../docs/test/web-query-notifications.md)。
+
+## Antigravity (AGY) 全页面与多配额池适配（TOO-736）
+
+- **全局五路筛选与格式化**：全站平台筛选统一按 `Codex → Cursor → Grok → DSH → Antigravity` 顺序展示，`agy` 显示为 `Antigravity` 并配有稳定品牌色与标签色；来源键（`agy_local`、`agy_ls_rpc`、`agy.summaries`、`agy.trajectories`、`agy.transcripts`、`agy.ls_rpc`）及配额池键（`agy.gemini`、`agy.argon`、`agy.carbon`、`agy.claude_gpt`、`agy.pool.*`）全部映射为可读中文/品牌名称，不向 UI 泄漏原始代码键。
+- **统计与记录页**：总览与模型用量支持 `agy` 总量、趋势、模型分布、范围/会话缓存命中率、步骤级元数据 TPS（`step_metadata`）与全年活动热力图，并明确将 AGY 费用标注为“模型 API 公价估算”（非订阅实际扣费）。会话与项目页支持按 `agy` 筛选下钻，按需展示轻量角色标签（`子代理` / `Swarm 成员` / `侧边提问`），不展示 InvocationUsage/工具调用 UI。
+- **多配额池额度页**：按 `limit_id` 将 AGY 窗口分组为独立配额池卡片（每池并列 `5h` 与 `周` 剩余百分比、重置倒计时/时间、最后观测时间及 `last-known` / `陈旧` / `已过期` `--` 边界标识），支持在节奏图上切换配额池与窗口，保留多机观测证据且绝不跨设备相加配额，同时对 AGY 隐藏 Codex 专属的 Reset Credits 与 Paid Credits 区块。
+- **来源、设备与价目表**：采集来源与设备管理页展示 AGY 来源状态、覆盖窗口与采集通道标签（`Antigravity 本地轨迹 · Antigravity 本机 LS RPC`）；价目表默认收录 Antigravity 版本化公开 API 参考目录（`agy-api-2026-11-25`），支持展开核对分段生效费率并明示 API 公价估算口径。

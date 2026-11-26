@@ -16,7 +16,8 @@ import { emptyUsage, usageDecimal, usageTokens, usageDollars, usageInteger } fro
 import { initialFilter, StatsFilters } from '../components/StatsFilters';
 import { DeferredSection, SectionPlaceholder } from '../components/DeferredSection';
 import { EmptyState, ErrorState, LoadingState } from '../components/QueryState';
-import { dayjs, integer, providerNames } from '../format';
+import { CacheHitRateCell } from '../components/CacheHitRate';
+import { dayjs, integer, providerColors, providerLabel, providerNames } from '../format';
 
 const Chart = lazy(() => import('../components/Chart'));
 type Metric = 'tokens' | 'cost';
@@ -26,7 +27,6 @@ const metricLabel = (value: Decimal, metric: Metric) => metric === 'tokens' ? us
 const metricCoordinate = (value: Decimal, metric: Metric) => value === null ? null : Number(value) / (metric === 'cost' ? 1_000_000 : 1);
 const tooltip = { renderMode: 'richText' as const, confine: true };
 const palette = ['#2678f5', '#3e9e82', '#8a70cf', '#d3a34b', '#6b8aad', '#c0779b'];
-const providerColors: Record<string, string> = { codex: '#2678f5', cursor: '#3e9e82', grok: '#d3a34b', dsh: '#299caa' };
 
 function SliceTable({ rows }: { rows: Slice[] }) {
   return <Table<Slice> size="small" rowKey="key" dataSource={rows} pagination={rows.length > 8 ? { pageSize: 8, showSizeChanger: false } : false} scroll={{ x: 420 }} columns={[
@@ -82,10 +82,10 @@ function OverviewUsageTrend({filter}:{filter:StatsFilter}){
  const selection=chosen?.filter(k=>available.some(r=>`${r.provider}:${r.model}`===k))??available.slice(0,12).map(r=>`${r.provider}:${r.model}`);
  const coverage=usage.data?.coverage;
  return <>
-        <Card className="section-card overview-trend" title={<div className="trend-title"><span>模型用量趋势</span>{coverage && <span className="metric-note">{coverage.stale?'采集陈旧 · ':''}{coverage.collected_at_ms===null?'暂无采集':`更新 ${dayjs(coverage.collected_at_ms).tz(filter.time_zone).format('MM-DD HH:mm')}`}</span>}</div>} extra={<div className="overview-chart-controls">
+        <Card className="section-card overview-trend" title={<div className="trend-title"><span>模型用量趋势</span>{coverage && <span className="metric-note">{coverage.stale?'采集陈旧 · ':''}{coverage.collected_at_ms===null?'暂无采集':`更新 ${dayjs(coverage.collected_at_ms).tz(filter.time_zone).format('MM-DD HH:mm')}`}</span>}{usage.data?.cache_hit_rate?.basis_points!=null&&<span className="metric-note">范围缓存命中率 <CacheHitRateCell value={usage.data.cache_hit_rate} /></span>}</div>} extra={<div className="overview-chart-controls">
           <Segmented aria-label="图表指标" size="small" options={metricOptions} value={metric} onChange={value => setMetric(value as Metric)} />
         </div>}>
-          <Select aria-label="概览趋势模型" className="usage-model-selector" mode="multiple" maxCount={12} maxTagCount="responsive" value={selection} onChange={setChosen} options={available.map(r=>({value:`${r.provider}:${r.model}`,label:`${providerNames[r.provider]??r.provider} · ${r.model==='unknown'?'模型未归因':r.model}`}))} placeholder="选择趋势模型" />
+          <Select aria-label="概览趋势模型" className="usage-model-selector" mode="multiple" maxCount={12} maxTagCount="responsive" value={selection} onChange={setChosen} options={available.map(r=>({value:`${r.provider}:${r.model}`,label:`${providerLabel(r.provider)} · ${r.model==='unknown'?'模型未归因':r.model}`}))} placeholder="选择趋势模型" />
           {usage.isPending?<LoadingState label="正在读取模型日桶…" />:usage.error&&!usage.data?<ErrorState error={usage.error} retry={()=>void usage.refetch()} />:<>
 
           {selection.length && usage.data?<UsageChart data={usage.data} metric={metric} selection={selection} />:<EmptyState description="暂无模型用量" />}
@@ -130,20 +130,20 @@ export default function Overview() {
         </div>}><Button type="text" size="small">年度活动统计</Button></Popover></div>}>
         <div className="annual-totals" aria-label="年度用量汇总">
           <div><Statistic title="近 365 天 Token 总量" value={annualTokens??'—'} formatter={()=>usageTokens(annualTokens)} /></div>
-          <div><Statistic title="近 365 天 API 等价成本" value={annualCost??'—'} formatter={()=><UsageCost value={annualCost} status={data.heatmap_totals?.cost_status}/>} /></div>
+          <div><Statistic title={filter.provider==='agy'?'近 365 天模型 API 公价估算':'近 365 天 API 等价成本'} value={annualCost??'—'} formatter={()=><UsageCost value={annualCost} status={data.heatmap_totals?.cost_status}/>} /></div>
           <div><Statistic title="单日 Token 使用峰值" value={annualValue(data.heatmap_activity.peak_daily_tokens)??'—'} formatter={()=>usageTokens(annualValue(data.heatmap_activity.peak_daily_tokens))} /></div>
           <div><Statistic title="最长连续天数" value={annualValue(data.heatmap_activity.longest_streak_days)??'—'} formatter={()=>usageInteger(annualValue(data.heatmap_activity.longest_streak_days))} suffix={annualValue(data.heatmap_activity.longest_streak_days)===null?undefined:'天'} /></div>
           <div><Statistic title="当前连续天数" value={annualValue(data.heatmap_activity.current_streak_days)??'—'} formatter={()=>usageInteger(annualValue(data.heatmap_activity.current_streak_days))} suffix={annualValue(data.heatmap_activity.current_streak_days)===null?undefined:'天'} /></div>
         </div>
         {data.heatmap.length ? <ActivityHeatmap days={data.heatmap} /> : <EmptyState description="年度活动暂时不可用" />}
-        <div className="activity-scope"><span>{dayjs(data.heatmap_range.start_at_ms).tz(filter.time_zone).format('YYYY-MM-DD')} 至 {dayjs(data.heatmap_range.end_at_ms).tz(filter.time_zone).subtract(1, 'day').format('YYYY-MM-DD')}</span><span>{filter.time_zone}</span><span>{filter.provider ? providerNames[filter.provider] : '全部客户端'}</span></div>
+        <div className="activity-scope"><span>{dayjs(data.heatmap_range.start_at_ms).tz(filter.time_zone).format('YYYY-MM-DD')} 至 {dayjs(data.heatmap_range.end_at_ms).tz(filter.time_zone).subtract(1, 'day').format('YYYY-MM-DD')}</span><span>{filter.time_zone}</span><span>{filter.provider ? providerLabel(filter.provider) : '全部客户端'}</span></div>
       </Card>
     </>}
       <Card className="summary-band" style={{ minHeight: 132 }}>
 
         {!totals && usage.isPending ? <LoadingState label="正在读取范围用量…" /> : usage.error && !totals ? <ErrorState error={usage.error} retry={() => void usage.refetch()} /> : totals && <div className="metric-grid overview-kpis">
         <div><Statistic title="当前范围 Token 总量" value={usageDecimal(totals,'total_tokens')??'—'} formatter={() => usageTokens(usageDecimal(totals,'total_tokens'))} /><div className="metric-note">输入 {usageTokens(usageDecimal(totals,'input_tokens'))} · 输出 {usageTokens(usageDecimal(totals,'output_tokens'))}</div></div>
-        <div><Statistic title="当前范围 API 等价成本" value={usageDecimal(totals,'cost_micro_usd')??'—'} formatter={() => <UsageCost value={usageDecimal(totals,'cost_micro_usd')} status={totals.cost_status}/>} /></div>
+        <div><Statistic title={filter.provider==='agy'?'当前范围模型 API 公价估算':'当前范围 API 等价成本'} value={usageDecimal(totals,'cost_micro_usd')??'—'} formatter={() => <UsageCost value={usageDecimal(totals,'cost_micro_usd')} status={totals.cost_status}/>} />{filter.provider==='agy'&&<div className="metric-note">按版本化公开 API 参考价估算 · 非订阅实际扣费</div>}</div>
         <div><Statistic title="活跃会话" value={totals.sessions} formatter={() => integer(totals.sessions)} /></div>
       </div>}</Card>
 

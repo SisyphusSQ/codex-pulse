@@ -11,7 +11,7 @@
 | `start_at_ms/end_at_ms` | UTC 毫秒的 `[start,end)`；必须成对，不能与日期参数混用；非负且最多 3660 日 |
 | `start_date/end_date_exclusive` | `YYYY-MM-DD`，指定时区中的自然日，末日不包含；默认最近 30 个自然日，包括今天 |
 | `time_zone` | UTC 或 IANA，默认 Asia/Shanghai；嵌入 tzdata，拒绝依赖部署主机的 Local |
-| `provider` | codex/cursor/grok；省略代表已知 Provider 合计 |
+| `provider` | codex/cursor/grok/dsh/agy；省略代表已知 Provider 合计 |
 | `client_id` | 采集客户端 UUID；使用该来源自己的实际快照，跨账期沿用接收层仲裁；不把其他来源扩充的中心事实算给该机器 |
 | `project_id` | 中心项目关联组的 64 位十六进制 ID；设备筛选同时按本设备项目身份匹配 |
 | `model` | 精确模型名；`unknown` 表示无模型归因。工具/技能计数已停用 |
@@ -51,13 +51,13 @@ Provider 构成和执行设备构成的 Token/成本与范围 totals 对账。�
 
 ## 生命周期 TPS
 
-会话列表/项目会话/详情的 throughput 使用 nullable 十进制字符串；average_output_milli_tps 的 average_unit=milli_tokens_per_second，active_duration_ms 的 duration_unit=milliseconds。basis=closed_turn_lifetime_output，均值不随日期/模型/分页变化。source_client_id 指向接受统计的采集来源；同贡献完整证据不一致显示 partial/source_conflict，不累加副本。旧客户端 not_reported、其他 Provider unsupported_provider 保持未知。
+会话列表/项目会话/详情的 throughput 使用 nullable 十进制字符串；average_output_milli_tps 的 average_unit=milli_tokens_per_second，active_duration_ms 的 duration_unit=milliseconds。basis=closed_turn_lifetime_output，均值不随日期/模型/分页变化。支持 `codex`、`dsh` 与 `agy`（AGY 使用 `step_metadata` 步骤级计时）。source_client_id 指向接受统计的采集来源；同贡献完整证据不一致显示 partial/source_conflict，不累加副本。旧客户端 not_reported、其他 Provider unsupported_provider 保持未知。
 
 详情 throughput_limit=1..50 默认 20；throughput_turns 返回 items/nullable total/limit/truncated，最近项只含安全哈希键、起止与指标，不从子集重算平均。在统计同一只读事务中仅查询返回会话页，来源数和 payload 预算保持。无需新增 DDL。MySQL 实机尚未验证。
 
 ## 生命周期缓存命中率
 
-会话列表、项目内会话与详情新增 cache_hit_rate：unit=basis_points，basis=lifetime_cached_input，basis_points/input_tokens/cached_input_tokens 为 nullable 十进制字符串。计算整段已索引 cached/input，缓存是输入子集；共享 Go 精确 HALF-UP 至万分比，Web 格式化一位小数。日期、模型、分页和最近 TPS 轮次不改变比例，定价未知不影响它。副本不相加，来源筛选用自身快照。
+会话列表、项目内会话与详情新增 cache_hit_rate：unit=basis_points，basis=lifetime_cached_input，basis_points/input_tokens/cached_input_tokens 为 nullable 十进制字符串。支持 `codex`、`dsh` 与 `agy`（范围缓存命中率同样支持单选 `agy` 或仅含 `agy` 的查询）。计算整段已索引 cached/input，缓存是输入子集；共享 Go 精确 HALF-UP 至万分比，Web 格式化一位小数。日期、模型、分页和最近 TPS 轮次不改变比例，定价未知不影响它。副本不相加，来源筛选用自身快照。
 
 input>0/cache=0 返回真实零，input=cache>0 返回 10000；零输入 not_applicable、缺失/非法 unavailable、其他 Provider unsupported_provider、旧设备 not_reported。受限历史 history_filtered 不泄漏范围外总量。status=complete/partial/unavailable，reason 为有限枚举；source_client_id 与 conflict 保留已接受来源和完整证据冲突。沿原一致只读事务与页 ID 预算查询，无 DDL。
 

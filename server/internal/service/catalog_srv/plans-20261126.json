@@ -1,0 +1,67 @@
+[
+  {
+    "key": "agy:Free:免费",
+    "provider": "agy",
+    "name": "Free",
+    "price": "0",
+    "currency": "USD",
+    "cycle": "免费",
+    "allowance": "Antigravity 个人免费档，提供基础周配额池与常规模型访问；实际额度以账号观测为准。",
+    "reset_rule": "按账号多配额池观测（通常为周窗口）；API 公价不反推可用额度。",
+    "region": "官网参考；税费及地区差异以购买渠道为准",
+    "source_url": "https://antigravity.google/",
+    "verified_at_ms": 1795651200000
+  },
+  {
+    "key": "agy:Google AI Pro:月付",
+    "provider": "agy",
+    "name": "Google AI Pro",
+    "price": "19.99",
+    "currency": "USD",
+    "cycle": "月付",
+    "allowance": "通过 Google AI Pro（Google One）提升 Antigravity 配额上限与推理模型访问；实际倍率与配额池以账号观测为准。",
+    "reset_rule": "按账号多配额池观测（5 小时滚动窗口与周窗口分开刷新）。",
+    "region": "官网参考；税费及地区差异以购买渠道为准",
+    "source_url": "https://one.google.com/about/google-ai-plans/",
+    "verified_at_ms": 1795651200000
+  },
+  {
+    "key": "agy:Google AI Ultra 5x:月付",
+    "provider": "agy",
+    "name": "Google AI Ultra 5x",
+    "price": "99.99",
+    "currency": "USD",
+    "cycle": "月付",
+    "allowance": "更高配额上限与多 Agent 并发余量；实际各模型池剩余百分比以本机 LS RPC 观测为准。",
+    "reset_rule": "按账号多配额池观测（5 小时滚动窗口与周窗口分开刷新）。",
+    "region": "官网参考；税费及地区差异以购买渠道为准",
+    "source_url": "https://one.google.com/about/google-ai-plans/",
+    "verified_at_ms": 1795651200000
+  },
+  {
+    "key": "agy:Google AI Ultra 20x:月付",
+    "provider": "agy",
+    "name": "Google AI Ultra 20x",
+    "price": "199.99",
+    "currency": "USD",
+    "cycle": "月付",
+    "allowance": "最高档位配额上限与前沿模型优先额度；实际各模型池剩余百分比以本机 LS RPC 观测为准。",
+    "reset_rule": "按账号多配额池观测（5 小时滚动窗口与周窗口分开刷新）。",
+    "region": "官网参考；税费及地区差异以购买渠道为准",
+    "source_url": "https://one.google.com/about/google-ai-plans/",
+    "verified_at_ms": 1795651200000
+  },
+  {
+    "key": "agy:Gemini Enterprise:合同",
+    "provider": "agy",
+    "name": "Gemini Enterprise",
+    "price": null,
+    "currency": "USD",
+    "cycle": "合同",
+    "allowance": "面向团队与企业的席位或 Google Cloud 按量计费方案，额度按组织协议配置。",
+    "reset_rule": "按组织配额与实际账号窗口观测。",
+    "region": "官网参考；税费及地区差异以购买渠道为准",
+    "source_url": "https://antigravity.google/",
+    "verified_at_ms": 1795651200000
+  }
+]

@@ -389,6 +389,11 @@ func (api *grpcAPI) UpdateSettings(
 	if api == nil || api.service == nil {
 		return nil, coreServiceUnavailable()
 	}
+	var agyOnlineEnabled *bool
+	if request.GetOnline().AgyOnlineEnabled != nil {
+		value := request.GetOnline().GetAgyOnlineEnabled()
+		agyOnlineEnabled = &value
+	}
 	response, err := api.service.UpdateSettings(ctx, core.SettingsUpdateRequest{
 		ExpectedRevision: request.GetExpectedRevision(),
 		Providers:        mapSettingsProviderUpdates(request.GetProviders()),
@@ -398,6 +403,7 @@ func (api *grpcAPI) UpdateSettings(
 			CursorOnlineEnabled:    request.GetOnline().GetCursorOnlineEnabled(),
 			GrokQuotaEnabled:       request.GetOnline().GetGrokQuotaEnabled(),
 			GrokAutoRefreshEnabled: request.GetOnline().GetGrokAutoRefreshEnabled(),
+			AGYOnlineEnabled:       agyOnlineEnabled,
 		},
 		CodexAccounts: core.SettingsCodexAccountsUpdate{
 			RetainQuotaHistory: request.GetCodexAccounts().GetRetainQuotaHistory(),

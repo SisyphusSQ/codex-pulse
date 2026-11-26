@@ -41,7 +41,7 @@ func TestQuotaRefreshFenceMigrationDropsOrdinaryBackoffAndKeepsServerLimit(t *te
 				return "/tmp/quota-fence-v37.db", nil
 			}
 			report, err := runner.run(t.Context())
-			if err != nil || report.TargetVersion != 38 {
+			if err != nil || report.TargetVersion != applicationSchemaVersion {
 				t.Fatalf("migration=%#v, error=%v", report, err)
 			}
 			if err := database.View(t.Context(), func(ctx context.Context, db *gorm.DB) error {

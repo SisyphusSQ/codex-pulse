@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/agyprovider"
 	logsource "github.com/SisyphusSQ/codex-pulse/internal/codex/logs/source"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/core"
@@ -103,6 +104,7 @@ type applicationControlRuntime struct {
 	cursorAccountReader cursorAccountReader
 	grokAccountReader   grokAccountReader
 	grokProfileReader   grokProfileReader
+	agyAccountReader    func(context.Context) (agyprovider.AccountSnapshot, error)
 	repository          *store.Repository
 
 	controlCtx  context.Context
@@ -208,6 +210,45 @@ func (runtime *applicationControlRuntime) installAccountReaders() {
 			}); accountErr == nil {
 				runtime.grokProfileReader = accountClient.GetAccount
 			}
+		}
+	}
+	if agyConfig, err := agyprovider.DefaultConfig(); err == nil {
+		lsClient := agyprovider.NewLSClient(agyprovider.NewLSDiscoverer(agyConfig.BaseRoot), nil)
+		runtime.agyAccountReader = func(ctx context.Context) (agyprovider.AccountSnapshot, error) {
+			if admitProviderControl(runtime.controller, agentprovider.AGY) != nil {
+				return agyprovider.AccountSnapshot{}, nil
+			}
+			onlineEnabled := true
+			if runtime.preferenceStore != nil {
+				if current, loadErr := runtime.preferenceStore.LoadPreferences(ctx); loadErr == nil {
+					onlineEnabled = current.Online.AGYOnlineEnabled
+				}
+			}
+			if onlineEnabled {
+				if status, statusErr := lsClient.GetUserStatus(ctx); statusErr == nil {
+					email := strings.TrimSpace(status.Email)
+					plan := agyprovider.NormalizeAGYPlanType(status.PlanName, status.TierName)
+					if email != "" || plan != "" {
+						return agyprovider.AccountSnapshot{Email: email, PlanType: plan}, nil
+					}
+				}
+			}
+			if runtime.repository != nil {
+				if snaps, snapErr := runtime.repository.AGYQuotaSnapshots(ctx, ""); snapErr == nil && len(snaps) > 0 {
+					var latest int64
+					var plan string
+					for _, s := range snaps {
+						if s.UpdatedAtMS >= latest && s.PlanType != nil && *s.PlanType != "" {
+							latest = s.UpdatedAtMS
+							plan = *s.PlanType
+						}
+					}
+					if plan != "" {
+						return agyprovider.AccountSnapshot{PlanType: plan}, nil
+					}
+				}
+			}
+			return agyprovider.AccountSnapshot{}, nil
 		}
 	}
 }
@@ -345,6 +386,10 @@ func (runtime *applicationControlRuntime) UpdateSettings(
 	if err != nil {
 		return core.SettingsUpdateReceipt{}, publicRuntimeCommandFailure(err)
 	}
+	agyOnlineEnabled := current.Online.AGYOnlineEnabled
+	if request.Online.AGYOnlineEnabled != nil {
+		agyOnlineEnabled = *request.Online.AGYOnlineEnabled
+	}
 	update := preferences.SettingsUpdate{
 		ExpectedRevision: expectedRevision,
 		Providers:        requestProviders(request.Providers, current.Providers),
@@ -354,6 +399,7 @@ func (runtime *applicationControlRuntime) UpdateSettings(
 			CursorOnlineEnabled:    request.Online.CursorOnlineEnabled,
 			GrokQuotaEnabled:       request.Online.GrokQuotaEnabled,
 			GrokAutoRefreshEnabled: request.Online.GrokAutoRefreshEnabled,
+			AGYOnlineEnabled:       agyOnlineEnabled,
 		},
 		CodexAccounts: preferences.CodexAccountPreferences{
 			RetainQuotaHistory: request.CodexAccounts.RetainQuotaHistory,
@@ -599,6 +645,8 @@ func (runtime *applicationControlRuntime) AccountSnapshot(
 		return runtime.cursorAccountSnapshot(operationContext)
 	case agentprovider.DSH:
 		return core.AccountSnapshot{}, nil
+	case agentprovider.AGY:
+		return runtime.agyAccountSnapshot(operationContext)
 	case agentprovider.Grok:
 		return runtime.grokAccountSnapshot(operationContext)
 	case agentprovider.Codex:
@@ -659,6 +707,28 @@ func (runtime *applicationControlRuntime) grokAccountSnapshot(ctx context.Contex
 		return core.AccountSnapshot{}, nil
 	}
 	identity := &core.AccountIdentity{Type: agentprovider.Grok}
+	if email != "" {
+		identity.Email = &email
+	}
+	if plan != "" {
+		identity.PlanType = &plan
+	}
+	return core.AccountSnapshot{Account: identity}, nil
+}
+
+func (runtime *applicationControlRuntime) agyAccountSnapshot(ctx context.Context) (core.AccountSnapshot, error) {
+	if runtime.agyAccountReader == nil {
+		return core.AccountSnapshot{}, nil
+	}
+	account, err := runtime.agyAccountReader(ctx)
+	if err != nil {
+		return core.AccountSnapshot{}, err
+	}
+	email, plan := strings.TrimSpace(account.Email), strings.TrimSpace(account.PlanType)
+	if email == "" && plan == "" {
+		return core.AccountSnapshot{}, nil
+	}
+	identity := &core.AccountIdentity{Type: agentprovider.AGY}
 	if email != "" {
 		identity.Email = &email
 	}

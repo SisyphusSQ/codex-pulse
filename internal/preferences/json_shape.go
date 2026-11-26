@@ -74,25 +74,22 @@ func validateV3JSONShape(content []byte) error {
 			return err
 		}
 	}
-	if _, err := decodeObjectFieldExact(root, "online",
-		[]string{
-			"quota_enabled", "reset_credits_enabled", "cursor_online_enabled",
-			"grok_quota_enabled", "grok_auto_refresh_enabled",
-		},
-		nil,
-	); err != nil {
+	if _, err := decodeObjectFieldExact(root, "online", onlineFieldsFor(preferencesSchemaV3), nil); err != nil {
 		return err
 	}
-	if err := validateProvidersJSON(root["providers"]); err != nil {
+	if err := validateProvidersJSONFor(root["providers"], preferencesSchemaV3); err != nil {
 		return err
 	}
 	return validateSharedPreferencesObjects(root)
 }
 
 func validateCurrentJSONShape(content []byte) error {
-	return validateV4OrCurrentJSONShape(content, true)
+	return validateTypedJSONShape(content, CurrentPreferencesSchemaVersion)
 }
-func validateV4OrCurrentJSONShape(content []byte, current bool) error {
+
+// validateTypedJSONShape 校验 v4 及之后与当前 Snapshot 同构的文档，按版本限定
+// providers 与 online 的精确字段集合。
+func validateTypedJSONShape(content []byte, version int) error {
 	if err := validateJSONDocument(content); err != nil {
 		return err
 	}
@@ -114,30 +111,42 @@ func validateV4OrCurrentJSONShape(content []byte, current bool) error {
 			return err
 		}
 	}
-	if _, err := decodeObjectFieldExact(root, "online",
-		[]string{
-			"quota_enabled", "reset_credits_enabled", "cursor_online_enabled",
-			"grok_quota_enabled", "grok_auto_refresh_enabled",
-		},
-		nil,
-	); err != nil {
+	if _, err := decodeObjectFieldExact(root, "online", onlineFieldsFor(version), nil); err != nil {
 		return err
 	}
 	if _, err := decodeObjectField(root, "codex_accounts", "retain_quota_history"); err != nil {
 		return err
 	}
-	if err := validateProvidersJSONFor(root["providers"], current); err != nil {
+	if err := validateProvidersJSONFor(root["providers"], version); err != nil {
 		return err
 	}
 	return validateSharedPreferencesObjects(root)
 }
 
-func validateProvidersJSON(raw json.RawMessage) error { return validateProvidersJSONFor(raw, false) }
-func validateProvidersJSONFor(raw json.RawMessage, current bool) error {
+func onlineFieldsFor(version int) []string {
+	fields := []string{
+		"quota_enabled", "reset_credits_enabled", "cursor_online_enabled",
+		"grok_quota_enabled", "grok_auto_refresh_enabled",
+	}
+	if version >= CurrentPreferencesSchemaVersion {
+		fields = append(fields, "agy_online_enabled")
+	}
+	return fields
+}
+
+func providerNamesFor(version int) []string {
 	names := []string{"codex", "cursor", "grok"}
-	if current {
+	if version >= preferencesSchemaV5 {
 		names = append(names, "dsh")
 	}
+	if version >= CurrentPreferencesSchemaVersion {
+		names = append(names, "agy")
+	}
+	return names
+}
+
+func validateProvidersJSONFor(raw json.RawMessage, version int) error {
+	names := providerNamesFor(version)
 	providers, err := decodeRequiredObject(raw, names...)
 	if err != nil {
 		return err

@@ -64,4 +64,66 @@ internal static class PaceChart
         if(window.CurrentPoints.Count==0)body.Children.Add(PresentationControls.Text(l.Text("当前周期尚无观察点；不补造轨迹。","No current-cycle observations; no trajectory is fabricated.")));
         return body;
     }
+
+    public static FrameworkElement CreateWindowDetail(QuotaPaceWindow window,string title,Localization l)
+    {
+        var panel=new StackPanel{Spacing=10};
+        panel.Children.Add(PresentationControls.Text(title,14));
+        panel.Children.Add(PresentationControls.MetricStrip(
+            (l.Text("周期已过","Period elapsed"),QuotaPresentation.PercentText(QuotaPresentation.Percent(window.HasElapsedPercent,window.ElapsedPercent),l)),
+            (l.Text("剩余额度","Remaining quota"),QuotaPresentation.PercentText(QuotaPresentation.Percent(window.HasRemainingPercent,window.RemainingPercent),l)),
+            (l.Text("历史周期数","History cycles"),window.HistoryCycleCount.ToString(l.Culture))));
+        if(window.HasPaceDeltaPp)panel.Children.Add(PresentationControls.Text(l.Text("相对均匀节奏的消耗差：","Consumption difference from even pace: ")+window.PaceDeltaPp.ToString("+0.##;-0.##;0",l.Culture)+" pp"));
+        panel.Children.Add(Create(window,l));
+        var forecast=window.Forecast;
+        panel.Children.Add(PresentationControls.Text(forecast is null?l.Text("预测未知","Forecast unknown"):QuotaPresentation.Forecast(forecast.State,l)+(forecast.HasExhaustAtMs?l.Text(" · 预计耗尽 "," · Expected exhaustion ")+l.Timestamp(forecast.ExhaustAtMs):"")+l.Text(" · 证据点 "," · Evidence points ")+forecast.EvidenceCount.ToString(l.Culture)+(forecast.HasUnknownReason?" · "+forecast.UnknownReason:"")));
+        panel.Children.Add(PresentationControls.Disclosure(l.Text("节奏数据明细","Pace data details"),PresentationControls.Table(
+            [l.Text("时间","Time"),l.Text("周期已过","Elapsed"),l.Text("剩余","Remaining"),l.Text("归属","Attribution")],
+            window.CurrentPoints.Select(point=>new[]{l.Timestamp(point.ObservedAtMs),QuotaPresentation.PercentText(QuotaPresentation.Percent(true,point.ElapsedPercent),l),QuotaPresentation.PercentText(QuotaPresentation.Percent(true,point.RemainingPercent),l),point.LinkedHistory?l.Text("显式关联旧历史","Explicitly linked history"):l.Text("当前账号","Current account")}))));
+        return panel;
+    }
+
+    public static FrameworkElement CreatePoolSwitcher(IReadOnlyList<QuotaPacePoolGroup> pools,Localization l,string? selectedLimitId=null,Action<string>? onSelected=null)
+    {
+        var container=new StackPanel{Spacing=14};
+        if(pools.Count==0)return container;
+        var content=new StackPanel{Spacing=14};
+        void RenderPool(QuotaPacePoolGroup pool)
+        {
+            content.Children.Clear();
+            var views=new List<UIElement>();
+            if(pool.Primary is {} primary)
+                views.Add(CreateWindowDetail(primary,pool.DisplayName+" · "+QuotaPresentation.WindowShortLabel(primary.WindowKind,primary.HasWindowMinutes?primary.WindowMinutes:null,l),l));
+            if(pool.Secondary is {} secondary)
+                views.Add(CreateWindowDetail(secondary,pool.DisplayName+" · "+QuotaPresentation.WindowShortLabel(secondary.WindowKind,secondary.HasWindowMinutes?secondary.WindowMinutes:null,l),l));
+            if(views.Count>1) content.Children.Add(PresentationControls.Columns(views,360));
+            else if(views.Count==1) content.Children.Add(views[0]);
+        }
+        var initial=pools.FirstOrDefault(pool=>pool.LimitId==selectedLimitId)??pools[0];
+        if(pools.Count>1)
+        {
+            var bar=new SelectorBar();
+            AutomationProperties.SetName(bar,l.Text("切换配额池","Switch quota pool"));
+            SelectorBarItem? activeItem=null;
+            foreach(var pool in pools)
+            {
+                var item=new SelectorBarItem{Text=pool.DisplayName,Tag=pool};
+                bar.Items.Add(item);
+                if(pool.LimitId==initial.LimitId)activeItem=item;
+            }
+            bar.SelectedItem=activeItem??bar.Items[0];
+            bar.SelectionChanged+=(_,_)=>
+            {
+                if(bar.SelectedItem is SelectorBarItem{Tag:QuotaPacePoolGroup chosen})
+                {
+                    onSelected?.Invoke(chosen.LimitId);
+                    RenderPool(chosen);
+                }
+            };
+            container.Children.Add(bar);
+        }
+        container.Children.Add(content);
+        RenderPool(initial);
+        return container;
+    }
 }

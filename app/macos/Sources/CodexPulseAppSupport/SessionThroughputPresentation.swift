@@ -68,6 +68,7 @@ public struct SessionThroughputPresentation: Sendable {
         case "duration_ms": "日志提供的毫秒耗时"
         case "log_timestamp": "日志起止时间差"
         case "source_seconds": "秒级起止时间差"
+        case "step_metadata": "步骤元数据起止时间"
         case "mixed": "混合时间来源"
         default: ""
         }

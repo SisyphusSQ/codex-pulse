@@ -14,7 +14,7 @@ Windows Cursor 的生产适配不等于本轮真实环境验收。Cursor Models�
 
 ## 产品与代码语义
 
-Codex Pulse 以一个明确的客户端上下文查询和展示数据。产品 UI 使用“客户端”；代码使用 `AgentProvider` / `ProviderScope`，避免与 OpenAI、Anthropic、Grok 等模型供应方混淆。当前客户端是 `codex`、`cursor`、`grok` 和 `dsh` 四个 Agent Provider，不引入 `AgentProvider.all`，也不让空 `ProviderScope` 承担汇总语义。另有专用跨客户端汇总 read model（`DashboardSummary`），只聚合可比总量、当前范围趋势、分布、模型 Top、各客户端额度状态和独立 365 天 Token 活动，不合并 Session / Project identity。Grok 在 UI 中的显示名固定为“Grok”，代码身份为 `grok`；它指 Grok Build TUI / CLI，不是 Cursor 或其它客户端里出现的 Grok 模型。
+Codex Pulse 以一个明确的客户端上下文查询和展示数据。产品 UI 使用“客户端”；代码使用 `AgentProvider` / `ProviderScope`，避免与 OpenAI、Anthropic、Grok 等模型供应方混淆。当前客户端是 `codex`、`cursor`、`grok`、`dsh` 和 `agy`（UI 显示名 `Antigravity`）五个 Agent Provider，不引入 `AgentProvider.all`，也不让空 `ProviderScope` 承担汇总语义。另有专用跨客户端汇总 read model（`DashboardSummary`），只聚合可比总量、当前范围趋势、分布、模型 Top、各客户端额度状态和独立 365 天 Token 活动，不合并 Session / Project identity。Grok 在 UI 中的显示名固定为“Grok”，代码身份为 `grok`；它指 Grok Build TUI / CLI，不是 Cursor 或其它客户端里出现的 Grok 模型。
 
 这是一条窄而明确的扩展缝，不是通用插件框架：Codex 原有 parser、collector、quota 与 pricing 路径保持不变；Cursor 与 Grok 各自使用独立 collector、事实表和查询实现。Core RPC 的使用量、调用、Session、Project、Quota 与 Account 请求显式携带 Provider scope，响应回显 effective provider、source、capabilities 和 coverage。Overview、菜单栏和账号胶囊都按客户端路由；客户端页面不把 Codex、Cursor、Grok 的 account / quota / usage 合并，也不把 Cursor 内的 `grok-*` 模型用量并进 Grok 客户端。跨客户端汇总由 Helper 的 `DashboardSummary` 独立聚合，模型维度必须带客户端命名空间，Cursor Grok Bot、Cursor 内 `cursor-grok-*` 与独立 Grok 客户端保持三组身份。Helper 是 Provider 启用状态和业务 gate 的唯一真相；Swift 只消费 Settings catalog，不得自行判断某个客户端是否可采集。
 
@@ -30,11 +30,11 @@ Codex Pulse 以一个明确的客户端上下文查询和展示数据。产品 U
 
 `auto + available` 默认启用；显式 `disabled` 在 restart、wake、foreground、数据源重新出现和应用升级后都必须保持关闭。Discovery 只允许路径解析、`lstat/stat`、类型/权限和已存在安全探针读取的物理身份，不得打开 Session/JSONL 正文、Cursor SQLite 内容、Grok `auth.json`，也不得发网络请求或写源目录。Reason code 只使用 `available`、`not_found`、`permission_denied`、`unsafe_path`、`invalid_type`、`probe_failed`、`disabled`、`disabling`、`unchecked`。
 
-关闭顺序固定为：先拒绝新 admission，再取消 operation context，再 drain 已接纳任务。旧 generation 在 stable disabled 后不得发布 Store、cache 或 invalidation。当前页面不得把 disabled Provider 的历史快照冒充当前事实；历史仍保存在 Store。`DashboardSummary` 只聚合 effective enabled Provider；全部关闭时返回 complete known-empty，而不是 service unavailable。direct query 命中显式 disabled 返回稳定错误 `provider_disabled`（`retryable=false`）；unavailable 保持可恢复。全局手动刷新仍按 `codex → cursor → grok → dsh` 回执，disabled 项为 `skipped_disabled`。
+关闭顺序固定为：先拒绝新 admission，再取消 operation context，再 drain 已接纳任务。旧 generation 在 stable disabled 后不得发布 Store、cache 或 invalidation。当前页面不得把 disabled Provider 的历史快照冒充当前事实；历史仍保存在 Store。`DashboardSummary` 只聚合 effective enabled Provider；全部关闭时返回 complete known-empty，而不是 service unavailable。direct query 命中显式 disabled 返回稳定错误 `provider_disabled`（`retryable=false`）；unavailable 保持可恢复。全局手动刷新按 `codex → cursor → grok → dsh → agy` 五路顺序回执，disabled 项为 `skipped_disabled`。
 
-子开关从属于主开关：Codex 沿用 quota / reset credits；Cursor 新增 `cursor_online_enabled` 统一控制 Dashboard 月额度和 Grok Bot 在线请求，本地 snapshot 仍受 Cursor 主开关控制；Grok 沿用 quota / credential auto-refresh。主开关关闭期间不修改子开关持久值。Preferences schema 为 v5，并新增默认开启的 Codex 账号额度历史保留设置；无 Codex Home 时 `codex_home` 可省略，Onboarding.Completed 只表示 preferences 已初始化。握手为 `core-rpc-v9`，控制面为 `provider-control-v1`。application SQLite schema 现行版本为 v37；v36 引入 DSH 事实表，v37 扩展会话标题并保留 v36 checksum。
+子开关从属于主开关：Codex 沿用 quota / reset credits；Cursor 沿用 `cursor_online_enabled` 统一控制 Dashboard 月额度和 Grok Bot 在线请求，本地 snapshot 仍受 Cursor 主开关控制；Grok 沿用 quota / credential auto-refresh；AGY 新增 `agy_online_enabled`（默认开启，独立控制本机 LS RPC 账号与配额读取）。主开关关闭期间不修改子开关持久值。Preferences schema 现行版本为 v6（v5→v6 新增 `providers.agy` 与 `online.agy_online_enabled` 并保留旧 4 项意图）；无 Codex Home 时 `codex_home` 可省略，Onboarding.Completed 只表示 preferences 已初始化。握手为 `core-rpc-v9`，控制面为 `provider-control-v1`。application SQLite schema 现行版本为 v40（v36 引入 DSH 事实表，v37 扩展 DSH 会话标题，v38 引入 quota refresh server fence，v39 引入 Codex paid credits，v40 引入 AGY 独立事实表并扩展 provider 白名单；所有历史 migration checksum 保持不变）。
 
-空 `ProviderScope` 仍归一为 `codex`，以兼容旧请求；未知非空值必须失败，不得默认成 Codex 或 Cursor。Router、AccountSnapshot、PricingCatalog 和 Swift 展示必须显式四路分发，禁止 `if cursor else Codex` 把 Grok 漏进另一家客户端。关闭后的 Router 必须在调用后端前拒绝 disabled Provider。
+空 `ProviderScope` 仍归一为 `codex`，以兼容旧请求；未知非空值必须失败，不得默认成 Codex 或 Cursor。Router、AccountSnapshot、PricingCatalog 和原生展示必须显式五路分发，禁止 `if cursor else Codex` 把另一家客户端漏进错误分支。关闭后的 Router 必须在调用后端前拒绝 disabled Provider。
 
 额度手动刷新沿用同一个 `RequestQuotaRefresh` RPC，并与额度查询一样携带 `ProviderScope`；回执必须回显 `ProviderContext.effective_provider`，Swift 只接受与发起请求时客户端一致的回执。空 scope 继续走 Codex durable quota coordinator；Cursor 与 Grok 只接受 `source=quota`，分别同步触发 Cursor Dashboard 月额度与 Grok billing credits collector，成功提交后失效对应只读快照并通知客户端重查。Cursor/Grok 不支持 `reset_credits`，不得把外部客户端刷新误送给 Codex。界面上 Codex 保留“刷新数据”菜单及额度/重置次数两项，Cursor 与 Grok 在同一位置显示直接“刷新额度”按钮。
 
@@ -69,7 +69,7 @@ Cursor 页面查询优先读取已提交 snapshot，并在进程内按 generatio
 | Cursor 内 `cursor-grok-*` 模型 | Cursor Models 月额度桶 | `GetCurrentPeriodUsage` / usage event 的月账期 | Grok Bot 周额度，或 Grok 客户端 billing credits |
 | 独立 Grok 客户端 | `grok` Agent Provider | CLI proxy `GET /billing?format=credits` | Cursor Dashboard 任一窗口 |
 
-当前产品仍然只有四个 Agent Provider：`codex` / `cursor` / `grok` / `dsh`。Grok Bot 仍属于 Cursor，不是独立客户端。
+当前产品共有五个独立 Agent Provider：`codex` / `cursor` / `grok` / `dsh` / `agy`。Grok Bot 仍属于 Cursor，不是独立客户端。
 
 ## 身份、合并与持久化
 
@@ -207,3 +207,7 @@ Cursor collector 在写盘前丢弃 prompt、response、thought、tool input/out
 ## DSH
 
 第四个客户端的来源格式、分叉和重试归属、DeepSeek 峰谷与 Codex 订阅模型美元公价估算规则、Mac/中心范围、未知语义和隐私边界见 [DSH 设计](dsh.md)。DSH 不提供由本地日志无法证明的账户余额或官方额度。
+
+## Antigravity (AGY)
+
+第五个独立客户端 `agy`（UI 显示名 `Antigravity`）的契约边界、Preferences v6、SQLite v40、metadata-only 探测与五路控制面设计见 [Antigravity 设计](agy.md)。

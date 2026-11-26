@@ -16,6 +16,8 @@ TOO-513：中心结构v2新增独立订阅设置。新环境使用完整schema�
 
 TOO-523：结构 v3 增加分片暂存和设备有限同步状态。SQL 唯一事实源为 [MySQL v3](../schema/v3_mysql.sql) / [SQLite v3](../schema/v3_sqlite.sql)，不复制第二份 DDL；先保留 v1/v2 定义，再执行新增表与字段读回、更新标记。计划版本 v0.15.1。SQLite 初始化、v1/v2 升级与历史保留已验证；DEV SeekDB 的 MySQL 协议入口完成 v2 备份、恢复演练、v3 升级及既有表指纹保留。此段「独立 MySQL 8.4 与生产执行尚未完成」是 v0.15.1 归档前状态；生产 v3 读回见 [多机 runbook](../../../../docs/test/multi-machine-reporting.md) 的 v0.15.1 节，该读回仍不包含独立 MySQL 8.4。
 
+TOO-724 与 TOO-725 已归档到 [v0.19.0](../releases/v0.19.0/README.md)。
+
 ## 查询优化与四周期保留：结构 v4
 
 - 事实源：[MySQL v4](../schema/v4_mysql.sql)、[SQLite v4](../schema/v4_sqlite.sql)。不复制第二份 DDL，归属本轮中心性能优化，正式版本尚未指定，不改写 v0.15.1 档案。

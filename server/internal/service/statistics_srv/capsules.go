@@ -8,9 +8,93 @@ import (
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
 	reporting_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/reporting_do"
+	reporting_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/reporting_dto"
 	statistics_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/statistics_dto"
 	statistics_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/statistics_vo"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/service/reporting_srv"
+	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
+
+func sessionRolePointer(role string) *string {
+	switch role {
+	case "main", "subagent", "swarm_worker", "side_question":
+		return new(role)
+	default:
+		return nil
+	}
+}
+
+func (s *Statistics) attachAGYSessionRoles(ctx context.Context, q statistics_dto.StatisticsQuery, items []statistics_vo.StatisticsSession) error {
+	agyIDs := make([]string, 0)
+	for _, item := range items {
+		if item.Provider == "agy" {
+			agyIDs = append(agyIDs, item.ID)
+		}
+	}
+	if len(agyIDs) == 0 {
+		return nil
+	}
+	roles := make(map[string]string, len(agyIDs))
+	bytes := 0
+	decodeRole := func(payload string) (string, error) {
+		bytes += len(payload)
+		if bytes > 64<<20 {
+			return "", utils.ErrRequestBudget
+		}
+		var snap struct {
+			SessionRole string `json:"session_role"`
+		}
+		if err := json.Unmarshal([]byte(payload), &snap); err != nil {
+			return "", err
+		}
+		return snap.SessionRole, nil
+	}
+	if q.ClientID == "" {
+		if err := s.repository.StreamCanonicalSessions(ctx, agyIDs, func(row reporting_do.CanonicalSnapshot) error {
+			role, err := decodeRole(row.Payload)
+			if err != nil {
+				return err
+			}
+			roles[row.SessionKey] = role
+			return nil
+		}); err != nil {
+			return err
+		}
+	} else {
+		sources := make(map[string][]reporting_dto.SourceSnapshot, len(agyIDs))
+		if err := s.repository.StreamSessionSources(ctx, agyIDs, q.ClientID, func(row reporting_do.SessionSource) error {
+			if len(sources[row.SessionKey]) >= 128 {
+				return utils.ErrRequestBudget
+			}
+			bytes += len(row.Payload)
+			if bytes > 64<<20 {
+				return utils.ErrRequestBudget
+			}
+			var snap reportingv1.SessionSnapshot
+			if err := json.Unmarshal([]byte(row.Payload), &snap, json.RejectUnknownMembers(true)); err != nil {
+				return err
+			}
+			sources[row.SessionKey] = append(sources[row.SessionKey], reporting_dto.SourceSnapshot{ID: row.ID, ClientID: row.ClientID, Snapshot: snap})
+			return nil
+		}); err != nil {
+			return err
+		}
+		for sessionKey, copies := range sources {
+			decision := reporting_srv.DecideSnapshot(copies, nil)
+			roles[sessionKey] = decision.Source.Snapshot.SessionRole
+		}
+	}
+	for i := range items {
+		if items[i].Provider == "agy" {
+			items[i].SessionRole = sessionRolePointer(roles[items[i].ID])
+		}
+	}
+	return nil
+}
+
+func supportsLifecycleCapsules(provider string) bool {
+	return provider == "codex" || provider == "dsh" || provider == "agy"
+}
 
 func capsuleSnapshot(row reporting_do.SessionCapsule) (out reportingv1.SessionSnapshot, err error) {
 	out.Complete, out.Deleted = row.Complete, row.Deleted
@@ -35,7 +119,7 @@ func (s *Statistics) attachThroughput(ctx context.Context, q statistics_dto.Stat
 	result = statistics_vo.ThroughputTurnsView{Items: []statistics_vo.ThroughputTurnView{}, Limit: limit}
 	ids := []string{}
 	for _, item := range items {
-		if item.Provider == "codex" || item.Provider == "dsh" {
+		if supportsLifecycleCapsules(item.Provider) {
 			ids = append(ids, item.ID)
 		}
 	}
@@ -54,7 +138,7 @@ func (s *Statistics) attachThroughput(ctx context.Context, q statistics_dto.Stat
 	}
 	// 旧库摘要首次补建期间，维持原有指标语义；后台只需重建一次。
 	for _, item := range items {
-		if item.Provider != "codex" && item.Provider != "dsh" {
+		if !supportsLifecycleCapsules(item.Provider) {
 			continue
 		}
 		id := item.ID
@@ -80,7 +164,7 @@ func (s *Statistics) attachThroughput(ctx context.Context, q statistics_dto.Stat
 		}
 		item.CacheHitRate = cacheHitRateView(chosen, owner, item.Provider, nil)
 		reason := "not_reported"
-		if item.Provider != "codex" && item.Provider != "dsh" {
+		if !supportsLifecycleCapsules(item.Provider) {
 			reason = "unsupported_provider"
 		}
 		view := throughputView(reportingv1.ThroughputMeasures{Status: "unavailable", Reason: reason})
@@ -120,6 +204,9 @@ func (s *Statistics) attachThroughput(ctx context.Context, q statistics_dto.Stat
 				result.Items = append(result.Items, statistics_vo.ThroughputTurnView{Key: turn.Key, StartedAtMS: turn.StartedAtMS, EndedAtMS: turn.EndedAtMS, Throughput: throughputView(turn.Measures)})
 			}
 		}
+	}
+	if err := s.attachAGYSessionRoles(ctx, q, items); err != nil {
+		return result, err
 	}
 	return result, nil
 }

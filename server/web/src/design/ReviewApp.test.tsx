@@ -11,6 +11,7 @@ describe('current production pages in Storybook',()=>{
   ['/usage/models','模型分析','用量模型'],
   ['/usage/sources','采集来源','来源与覆盖'],
   ['/quota','账号','Credits 余额与消耗'],
+  ['/quota?provider=agy','账号','Gemini 配额池'],
   ['/projects','项目','项目列表'],
   ['/sessions','会话','会话列表'],
   ['/pricing','价目表','价目平台'],

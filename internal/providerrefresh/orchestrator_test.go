@@ -77,17 +77,20 @@ func TestOrchestratorReturnsStableProviderOrderAndPartialResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Refresh() error = %v", err)
 	}
-	if receipt.Trigger != TriggerManual || len(receipt.Providers) != 4 {
+	if receipt.Trigger != TriggerManual || len(receipt.Providers) != 5 {
 		t.Fatalf("receipt = %#v", receipt)
 	}
 	if receipt.Providers[0].Provider != agentprovider.Codex ||
 		receipt.Providers[1].Provider != agentprovider.Cursor ||
-		receipt.Providers[2].Provider != agentprovider.Grok {
+		receipt.Providers[2].Provider != agentprovider.Grok ||
+		receipt.Providers[3].Provider != agentprovider.DSH ||
+		receipt.Providers[4].Provider != agentprovider.AGY {
 		t.Fatalf("provider order = %#v", receipt.Providers)
 	}
 	if receipt.Providers[0].Status != StatusFailed ||
 		receipt.Providers[1].Status != StatusRefreshed ||
-		receipt.Providers[2].Status != StatusSkippedNoCredentials {
+		receipt.Providers[2].Status != StatusSkippedNoCredentials ||
+		receipt.Providers[4].Status != StatusSkippedUnavailable {
 		t.Fatalf("partial statuses = %#v", receipt.Providers)
 	}
 }
@@ -367,14 +370,23 @@ func TestOrchestratorSkipsDisabledProviderWithoutCallingAdapter(t *testing.T) {
 		Provider: agentprovider.Codex, Status: StatusRefreshed,
 		Components: []ComponentResult{{Component: ComponentCodexLocal, Status: StatusRefreshed, Attempted: true}},
 	}}
+	agy := &stubProvider{result: ProviderResult{
+		Provider: agentprovider.AGY, Status: StatusRefreshed,
+		Components: []ComponentResult{
+			{Component: ComponentAGYLocal, Status: StatusRefreshed, Attempted: true},
+			{Component: ComponentAGYQuota, Status: StatusRefreshed, Attempted: true},
+		},
+	}}
 	prefs := orchestratorPreferences{snapshot: preferences.Snapshot{
 		SchemaVersion: preferences.CurrentPreferencesSchemaVersion,
 		Revision:      1,
 		Onboarding:    preferences.OnboardingPreferences{Version: preferences.CurrentOnboardingVersion, Completed: true},
-		Providers: preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		Providers: preferences.ProviderPreferences{
 			Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 			Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 			Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+			DSH:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+			AGY:    preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		},
 		Online:  preferences.DefaultOnlinePreferences(),
 		Refresh: preferences.DefaultRefreshPreferences(),
@@ -387,6 +399,7 @@ func TestOrchestratorSkipsDisabledProviderWithoutCallingAdapter(t *testing.T) {
 		},
 		Cursor: availableProbe,
 		Grok:   availableProbe,
+		AGY:    availableProbe,
 	})
 	if err != nil {
 		t.Fatalf("NewController() error = %v", err)
@@ -395,7 +408,7 @@ func TestOrchestratorSkipsDisabledProviderWithoutCallingAdapter(t *testing.T) {
 		t.Fatalf("RefreshDiscovery() error = %v", err)
 	}
 	orchestrator, err := New(Config{
-		Codex: codex, Cursor: cursor, Grok: grok, Controller: controller,
+		Codex: codex, Cursor: cursor, Grok: grok, AGY: agy, Controller: controller,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -404,15 +417,27 @@ func TestOrchestratorSkipsDisabledProviderWithoutCallingAdapter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Refresh() error = %v", err)
 	}
-	if cursor.calls.Load() != 0 {
-		t.Fatalf("disabled cursor adapter calls = %d, want 0", cursor.calls.Load())
+	if cursor.calls.Load() != 0 || agy.calls.Load() != 0 {
+		t.Fatalf("disabled adapter calls cursor=%d agy=%d, want 0/0", cursor.calls.Load(), agy.calls.Load())
 	}
 	if grok.calls.Load() != 1 || codex.calls.Load() != 1 {
 		t.Fatalf("sibling adapter calls cursor=%d grok=%d codex=%d", cursor.calls.Load(), grok.calls.Load(), codex.calls.Load())
 	}
-	if len(receipt.Providers) != 4 ||
+	if len(receipt.Providers) != 5 ||
 		receipt.Providers[1].Provider != agentprovider.Cursor ||
-		receipt.Providers[1].Status != StatusSkippedDisabled {
+		receipt.Providers[1].Status != StatusSkippedDisabled ||
+		receipt.Providers[4].Provider != agentprovider.AGY ||
+		receipt.Providers[4].Status != StatusSkippedDisabled {
 		t.Fatalf("receipt = %#v", receipt)
+	}
+}
+
+func TestOrchestratorAGYOnlineQuotaNotifiesGenericQuotaDomain(t *testing.T) {
+	t.Parallel()
+	if got := domainFor(agentprovider.AGY, ComponentAGYQuota); got != core.InvalidationQuota {
+		t.Fatalf("domainFor(agy, online_quota) = %q, want %q", got, core.InvalidationQuota)
+	}
+	if got := domainFor(agentprovider.Codex, ComponentCodexQuota); got != core.InvalidationQuotaCodex {
+		t.Fatalf("domainFor(codex, online_quota) = %q, want %q", got, core.InvalidationQuotaCodex)
 	}
 }

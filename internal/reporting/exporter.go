@@ -3,7 +3,7 @@ package reporting
 import (
 	"context"
 	"errors"
-	"fmt"
+
 	"strconv"
 	"time"
 
@@ -11,8 +11,6 @@ import (
 	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
-
-var errReportingSourceDisabled = fmt.Errorf("reporting source is disabled: %w", store.ErrReportingSource)
 
 type Preferences interface {
 	LoadPreferences(context.Context) (preferences.Snapshot, error)
@@ -47,13 +45,15 @@ func (e *Exporter) source(ctx context.Context, provider string, start int64) (st
 		intent = prefs.Providers.Cursor.Intent
 	case "dsh":
 		intent = prefs.Providers.DSH.Intent
+	case "agy":
+		intent = prefs.Providers.AGY.Intent
 	case "grok":
 		intent = prefs.Providers.Grok.Intent
 	default:
 		return store.ReportingSource{}, store.ErrReportingSource
 	}
 	if intent == preferences.ProviderIntentDisabled {
-		return store.ReportingSource{}, errReportingSourceDisabled
+		return store.ReportingSource{}, store.ErrReportingProviderDisabled
 	}
 	if prefs.PendingSwitch != nil || prefs.PendingResume != nil {
 		return store.ReportingSource{}, store.ErrReportingSource
@@ -94,7 +94,7 @@ func (e *Exporter) Page(ctx context.Context, provider, after string, start int64
 		return ExportPage{}, err
 	}
 	later, err := e.source(ctx, provider, start)
-	if errors.Is(err, errReportingSourceDisabled) {
+	if errors.Is(err, store.ErrReportingProviderDisabled) {
 		return ExportPage{}, err
 	}
 	if err != nil || later.HomeID != before.HomeID {
@@ -105,7 +105,7 @@ func (e *Exporter) Page(ctx context.Context, provider, after string, start int64
 
 func (e *Exporter) Status(ctx context.Context, provider string, start int64) (reportingv1.DeviceStatus, error) {
 	source, err := e.source(ctx, provider, start)
-	if errors.Is(err, errReportingSourceDisabled) {
+	if errors.Is(err, store.ErrReportingProviderDisabled) {
 		return reportingv1.DeviceStatus{Provider: provider, Status: "disabled"}, nil
 	}
 	if errors.Is(err, store.ErrReportingSource) {
@@ -119,7 +119,7 @@ func (e *Exporter) Status(ctx context.Context, provider string, start int64) (re
 		return status, err
 	}
 	later, err := e.source(ctx, provider, start)
-	if errors.Is(err, errReportingSourceDisabled) {
+	if errors.Is(err, store.ErrReportingProviderDisabled) {
 		return reportingv1.DeviceStatus{Provider: provider, Status: "disabled"}, nil
 	}
 	if err != nil || source.HomeID != later.HomeID {

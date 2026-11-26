@@ -46,7 +46,7 @@ func (s *Statistics) attachLegacyThroughput(ctx context.Context, q statistics_dt
 	result := statistics_vo.ThroughputTurnsView{Items: []statistics_vo.ThroughputTurnView{}, Limit: limit}
 	ids := make([]string, 0, len(items))
 	for _, item := range items {
-		if item.Provider == "codex" || item.Provider == "dsh" {
+		if supportsLifecycleCapsules(item.Provider) {
 			ids = append(ids, item.ID)
 		}
 	}
@@ -88,7 +88,7 @@ func (s *Statistics) attachLegacyThroughput(ctx context.Context, q statistics_dt
 	for i := range items {
 		item := &items[i]
 		reason := "unsupported_provider"
-		if item.Provider == "codex" || item.Provider == "dsh" {
+		if supportsLifecycleCapsules(item.Provider) {
 			reason = "not_reported"
 		}
 		view := throughputView(reportingv1.ThroughputMeasures{Status: "unavailable", Reason: reason})
@@ -103,6 +103,9 @@ func (s *Statistics) attachLegacyThroughput(ctx context.Context, q statistics_dt
 		if q.ClientID != "" {
 			decision := sessionmerge.DecideSnapshot(sources[item.ID], nil)
 			chosen, owner = decision.Source.Snapshot, decision.Source.ClientID
+		}
+		if item.Provider == "agy" {
+			item.SessionRole = sessionRolePointer(chosen.SessionRole)
 		}
 		item.CacheHitRate = cacheHitRateView(chosen, owner, item.Provider, sources[item.ID])
 		capsule := chosen.Throughput

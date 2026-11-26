@@ -348,11 +348,14 @@ private struct SessionRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack {
+            HStack(spacing: 6) {
                 Text(
                     item.displayTitle.isEmpty ? localizedCopy("未命名会话") : item.displayTitle
                 )
                 .lineLimit(1)
+                if let role = SessionRolePresentation(titleReason: item.titleReason) {
+                    SessionRoleBadge(role: role)
+                }
                 Spacer()
                 StatusPill(text: item.activity)
             }
@@ -409,15 +412,23 @@ private struct SessionDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text(
-                    response.item.displayTitle.isEmpty
-                        ? localizedCopy("未命名会话")
-                        : response.item.displayTitle
-                )
-                    .font(.title2.bold())
+                HStack(spacing: 8) {
+                    Text(
+                        response.item.displayTitle.isEmpty
+                            ? localizedCopy("未命名会话")
+                            : response.item.displayTitle
+                    )
+                        .font(.title2.bold())
+                    if let role = SessionRolePresentation(titleReason: response.item.titleReason) {
+                        SessionRoleBadge(role: role)
+                    }
+                }
                 SectionCard(title: "使用概览") {
                     KeyValueRow(key: "项目", value: attributionText(response.item.project))
                     KeyValueRow(key: "模型", value: attributionText(response.item.model))
+                    if let role = SessionRolePresentation(titleReason: response.item.titleReason) {
+                        KeyValueRow(key: "会话角色", value: role.badgeTitle())
+                    }
                     KeyValueRow(key: "状态", value: ProductCopy.status(response.item.activity))
                     TokenBreakdownView(tokens: TokenBreakdownPresentation(response.item.totals))
                     KeyValueRow(
@@ -427,7 +438,9 @@ private struct SessionDetailView: View {
                     .accessibilityLabel(localizedCopy("缓存命中率"))
                     .accessibilityValue(cacheHitRate.rateText)
                     .accessibilityIdentifier("session.detail.cache-hit-rate")
-                    if response.providerContext.effectiveProvider == AgentProvider.codex.rawValue {
+                    if response.providerContext.effectiveProvider == AgentProvider.codex.rawValue
+                        || response.providerContext.effectiveProvider == AgentProvider.agy.rawValue
+                    {
                         Text(localizedCopy("缓存输入 Token ÷ 全部输入 Token；按当前会话累计用量计算。"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -781,7 +794,12 @@ private struct ProjectDetailView: View {
                 SectionCard(title: "会话") {
                     ForEach(response.sessions, id: \.sessionID) { item in
                         VStack(alignment: .leading) {
-                            Text(item.displayTitle.isEmpty ? "未命名会话" : item.displayTitle)
+                            HStack(spacing: 6) {
+                                Text(item.displayTitle.isEmpty ? "未命名会话" : item.displayTitle)
+                                if let role = SessionRolePresentation(titleReason: item.titleReason) {
+                                    SessionRoleBadge(role: role)
+                                }
+                            }
                             Text(attributionText(item.model))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -936,11 +954,25 @@ private struct TokenTrendView: View {
     }
 }
 
+private struct SessionRoleBadge: View {
+    let role: SessionRolePresentation
+
+    var body: some View {
+        Text(role.badgeTitle())
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.secondary.opacity(0.12), in: Capsule())
+            .accessibilityIdentifier("session.role.\(role.rawValue)")
+    }
+}
+
 private func estimatedCostLabel(_ provider: String) -> String {
 	switch provider {
 	case AgentProvider.cursor.rawValue: "文档价目估算"
 	case AgentProvider.grok.rawValue: "xAI 参考价估算"
-		case AgentProvider.dsh.rawValue: "模型 API 公价估算"
+	case AgentProvider.dsh.rawValue, AgentProvider.agy.rawValue: "模型 API 公价估算"
 	default: "API 折算成本"
 	}
 }

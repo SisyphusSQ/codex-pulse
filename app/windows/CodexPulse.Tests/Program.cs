@@ -29,4 +29,4 @@ if (args.Length == 3 && args[0] == "--update-network") await DistributionTests.N
 if (args.Length == 3 && args[0] == "--update-interrupted") await DistributionTests.Interrupted(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));
 if (args.Length == 3 && args[0] == "--lifecycle") await LifecycleTests.Processes(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));
 if (args.Length == 3 && args[0] == "--lifecycle-parent") await LifecycleTests.Parent(Path.GetFullPath(args[1]),Path.GetFullPath(args[2]));
-if (args.Length == 0) { await ShellTests.Run(); DashboardTests.Run(); AnalysisTests.Run(); await QuotaTests.Run(); await SettingsTests.Run();await LifecycleTests.Unit();await ReportingTests.Run();await ApiSubscriptionTests.Run(); }
+if (args.Length == 0) { await ShellTests.Run(); DashboardTests.Run(); AnalysisTests.Run(); await QuotaTests.Run(); await SettingsTests.Run();await LifecycleTests.Unit();await ReportingTests.Run();await ApiSubscriptionTests.Run();await AgyTests.Run(); }
