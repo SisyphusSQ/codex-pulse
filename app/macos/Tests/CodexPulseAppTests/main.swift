@@ -13629,6 +13629,13 @@ private func testQuotaRefreshFailurePresentation() throws {
 @main
 struct CodexPulseAppTestMain {
     static func main() async throws {
+        if CommandLine.arguments.contains("--agy-account-only") {
+            try await testAGYStatusAccountPublishesWithoutPlaceholderFlash()
+            try await testStatusProviderRejectsLateResponseFromPreviousSelection()
+            try await testStatusProviderReusesTargetCacheWhileRefreshing()
+            print("CodexPulseApp AGY account continuity tests passed")
+            return
+        }
         if CommandLine.arguments.contains("--credits-only") {
             try testPaidCreditsPresentation()
             print("CodexPulseApp Credits presentation tests passed")
@@ -13671,6 +13678,7 @@ struct CodexPulseAppTestMain {
             print("CodexPulseApp pricing tests passed")
             return
         }
+        try await testAGYStatusAccountPublishesWithoutPlaceholderFlash()
         try testQuotaRefreshFailurePresentation()
         try testCodexAccountRowPresentsLegacyQuotaHistoryActions()
         try testCodexAccountsSettingsSourceContract()
@@ -14466,5 +14474,49 @@ private func testAGYInvocationUsageHiddenWithZeroRPCAndSwitching() async throws 
         resolved == .codex && model.selectedProvider == .codex && model.statusProvider == .codex,
         "Disabling AGY must auto-fallback main and status provider to Codex"
     )
+    _ = await model.shutdown()
+}
+
+@MainActor
+private func testAGYStatusAccountPublishesWithoutPlaceholderFlash() async throws {
+    let suite = "CodexPulseAppTests.AGYAccountContinuity.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    defaults.set(AgentProvider.agy.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.agy.rawValue, forKey: "CodexPulse.statusProvider")
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    var account = Codexpulse_Core_V1_AccountSnapshotResponse()
+    account.account.type = "agy"
+    account.account.email = "a@example.com"
+    account.account.planType = "Google AI Ultra 5×"
+    await core.setAccountOverride(account)
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    let model = AppModel(runtime: runtime, providerDefaults: defaults)
+    model.start()
+    try await waitUntil("AGY account initially loaded") {
+        await MainActor.run { model.statusAccountCardSummary?.emailText == "a@example.com" }
+    }
+    var observed: [CodexAccountAvailability] = []
+    let observer = model.$statusOverviewState.sink { state in
+        if let value = state.value, value.provider == .agy {
+            observed.append(value.account.availability)
+        }
+    }
+    await core.setAccountDelay(.milliseconds(200))
+    account.account.email = "b@example.com"
+    await core.setAccountOverride(account)
+    model.refreshStatusProvider()
+    try await waitUntil("AGY account switch published") {
+        await MainActor.run { model.statusAccountCardSummary?.emailText == "b@example.com" && !model.statusOverviewState.isLoading }
+    }
+    try expect(!observed.isEmpty && observed.allSatisfy { $0 == .available },
+               "AGY refresh must not publish a missing-account placeholder between confirmed accounts")
+    try expect(model.statusAccountCardSummary?.planText == "Google AI Ultra 5×", "AGY must preserve the Helper plan label")
+    await core.setAccountOverride(.init())
+    model.refreshStatusProvider()
+    try await waitUntil("AGY sign-out clears old identity") {
+        await MainActor.run { model.statusAccountCardSummary?.availability != .available && !model.statusOverviewState.isLoading }
+    }
+    observer.cancel()
     _ = await model.shutdown()
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +23,7 @@ var (
 	ErrLSUnavailable    = errors.New("antigravity language server rpc unavailable")
 	ErrLSMethodRejected = errors.New("antigravity language server method not allowed")
 	ErrAccountMismatch  = errors.New("antigravity account changed during quota fetch")
+	agyUltraMultiplier  = regexp.MustCompile(`(?i)\b(5|20)\s*[x×]`)
 )
 
 type LSQuotaInfo struct {
@@ -47,6 +49,7 @@ type LSUserStatus struct {
 	Name               string
 	PlanName           string
 	TierName           string
+	TierID             string
 	ClientModelConfigs []LSClientModelConfig
 }
 
@@ -137,13 +140,16 @@ func (c *LSClient) FetchAccountAndQuota(ctx context.Context, forceRefresh bool) 
 	if status.TierName == "" {
 		status.TierName = before.TierName
 	}
+	if status.TierID == "" {
+		status.TierID = before.TierID
+	}
 	if len(status.ClientModelConfigs) == 0 {
 		status.ClientModelConfigs = before.ClientModelConfigs
 	}
 	return LSSandwichResult{
 		Status:       status,
 		QuotaSummary: summary,
-		PlanType:     NormalizeAGYPlanType(status.PlanName, status.TierName),
+		PlanType:     NormalizeAGYPlanType(status.PlanName, status.TierName, status.TierID),
 	}, nil
 }
 
@@ -176,12 +182,13 @@ func (c *LSClient) GetUserStatus(ctx context.Context) (LSUserStatus, error) {
 		return LSUserStatus{}, ErrLSUnavailable
 	}
 	us := env.UserStatus
-	var planName, tierName string
+	var planName, tierName, tierID string
 	if us.PlanStatus != nil && us.PlanStatus.PlanInfo != nil {
 		planName = firstNonEmpty(us.PlanStatus.PlanInfo.DisplayName, us.PlanStatus.PlanInfo.PlanName, us.PlanStatus.PlanInfo.TeamsTier)
 	}
 	if us.UserTier != nil {
 		tierName = firstNonEmpty(us.UserTier.Name, us.UserTier.ID)
+		tierID = strings.TrimSpace(us.UserTier.ID)
 	}
 	var configs []LSClientModelConfig
 	if us.CascadeModelConfigData != nil {
@@ -192,6 +199,7 @@ func (c *LSClient) GetUserStatus(ctx context.Context) (LSUserStatus, error) {
 		Name:               strings.TrimSpace(us.Name),
 		PlanName:           strings.TrimSpace(planName),
 		TierName:           strings.TrimSpace(tierName),
+		TierID:             tierID,
 		ClientModelConfigs: configs,
 	}, nil
 }
@@ -318,18 +326,24 @@ func (c *LSClient) postOnce(ctx context.Context, ep LSEndpoint, method string, p
 }
 
 // NormalizeAGYPlanType 将 Antigravity 上报的套餐/档位名映射为标准显示标签。
-func NormalizeAGYPlanType(planName, tierName string) string {
+func NormalizeAGYPlanType(planName, tierName, tierID string) string {
+	// 名称在两个 Ultra 档位中相同，先使用 LS 明确返回的档位 ID。
+	switch strings.ToLower(strings.TrimSpace(tierID)) {
+	case "g1-ultra-lite-tier":
+		return "Google AI Ultra 5×"
+	case "g1-ultra-tier":
+		return "Google AI Ultra 20×"
+	}
 	combined := strings.ToLower(strings.TrimSpace(planName + " " + tierName))
 	if combined == "" {
 		return ""
 	}
 	switch {
-	case strings.Contains(combined, "ultra") && (strings.Contains(combined, "20") || strings.Contains(combined, "max")):
-		return "Google AI Ultra 20×"
-	case strings.Contains(combined, "ultra") && strings.Contains(combined, "5"):
-		return "Google AI Ultra 5×"
 	case strings.Contains(combined, "ultra"):
-		return "Google AI Ultra 20×"
+		if multiplier := agyUltraMultiplier.FindStringSubmatch(combined); len(multiplier) > 1 {
+			return "Google AI Ultra " + multiplier[1] + "×"
+		}
+		return "Google AI Ultra"
 	case strings.Contains(combined, "pro"):
 		return "Google AI Pro"
 	case strings.Contains(combined, "free") || strings.Contains(combined, "standard") || strings.Contains(combined, "basic"):

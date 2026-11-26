@@ -227,7 +227,7 @@ func (runtime *applicationControlRuntime) installAccountReaders() {
 			if onlineEnabled {
 				if status, statusErr := lsClient.GetUserStatus(ctx); statusErr == nil {
 					email := strings.TrimSpace(status.Email)
-					plan := agyprovider.NormalizeAGYPlanType(status.PlanName, status.TierName)
+					plan := agyprovider.NormalizeAGYPlanType(status.PlanName, status.TierName, status.TierID)
 					if email != "" || plan != "" {
 						return agyprovider.AccountSnapshot{Email: email, PlanType: plan}, nil
 					}
