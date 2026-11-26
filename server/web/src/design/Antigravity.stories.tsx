@@ -21,4 +21,5 @@ export const SessionsAgy:Story={name:'07 会话与角色标签 · 主会话/子�
 export const SourcesAgy:Story={name:'08 采集来源与通道 · 本地轨迹与 LS RPC',args:{initialPath:'/usage/sources?provider=agy'}};
 export const DevicesAgy:Story={name:'09 设备上报状态 · 含 AGY',args:{initialPath:'/devices'}};
 export const PricingAgy:Story={name:'10 价目表 · AGY 分阶段参考目录与未收录模型',args:{initialPath:'/pricing?provider=agy'}};
-export const MobileMultiPoolQuota:Story={name:'11 窄屏多配额池',args:{initialPath:'/quota?provider=agy'},globals:{viewport:{value:'mobile',isRotated:false}}};
+export const PricingPlansAgy:Story={name:'11 价目表 · Antigravity 订阅套餐',args:{initialPath:'/pricing?provider=agy&tab=plans'}};
+export const MobileMultiPoolQuota:Story={name:'12 窄屏多配额池',args:{initialPath:'/quota?provider=agy'},globals:{viewport:{value:'mobile',isRotated:false}}};

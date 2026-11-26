@@ -9,6 +9,7 @@ import {referenceAmount,sourceLink} from '../api/catalog';
 import Pricing from './Pricing';
 import {summaryFixture} from '../test/statisticsFixture';
 import publicPlans from '../../../internal/service/catalog_srv/plans-20261002.json';
+import agyPlans from '../../../internal/service/catalog_srv/plans-20261126.json';
 beforeEach(()=>api.setSession({client_id:'test',name:'测试',purpose:'admin',csrf:'synthetic',expires_at_ms:null}));afterEach(()=>vi.unstubAllGlobals());
 it('retains observed unpriced models and escapes model names',async()=>{
  const row={key:'one',provider:'codex',model:'<img src=x onerror=alert(1)>',mode:'已观测 · 参考价未知',currency:'USD',unit:'未知',input_price:null,cached_price:null,cache_write_price:null,output_price:null,version:'',source_url:'javascript:alert(1)',verified_at_ms:0,effective_from_ms:null,evidence:'observed',notes:'未定价'};
@@ -133,4 +134,22 @@ it('shows Antigravity versioned phased API reference catalog and estimate disclo
  await user.click(screen.getByRole('button',{name:'历史计价证据（2）'}));
  expect(screen.getByText('agy-api-2026-11-25:phase2')).toBeInTheDocument();
  expect(screen.getByText('$4.00')).toBeInTheDocument();
+});
+
+it('shows Antigravity subscription tiers with Google AI Ultra switcher and Enterprise contract',async()=>{
+ expect(sourceLink('https://one.google.com/about/google-ai-plans/')).toBeTruthy();
+ expect(sourceLink('https://antigravity.google/')).toBeTruthy();
+ vi.stubGlobal('fetch',async()=>new Response(JSON.stringify({code:200,data:{version:'test',models:[],plans:[...publicPlans,...agyPlans]}})));
+ render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={['/pricing?provider=agy&tab=plans']}><Pricing /></MemoryRouter></QueryClientProvider>);
+ await screen.findByRole('heading',{name:'Google AI Ultra'});
+ expect(screen.getByRole('heading',{name:'Free'})).toBeInTheDocument();
+ expect(screen.getByRole('heading',{name:'Google AI Pro'})).toBeInTheDocument();
+ expect(screen.getByText('$99.99')).toBeInTheDocument();
+ const user=userEvent.setup();
+ await user.click(screen.getByRole('combobox',{name:'Google AI Ultra套餐档位'}));
+ await user.click(screen.getByText('Google AI Ultra 20x · $199.99 · 月付',{exact:true}));
+ expect(await screen.findByText('$199.99')).toBeInTheDocument();
+ await user.click(screen.getByText('团队与企业'));
+ expect(await screen.findByRole('heading',{name:'Gemini Enterprise'})).toBeInTheDocument();
+ expect(screen.getByText('联系销售')).toBeInTheDocument();
 });

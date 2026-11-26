@@ -85,4 +85,13 @@ func TestAGYCatalogVersionedPhasesAndObservedUnknown(t *testing.T) {
 	if !carbonCur2 || !flashCur2 {
 		t.Fatalf("phase2 AGY catalog switch failed: carbonCur2=%v flashCur2=%v", carbonCur2, flashCur2)
 	}
+	agyPlans := 0
+	for _, p := range out1.Plans {
+		if p.Provider == "agy" {
+			agyPlans++
+		}
+	}
+	if agyPlans < 4 {
+		t.Fatalf("expected AGY subscription plans in catalog, got %d", agyPlans)
+	}
 }

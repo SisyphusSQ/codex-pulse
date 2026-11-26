@@ -13,7 +13,7 @@ import {ErrorState,LoadingState} from '../components/QueryState';
 
 export default function Pricing({subscriptionContent,initialTab='models'}:{subscriptionContent?:ReactNode;initialTab?:'models'|'plans'}={}){
  const [params]=useSearchParams();
- const [tab,setTab]=useState(initialTab);
+ const [tab,setTab]=useState(params.get('tab')==='plans'?'plans':initialTab);
  const [provider,setProvider]=useState(params.get('provider')??'');
  const query=useQuery({queryKey:['catalog'],queryFn:({signal})=>getCatalog(signal)});
  const data=query.data;

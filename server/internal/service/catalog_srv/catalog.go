@@ -27,6 +27,9 @@ var publicModels20261118 []byte
 //go:embed plans-20261002.json
 var publicPlans []byte
 
+//go:embed plans-20261126.json
+var publicPlans20261126 []byte
+
 var (
 	agyCarbonPhaseCutoffMS = time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
 	agyFlashPhaseCutoffMS  = time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
@@ -66,6 +69,11 @@ func (s *Catalog) current(ctx context.Context) (out catalog_vo.Response, err err
 	if err = json.Unmarshal(publicPlans, &out.Plans, json.RejectUnknownMembers(true)); err != nil {
 		return out, fmt.Errorf("read public plan catalog: %w", err)
 	}
+	var planAdditions []catalog_vo.Plan
+	if err = json.Unmarshal(publicPlans20261126, &planAdditions, json.RejectUnknownMembers(true)); err != nil {
+		return out, fmt.Errorf("read public plan catalog additions: %w", err)
+	}
+	out.Plans = append(out.Plans, planAdditions...)
 	openAICatalog := pricing.BuiltinOpenAICatalog()
 	for _, version := range openAICatalog {
 		for _, m := range version.Models {

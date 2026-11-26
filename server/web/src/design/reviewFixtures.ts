@@ -12,6 +12,7 @@ import {heatmapDays,modelSeries,modelRows,sampleTotals,sessions,projects} from '
 import publicModels from '../../../internal/service/catalog_srv/models-20261027.json';
 import publicModelsAdditions from '../../../internal/service/catalog_srv/models-20261118.json';
 import publicPlans from '../../../internal/service/catalog_srv/plans-20261002.json';
+import publicPlansAdditions from '../../../internal/service/catalog_srv/plans-20261126.json';
 import releases from '../../../internal/service/catalog_srv/releases-20261027.json';
 import releasesAdditions from '../../../internal/service/catalog_srv/releases-20261118.json';
 
@@ -32,7 +33,7 @@ const agyModels:ModelPrice[]=[
  {key:'agy:claude-opus-4-6-thinking:agy-api-2026-11-25:reference',provider:'agy',model:'claude-opus-4-6-thinking',mode:'Antigravity · API 参考目录',currency:'USD',unit:'1M tokens',input_price:'5',cached_price:'0.5',cache_write_price:null,output_price:'25',version:'agy-api-2026-11-25',source_url:'agy_provider_api_pricing',verified_at_ms:agyVerifiedAt,effective_from_ms:agyVerifiedAt,evidence:'current',notes:agyCatalogNotes},
  {key:'agy:observed:gemini-experimental-preview',provider:'agy',model:'gemini-experimental-preview',mode:'已观测 · 参考价未知',currency:'USD',unit:'未知',input_price:null,cached_price:null,cache_write_price:null,output_price:null,version:'',source_url:'',verified_at_ms:0,effective_from_ms:null,evidence:'observed',notes:'保留实际模型名；没有匹配公开价格证据，不猜价或视为免费。'},
 ];
-export const reviewCatalog:Catalog={version:'reference-2026-11-18',models:[...models,...history,...agyModels,{key:'codex:observed:unpublished-model',provider:'codex',model:'unpublished-model',mode:'已观测 · 参考价未知',currency:'USD',unit:'未知',input_price:null,cached_price:null,cache_write_price:null,output_price:null,version:'',source_url:'',verified_at_ms:0,effective_from_ms:null,evidence:'observed',notes:'设计用未知型号；没有发布日期和公开价格。'}],plans:publicPlans as PlanPrice[]};
+export const reviewCatalog:Catalog={version:'reference-2026-11-18',models:[...models,...history,...agyModels,{key:'codex:observed:unpublished-model',provider:'codex',model:'unpublished-model',mode:'已观测 · 参考价未知',currency:'USD',unit:'未知',input_price:null,cached_price:null,cache_write_price:null,output_price:null,version:'',source_url:'',verified_at_ms:0,effective_from_ms:null,evidence:'observed',notes:'设计用未知型号；没有发布日期和公开价格。'}],plans:[...publicPlans,...publicPlansAdditions] as PlanPrice[]};
 
 const definitions=[
  ...modelRows.slice(0,4).map((m,i)=>({...m,provider:m.provider.toLowerCase(),model:['gpt-6.1-sol','gpt-4.1','Claude Sonnet 5.5','grok-4.7'][i]})),
