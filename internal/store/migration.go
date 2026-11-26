@@ -58,7 +58,8 @@ const (
 	applicationSchemaV37Version = 37
 	applicationSchemaV38Version = 38
 	applicationSchemaV39Version = 39
-	applicationSchemaVersion    = applicationSchemaV39Version
+	applicationSchemaV40Version = 40
+	applicationSchemaVersion    = applicationSchemaV40Version
 )
 
 // ApplicationSchemaVersion 返回当前二进制支持的 schema，不访问数据库。
@@ -385,6 +386,7 @@ var applicationMigrations = []migrationDefinition{
 	{version: applicationSchemaV39Version, name: "codex-paid-credits", checksum: applicationSchemaV39Checksum(), apply: func(ctx context.Context, transaction *gorm.DB) error {
 		return storeschema.EnsureObjects(ctx, transaction, paidCreditSchemaObjects)
 	}},
+	{version: applicationSchemaV40Version, name: "agy-local-facts", checksum: applicationSchemaV40Checksum(), apply: migrateAGYForV40},
 }
 
 type sourceFailureMigrationColumn struct {
@@ -1015,7 +1017,7 @@ func verifyApplicationSchema(ctx context.Context, transaction *gorm.DB) error {
 		currentAccountBindingSchemaObjects(),
 		metricsSchemaObjects, quotaPerformanceSchemaObjects,
 		storelight.CurrentSchemaObjects(),
-		currentDSHProviderSchemaObjects(),
+		currentAGYProviderSchemaObjects(),
 		cursorDashboardSchemaObjects,
 		cursorDashboardQuotaSchemaObjects,
 		apiSubscriptionSchemaObjects,

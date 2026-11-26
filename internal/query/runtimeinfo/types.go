@@ -311,6 +311,7 @@ type SettingsOnlineSnapshot struct {
 	GrokQuotaEnabled       bool `json:"grokQuotaEnabled"`
 	GrokAutoRefreshEnabled bool `json:"grokAutoRefreshEnabled"`
 	CursorOnlineEnabled    bool `json:"cursorOnlineEnabled"`
+	AGYOnlineEnabled       bool `json:"agyOnlineEnabled"`
 }
 
 type SettingsCodexAccountsSnapshot struct {

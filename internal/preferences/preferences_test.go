@@ -54,7 +54,7 @@ func TestFileStoreConfirmCreatesCurrentTypedPreferences(t *testing.T) {
 	}
 	if got.Online != (OnlinePreferences{
 		QuotaEnabled: true, ResetCreditsEnabled: false, CursorOnlineEnabled: true,
-		GrokQuotaEnabled: true, GrokAutoRefreshEnabled: true,
+		GrokQuotaEnabled: true, GrokAutoRefreshEnabled: true, AGYOnlineEnabled: true,
 	}) {
 		t.Fatalf("Online = %#v", got.Online)
 	}
@@ -108,7 +108,8 @@ func TestV2PreferencesMigrateMissingGrokAutoRefreshToEnabled(t *testing.T) {
 	if decoded.SchemaVersion != CurrentPreferencesSchemaVersion ||
 		decoded.Providers != DefaultProviderPreferences() ||
 		decoded.CodexAccounts != DefaultCodexAccountPreferences() ||
-		!decoded.Online.GrokAutoRefreshEnabled || !decoded.Online.CursorOnlineEnabled {
+		!decoded.Online.GrokAutoRefreshEnabled || !decoded.Online.CursorOnlineEnabled ||
+		!decoded.Online.AGYOnlineEnabled {
 		t.Fatalf("migrated = %#v", decoded)
 	}
 }
@@ -135,13 +136,136 @@ func TestV3PreferencesMigrateQuotaHistoryRetentionToEnabled(t *testing.T) {
 		t.Fatalf("json.Marshal(v3) error = %v", err)
 	}
 	content = removeNestedJSONField(t, content, "providers", "dsh")
+	content = removeNestedJSONField(t, content, "providers", "agy")
+	content = removeNestedJSONField(t, content, "online", "agy_online_enabled")
 	decoded, migrated, err := decodePreferences(content)
 	if err != nil {
 		t.Fatalf("decodePreferences() error = %v", err)
 	}
 	if !migrated || decoded.SchemaVersion != CurrentPreferencesSchemaVersion ||
-		decoded.CodexAccounts != DefaultCodexAccountPreferences() {
+		decoded.CodexAccounts != DefaultCodexAccountPreferences() ||
+		decoded.Providers.DSH.Intent != ProviderIntentAuto ||
+		decoded.Providers.AGY.Intent != ProviderIntentAuto ||
+		!decoded.Online.AGYOnlineEnabled {
 		t.Fatalf("migrated = %#v, didMigrate = %t", decoded, migrated)
+	}
+}
+
+func TestV4AndV5PreferencesMigrateKeepingExistingSettingsAndAddingAGYDefaults(t *testing.T) {
+	t.Parallel()
+	base, err := preferencesFromOnboarding(validSnapshot(filepath.Join(t.TempDir(), "legacy-typed-home")))
+	if err != nil {
+		t.Fatalf("preferencesFromOnboarding() error = %v", err)
+	}
+	base.Revision = 7
+	base.Providers = ProviderPreferences{
+		Codex:  ProviderPreference{Intent: ProviderIntentDisabled},
+		Cursor: ProviderPreference{Intent: ProviderIntentEnabled},
+		Grok:   ProviderPreference{Intent: ProviderIntentDisabled},
+		DSH:    ProviderPreference{Intent: ProviderIntentEnabled},
+		AGY:    ProviderPreference{Intent: ProviderIntentDisabled},
+	}
+	base.Online = OnlinePreferences{
+		QuotaEnabled:           false,
+		ResetCreditsEnabled:    true,
+		CursorOnlineEnabled:    false,
+		GrokQuotaEnabled:       false,
+		GrokAutoRefreshEnabled: false,
+		AGYOnlineEnabled:       false,
+	}
+	v6Bytes, err := marshalPreferences(base)
+	if err != nil {
+		t.Fatalf("marshalPreferences() error = %v", err)
+	}
+
+	// v4 文档：无 dsh、无 agy、无 agy_online_enabled
+	v4Bytes := replaceJSONField(t, v6Bytes, "schema_version", preferencesSchemaV4)
+	v4Bytes = removeNestedJSONField(t, v4Bytes, "providers", "dsh")
+	v4Bytes = removeNestedJSONField(t, v4Bytes, "providers", "agy")
+	v4Bytes = removeNestedJSONField(t, v4Bytes, "online", "agy_online_enabled")
+
+	decodedV4, migratedV4, err := decodePreferences(v4Bytes)
+	if err != nil {
+		t.Fatalf("decodePreferences(v4) error = %v", err)
+	}
+	if !migratedV4 || decodedV4.SchemaVersion != CurrentPreferencesSchemaVersion || decodedV4.Revision != 7 ||
+		decodedV4.Providers.Codex.Intent != ProviderIntentDisabled ||
+		decodedV4.Providers.Cursor.Intent != ProviderIntentEnabled ||
+		decodedV4.Providers.Grok.Intent != ProviderIntentDisabled ||
+		decodedV4.Providers.DSH.Intent != ProviderIntentAuto ||
+		decodedV4.Providers.AGY.Intent != ProviderIntentAuto ||
+		decodedV4.Online.QuotaEnabled || !decodedV4.Online.ResetCreditsEnabled ||
+		decodedV4.Online.CursorOnlineEnabled || decodedV4.Online.GrokQuotaEnabled ||
+		decodedV4.Online.GrokAutoRefreshEnabled || !decodedV4.Online.AGYOnlineEnabled {
+		t.Fatalf("migrated v4 = %#v, migrated=%t", decodedV4, migratedV4)
+	}
+
+	// v5 文档：保留 dsh，无 agy、无 agy_online_enabled
+	v5Bytes := replaceJSONField(t, v6Bytes, "schema_version", preferencesSchemaV5)
+	v5Bytes = removeNestedJSONField(t, v5Bytes, "providers", "agy")
+	v5Bytes = removeNestedJSONField(t, v5Bytes, "online", "agy_online_enabled")
+
+	decodedV5, migratedV5, err := decodePreferences(v5Bytes)
+	if err != nil {
+		t.Fatalf("decodePreferences(v5) error = %v", err)
+	}
+	if !migratedV5 || decodedV5.SchemaVersion != CurrentPreferencesSchemaVersion || decodedV5.Revision != 7 ||
+		decodedV5.Providers.Codex.Intent != ProviderIntentDisabled ||
+		decodedV5.Providers.Cursor.Intent != ProviderIntentEnabled ||
+		decodedV5.Providers.Grok.Intent != ProviderIntentDisabled ||
+		decodedV5.Providers.DSH.Intent != ProviderIntentEnabled ||
+		decodedV5.Providers.AGY.Intent != ProviderIntentAuto ||
+		decodedV5.Online.QuotaEnabled || !decodedV5.Online.ResetCreditsEnabled ||
+		decodedV5.Online.CursorOnlineEnabled || decodedV5.Online.GrokQuotaEnabled ||
+		decodedV5.Online.GrokAutoRefreshEnabled || !decodedV5.Online.AGYOnlineEnabled {
+		t.Fatalf("migrated v5 = %#v, migrated=%t", decodedV5, migratedV5)
+	}
+
+	// v5 文档若夹带 v6 字段必须拒绝
+	v5WithAGYProvider := replaceNestedJSONField(t, v5Bytes, "providers", "agy", map[string]any{"intent": "auto"})
+	if _, _, err := decodePreferences(v5WithAGYProvider); !errors.Is(err, ErrInvalidPreferences) {
+		t.Fatalf("decodePreferences(v5 with agy provider) error = %v, want ErrInvalidPreferences", err)
+	}
+	v5WithAGYOnline := replaceNestedJSONField(t, v5Bytes, "online", "agy_online_enabled", true)
+	if _, _, err := decodePreferences(v5WithAGYOnline); !errors.Is(err, ErrInvalidPreferences) {
+		t.Fatalf("decodePreferences(v5 with agy_online_enabled) error = %v, want ErrInvalidPreferences", err)
+	}
+
+	// 磁盘端到端迁移：v5 落盘后 LoadPreferences 原子升至 v6 且重开幂等
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatalf("os.Chmod(root) error = %v", err)
+	}
+	path := filepath.Join(root, "preferences.json")
+	if err := os.WriteFile(path, append(v5Bytes, '\n'), 0o600); err != nil {
+		t.Fatalf("os.WriteFile(v5) error = %v", err)
+	}
+	store, err := NewFileStore(path)
+	if err != nil {
+		t.Fatalf("NewFileStore() error = %v", err)
+	}
+	loaded, err := store.LoadPreferences(context.Background())
+	if err != nil {
+		t.Fatalf("LoadPreferences(v5) error = %v", err)
+	}
+	if !reflect.DeepEqual(loaded, decodedV5) {
+		t.Fatalf("disk migrated v5 = %#v, want %#v", loaded, decodedV5)
+	}
+	firstBytes, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("os.ReadFile() error = %v", err)
+	}
+	reopened, err := NewFileStore(path)
+	if err != nil {
+		t.Fatalf("NewFileStore(reopen) error = %v", err)
+	}
+	reloaded, err := reopened.LoadPreferences(context.Background())
+	if err != nil || !reflect.DeepEqual(reloaded, loaded) {
+		t.Fatalf("reloaded = %#v, %v, want %#v", reloaded, err, loaded)
+	}
+	secondBytes, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(firstBytes, secondBytes) {
+		t.Fatalf("reopening migrated v6 rewrote bytes")
 	}
 }
 
@@ -280,6 +404,7 @@ func TestExplicitProviderIntentRoundTripSurvivesReload(t *testing.T) {
 		Cursor: ProviderPreference{Intent: ProviderIntentEnabled},
 		Grok:   ProviderPreference{Intent: ProviderIntentAuto},
 		DSH:    ProviderPreference{Intent: ProviderIntentAuto},
+		AGY:    ProviderPreference{Intent: ProviderIntentDisabled},
 	}
 	if err := store.CompareAndSwap(context.Background(), current.Revision, updated); err != nil {
 		t.Fatalf("CompareAndSwap() error = %v", err)
@@ -453,6 +578,7 @@ func TestDecodePreferencesRejectsUnknownSchemaVersion(t *testing.T) {
 	for _, content := range []string{
 		`{"schema_version":0}`,
 		`{"schema_version":4}`,
+		`{"schema_version":7}`,
 	} {
 		if _, _, err := decodePreferences([]byte(content)); !errors.Is(err, ErrInvalidPreferences) {
 			t.Fatalf("decodePreferences(%s) error = %v, want ErrInvalidPreferences", content, err)
@@ -482,8 +608,8 @@ func TestDecodePreferencesRejectsDuplicateMissingAndNullRequiredFields(t *testin
 		"legacy case alias":   replaceJSONField(t, legacy, "Online_Quota_Enabled", false),
 		"legacy missing bool": removeJSONField(t, legacy, "online_quota_enabled"),
 		"legacy null bool":    replaceJSONField(t, legacy, "online_quota_enabled", nil),
-		"current duplicate": bytes.Replace(current, []byte(`"schema_version": 5,`),
-			[]byte(`"schema_version": 5, "schema_version": 5,`), 1),
+		"current duplicate": bytes.Replace(current, []byte(`"schema_version": 6,`),
+			[]byte(`"schema_version": 6, "schema_version": 6,`), 1),
 		"current root case alias": replaceJSONField(t, current, "Online", map[string]any{
 			"quota_enabled": true, "reset_credits_enabled": false,
 		}),
@@ -491,6 +617,9 @@ func TestDecodePreferencesRejectsDuplicateMissingAndNullRequiredFields(t *testin
 		"current null object":          replaceJSONField(t, current, "online", nil),
 		"current nested case alias":    replaceNestedJSONField(t, current, "online", "Quota_Enabled", false),
 		"current missing bool":         removeNestedJSONField(t, current, "online", "quota_enabled"),
+		"current missing agy online":   removeNestedJSONField(t, current, "online", "agy_online_enabled"),
+		"current null agy online":      replaceNestedJSONField(t, current, "online", "agy_online_enabled", nil),
+		"current missing agy provider": removeNestedJSONField(t, current, "providers", "agy"),
 		"current null bool":            replaceNestedJSONField(t, current, "online", "quota_enabled", nil),
 		"current optional root null":   replaceJSONField(t, current, "detached_homes", nil),
 		"current optional nested null": replaceNestedJSONField(t, current, "updates", "skipped_version", nil),

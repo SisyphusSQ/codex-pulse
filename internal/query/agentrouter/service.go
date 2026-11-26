@@ -41,6 +41,7 @@ type QuotaRouter struct {
 	cursor ProviderQuotaService
 	grok   ProviderQuotaService
 	dsh    QuotaService
+	agy    ProviderQuotaService
 	states providercontrol.StateReader
 }
 
@@ -70,6 +71,11 @@ func (service *QuotaRouter) RefreshQuota(
 		backend = service.cursor
 	case agentprovider.Grok:
 		backend = service.grok
+	case agentprovider.AGY:
+		if service.agy == nil {
+			return agentprovider.Context{}, basequery.NewUnavailableFailure(nil)
+		}
+		backend = service.agy
 	default:
 		return agentprovider.Context{}, basequery.NewValidationFailure("provider", agentprovider.ErrInvalidProvider)
 	}
@@ -134,6 +140,11 @@ func (service *QuotaRouter) quotaBackend(provider string) (QuotaService, error) 
 			return service.dsh, nil
 		}
 		return nil, basequery.NewUnavailableFailure(nil)
+	case agentprovider.AGY:
+		if service.agy != nil {
+			return service.agy, nil
+		}
+		return nil, basequery.NewUnavailableFailure(nil)
 	case agentprovider.Grok:
 		return service.grok, nil
 	case agentprovider.Codex:
@@ -153,6 +164,12 @@ func quotaProviderContext(provider string, responseContext agentprovider.Context
 		}
 		responseContext.EffectiveProvider = provider
 		return responseContext
+	case agentprovider.AGY:
+		if responseContext.EffectiveProvider == "" {
+			return agentprovider.AGYContext()
+		}
+		responseContext.EffectiveProvider = provider
+		return responseContext
 	default:
 		responseContext.EffectiveProvider = provider
 		return responseContext
@@ -167,6 +184,7 @@ type Service struct {
 	grokUsage        UsageService
 	dshUsage         UsageService
 	dshInvocation    InvocationService
+	agyUsage         UsageService
 	grokInvocation   InvocationService
 	states           providercontrol.StateReader
 }
@@ -194,7 +212,11 @@ func (service *Service) BindDSH(usage UsageService, invocation InvocationService
 	service.dshUsage = usage
 	service.dshInvocation = invocation
 }
-func (router *QuotaRouter) BindDSH(quota QuotaService) { router.dsh = quota }
+func (service *Service) BindAGY(usage UsageService) {
+	service.agyUsage = usage
+}
+func (router *QuotaRouter) BindDSH(quota QuotaService)         { router.dsh = quota }
+func (router *QuotaRouter) BindAGY(quota ProviderQuotaService) { router.agy = quota }
 
 func (service *Service) BindStates(reader providercontrol.StateReader) {
 	if service == nil {
@@ -403,6 +425,11 @@ func (service *Service) usageBackend(provider string) (UsageService, error) {
 			return service.dshUsage, nil
 		}
 		return nil, basequery.NewUnavailableFailure(nil)
+	case agentprovider.AGY:
+		if service.agyUsage != nil {
+			return service.agyUsage, nil
+		}
+		return nil, basequery.NewUnavailableFailure(nil)
 	case agentprovider.Grok:
 		return service.grokUsage, nil
 	case agentprovider.Codex:
@@ -420,6 +447,8 @@ func (service *Service) invocationBackend(provider string) (InvocationService, e
 		if service.dshInvocation != nil {
 			return service.dshInvocation, nil
 		}
+		return nil, basequery.NewUnavailableFailure(nil)
+	case agentprovider.AGY:
 		return nil, basequery.NewUnavailableFailure(nil)
 	case agentprovider.Grok:
 		return service.grokInvocation, nil

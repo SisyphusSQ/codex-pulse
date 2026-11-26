@@ -31,6 +31,10 @@ func (runtime *applicationLifecycleRuntime) UpdateSettings(
 	if err != nil {
 		return core.SettingsUpdateReceipt{}, publicRuntimeCommandFailure(err)
 	}
+	agyOnlineEnabled := current.Online.AGYOnlineEnabled
+	if request.Online.AGYOnlineEnabled != nil {
+		agyOnlineEnabled = *request.Online.AGYOnlineEnabled
+	}
 	update := preferences.SettingsUpdate{
 		ExpectedRevision: expectedRevision,
 		Providers:        requestProviders(request.Providers, current.Providers),
@@ -40,6 +44,7 @@ func (runtime *applicationLifecycleRuntime) UpdateSettings(
 			CursorOnlineEnabled:    request.Online.CursorOnlineEnabled,
 			GrokQuotaEnabled:       request.Online.GrokQuotaEnabled,
 			GrokAutoRefreshEnabled: request.Online.GrokAutoRefreshEnabled,
+			AGYOnlineEnabled:       agyOnlineEnabled,
 		},
 		CodexAccounts: preferences.CodexAccountPreferences{
 			RetainQuotaHistory: request.CodexAccounts.RetainQuotaHistory,
@@ -255,6 +260,8 @@ func requestProviders(
 			result.DSH.Intent = intent
 		case "grok":
 			result.Grok.Intent = intent
+		case "agy":
+			result.AGY.Intent = intent
 		}
 	}
 	return result

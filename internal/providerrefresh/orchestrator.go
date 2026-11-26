@@ -31,6 +31,7 @@ type Config struct {
 	Cursor       CursorRefresher
 	Grok         GrokRefresher
 	DSH          GrokRefresher
+	AGY          ProviderRefresher
 	Controller   *providercontrol.Controller
 	Invalidation InvalidationNotifier
 	Now          func() time.Time
@@ -41,6 +42,7 @@ type Orchestrator struct {
 	cursor       CursorRefresher
 	grok         GrokRefresher
 	dsh          GrokRefresher
+	agy          ProviderRefresher
 	controller   *providercontrol.Controller
 	invalidation InvalidationNotifier
 	now          func() time.Time
@@ -65,7 +67,7 @@ func New(config Config) (*Orchestrator, error) {
 		now = time.Now
 	}
 	return &Orchestrator{
-		codex: config.Codex, cursor: config.Cursor, grok: config.Grok, dsh: config.DSH,
+		codex: config.Codex, cursor: config.Cursor, grok: config.Grok, dsh: config.DSH, agy: config.AGY,
 		controller: config.Controller, invalidation: config.Invalidation, now: now,
 	}, nil
 }
@@ -184,11 +186,18 @@ func (orchestrator *Orchestrator) refreshAdapter(ctx context.Context, provider, 
 			return UnavailableProvider(agentprovider.DSH, ComponentsFor(agentprovider.DSH)...)
 		}
 		return orchestrator.dsh.RefreshProvider(ctx, trigger)
-	default:
+	case agentprovider.AGY:
+		if orchestrator.agy == nil {
+			return UnavailableProvider(agentprovider.AGY, ComponentsFor(agentprovider.AGY)...)
+		}
+		return orchestrator.agy.RefreshProvider(ctx, trigger)
+	case agentprovider.Grok:
 		if orchestrator.grok == nil {
 			return UnavailableProvider(agentprovider.Grok, ComponentsFor(agentprovider.Grok)...)
 		}
 		return orchestrator.grok.RefreshProvider(ctx, trigger)
+	default:
+		return UnavailableProvider(provider, ComponentsFor(provider)...)
 	}
 }
 
@@ -230,31 +239,23 @@ func (orchestrator *Orchestrator) notifyOnce(ctx context.Context, providers []Pr
 	}
 }
 
-func domainFor(_, component string) core.InvalidationDomain {
-	switch component {
-	case ComponentCodexQuota, ComponentCodexResetCredits:
+func domainFor(provider, component string) core.InvalidationDomain {
+	switch {
+	case provider == agentprovider.Codex && (component == ComponentCodexQuota || component == ComponentCodexResetCredits):
 		return core.InvalidationQuotaCodex
-	case ComponentCursorDashboard, ComponentCursorGrokBot:
+	case provider == agentprovider.Cursor && (component == ComponentCursorDashboard || component == ComponentCursorGrokBot):
 		return core.InvalidationQuotaCursor
-	case ComponentGrokBilling:
+	case provider == agentprovider.Grok && component == ComponentGrokBilling:
 		return core.InvalidationQuotaGrok
+	case provider == agentprovider.AGY && component == ComponentAGYQuota:
+		return core.InvalidationQuota
 	default:
 		return core.InvalidationIndex
 	}
 }
 
 func cancelledProvider(provider string) ProviderResult {
-	var components []string
-	switch provider {
-	case agentprovider.Codex:
-		components = []string{ComponentCodexLocal, ComponentCodexQuota, ComponentCodexResetCredits}
-	case agentprovider.Cursor:
-		components = []string{ComponentCursorLocal, ComponentCursorDashboard, ComponentCursorGrokBot}
-	case agentprovider.DSH:
-		components = []string{ComponentDSHLocal}
-	default:
-		components = []string{ComponentGrokLocal, ComponentGrokBilling}
-	}
+	components := ComponentsFor(provider)
 	results := make([]ComponentResult, 0, len(components))
 	for _, component := range components {
 		results = append(results, ComponentResult{

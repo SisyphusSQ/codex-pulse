@@ -622,6 +622,8 @@ func providerContext(provider string) agentprovider.Context {
 		return agentprovider.CodexContext()
 	case agentprovider.Grok:
 		return agentprovider.GrokContext()
+	case agentprovider.AGY:
+		return agentprovider.AGYContext()
 	default:
 		return agentprovider.Context{EffectiveProvider: provider}
 	}

@@ -95,3 +95,93 @@ func TestConfiguredCodexProbeRequiresConfirmedPhysicalIdentity(t *testing.T) {
 		t.Fatalf("Codex(replaced identity) = %#v", got)
 	}
 }
+
+func TestAGYProbeClassifiesMissingInaccessibleUnsafeAndAvailable(t *testing.T) {
+	probes := DefaultProbes(nil, nil)
+
+	// 1. 缺失根目录 -> not_found
+	missingRoot := filepath.Join(t.TempDir(), "does-not-exist")
+	t.Setenv("CODEX_PULSE_AGY_HOME", missingRoot)
+	t.Setenv("ANTIGRAVITY_GEMINI_DIR", "")
+	if got := probes.AGY(context.Background()); got.State != DiscoveryMissing || got.ReasonCode != ReasonNotFound {
+		t.Fatalf("AGY(missing root) = %#v, want missing/not_found", got)
+	}
+
+	// 2. 空产品目录 -> not_found
+	emptyRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(emptyRoot, "antigravity"), 0o700); err != nil {
+		t.Fatalf("mkdir empty product: %v", err)
+	}
+	t.Setenv("CODEX_PULSE_AGY_HOME", emptyRoot)
+	if got := probes.AGY(context.Background()); got.State != DiscoveryMissing || got.ReasonCode != ReasonNotFound {
+		t.Fatalf("AGY(empty product dir) = %#v, want missing/not_found", got)
+	}
+
+	// 3. 相对路径 / 非规范路径 -> unsafe_path
+	t.Setenv("CODEX_PULSE_AGY_HOME", "relative/gemini")
+	if got := probes.AGY(context.Background()); got.State != DiscoveryInvalid || got.ReasonCode != ReasonUnsafePath {
+		t.Fatalf("AGY(relative env) = %#v, want invalid/unsafe_path", got)
+	}
+
+	// 4. 符号链接产品目录 -> unsafe_path
+	symlinkRoot := t.TempDir()
+	realTarget := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(realTarget, "conversations"), 0o700); err != nil {
+		t.Fatalf("mkdir real target: %v", err)
+	}
+	if err := os.Symlink(realTarget, filepath.Join(symlinkRoot, "antigravity")); err != nil {
+		t.Fatalf("symlink product: %v", err)
+	}
+	t.Setenv("CODEX_PULSE_AGY_HOME", symlinkRoot)
+	if got := probes.AGY(context.Background()); got.State != DiscoveryInvalid || got.ReasonCode != ReasonUnsafePath {
+		t.Fatalf("AGY(symlink product) = %#v, want invalid/unsafe_path", got)
+	}
+
+	// 5. 无权限产品目录 -> permission_denied（非 root 用户）
+	if os.Geteuid() != 0 {
+		noPermRoot := t.TempDir()
+		noPermProduct := filepath.Join(noPermRoot, "antigravity-ide")
+		if err := os.MkdirAll(noPermProduct, 0o700); err != nil {
+			t.Fatalf("mkdir noPermProduct: %v", err)
+		}
+		if err := os.Chmod(noPermProduct, 0o000); err != nil {
+			t.Fatalf("chmod 0000: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(noPermProduct, 0o700) })
+		t.Setenv("CODEX_PULSE_AGY_HOME", noPermRoot)
+		if got := probes.AGY(context.Background()); got.State != DiscoveryInaccessible || got.ReasonCode != ReasonPermissionDenied {
+			t.Fatalf("AGY(inaccessible) = %#v, want inaccessible/permission_denied", got)
+		}
+	}
+
+	// 6. 可用：任一产品目录含关键文件/目录，且严格 metadata-only 不读 SQLite 正文
+	availRoot := t.TempDir()
+	cliProduct := filepath.Join(availRoot, "antigravity-cli")
+	if err := os.MkdirAll(cliProduct, 0o700); err != nil {
+		t.Fatalf("mkdir cliProduct: %v", err)
+	}
+	secret := "agy-secret-prompt-body-never-read"
+	if err := os.WriteFile(filepath.Join(cliProduct, "conversation_summaries.db"), []byte("not-a-real-sqlite:"+secret), 0o600); err != nil {
+		t.Fatalf("write summaries db: %v", err)
+	}
+	t.Setenv("CODEX_PULSE_AGY_HOME", availRoot)
+	t.Setenv("ANTIGRAVITY_GEMINI_DIR", missingRoot)
+	got := probes.AGY(context.Background())
+	if got.State != DiscoveryAvailable || got.ReasonCode != ReasonAvailable {
+		t.Fatalf("AGY(available) = %#v, want available/available", got)
+	}
+	if strings.Contains(got.ReasonCode, secret) || strings.Contains(got.ReasonCode, availRoot) {
+		t.Fatalf("AGY probe leaked content or path: %#v", got)
+	}
+
+	// 7. ANTIGRAVITY_GEMINI_DIR 回退生效（brain/ 目录可用）
+	fallbackRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(fallbackRoot, "antigravity-idea", "brain"), 0o700); err != nil {
+		t.Fatalf("mkdir idea brain: %v", err)
+	}
+	t.Setenv("CODEX_PULSE_AGY_HOME", "")
+	t.Setenv("ANTIGRAVITY_GEMINI_DIR", fallbackRoot)
+	if got := probes.AGY(context.Background()); got.State != DiscoveryAvailable || got.ReasonCode != ReasonAvailable {
+		t.Fatalf("AGY(ANTIGRAVITY_GEMINI_DIR) = %#v, want available", got)
+	}
+}
