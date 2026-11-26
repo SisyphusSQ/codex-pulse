@@ -11,7 +11,7 @@ import (
 	reporting_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/reporting_dto"
 	statistics_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/statistics_dto"
 	statistics_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/statistics_vo"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/service/reporting_srv"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/sessionmerge"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
 
@@ -80,7 +80,7 @@ func (s *Statistics) attachAGYSessionRoles(ctx context.Context, q statistics_dto
 			return err
 		}
 		for sessionKey, copies := range sources {
-			decision := reporting_srv.DecideSnapshot(copies, nil)
+			decision := sessionmerge.DecideSnapshot(copies, nil)
 			roles[sessionKey] = decision.Source.Snapshot.SessionRole
 		}
 	}
