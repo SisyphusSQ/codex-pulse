@@ -15,7 +15,7 @@ import (
 func accountUsage(raw, session string, at, reset, total int64) reportingv1.AccountTokenUsage {
 	u := reportingv1.AccountTokenUsage{Provider: "codex", AccountID: raw, LocalScope: "scope-" + raw, WindowStartAtMS: reset - 10080*60000, ResetsAtMS: reset, CollectedAtMS: at}
 	if session != "" {
-		f := reportingv1.AccountTokenFact{SessionID: session, ObservedAtMS: at, InputTokens: total, TotalTokens: total}
+		f := reportingv1.AccountTokenFact{SessionID: session, ObservedAtMS: at, InputTokens: total, ReasoningTokens: new(int64(0)), TotalTokens: total}
 		f.ID = reportingv1.ContributionID("codex", session, f.Contribution(), 0)
 		u.Facts = []reportingv1.AccountTokenFact{f}
 	}

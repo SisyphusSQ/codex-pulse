@@ -41,7 +41,11 @@ func (s *Reporting) acceptAccountTokens(ctx context.Context, p access_dto.Princi
 			}
 			rows[row.ID] = row
 		}
-		period := reporting_do.AccountTokenPeriod{ID: reportingv1.Key(p.ID, accountKey, strconv.FormatInt(u.ResetsAtMS, 10)), AccountKey: accountKey, Provider: u.Provider, ClientID: p.ID, WindowStartAtMS: u.WindowStartAtMS, ResetsAtMS: u.ResetsAtMS, CollectedAtMS: u.CollectedAtMS}
+		periodID := reportingv1.Key(p.ID, accountKey, strconv.FormatInt(u.WindowStartAtMS, 10), strconv.FormatInt(u.ResetsAtMS, 10))
+		if u.Provider == "codex" && u.ResetsAtMS-u.WindowStartAtMS == 10080*60000 {
+			periodID = reportingv1.Key(p.ID, accountKey, strconv.FormatInt(u.ResetsAtMS, 10))
+		}
+		period := reporting_do.AccountTokenPeriod{ID: periodID, AccountKey: accountKey, Provider: u.Provider, ClientID: p.ID, WindowStartAtMS: u.WindowStartAtMS, ResetsAtMS: u.ResetsAtMS, CollectedAtMS: u.CollectedAtMS}
 		if previous, ok := periods[period.ID]; !ok || previous.CollectedAtMS < period.CollectedAtMS {
 			periods[period.ID] = period
 		}

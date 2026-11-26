@@ -3,6 +3,7 @@ package reporting
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -148,7 +149,7 @@ func TestAccountUsageLateIndexKeepsExistingFactIdentity(t *testing.T) {
 		t.Fatal("late index changed the packet key")
 	}
 	facts := after[1].Batch.AccountUsage[0].Facts
-	if len(facts) != 2 || facts[0] != before[1].Batch.AccountUsage[0].Facts[0] || facts[1].ObservedAtMS != 130 {
+	if len(facts) != 2 || !reflect.DeepEqual(facts[0], before[1].Batch.AccountUsage[0].Facts[0]) || facts[1].ObservedAtMS != 130 {
 		t.Fatal("late sweep lost existing identity or the new fact", facts)
 	}
 }

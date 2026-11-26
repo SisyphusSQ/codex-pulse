@@ -35,7 +35,7 @@ func tokenBatch(count int, account string) reportingv1.Batch {
 		packet := u
 		packet.Facts = make([]reportingv1.AccountTokenFact, 0, 367)
 		for i := start; i < min(start+367, count); i++ {
-			f := reportingv1.AccountTokenFact{SessionID: fmt.Sprintf("session-%d", i/367), ObservedAtMS: accountTokensNow - 10000 + int64(i), InputTokens: 10, TotalTokens: 10}
+			f := reportingv1.AccountTokenFact{SessionID: fmt.Sprintf("session-%d", i/367), ObservedAtMS: accountTokensNow - 10000 + int64(i), InputTokens: 10, ReasoningTokens: new(int64(0)), TotalTokens: 10}
 			f.ID = reportingv1.ContributionID("codex", f.SessionID, f.Contribution(), 0)
 			packet.Facts = append(packet.Facts, f)
 		}

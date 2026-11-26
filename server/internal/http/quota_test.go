@@ -49,4 +49,17 @@ func TestQuotaHTTPAuthBoundsAndEmptyUnknown(t *testing.T) {
 	if response := request(server, http.MethodGet, origin, "/api/v1/quotas/pace", "", &administrator, false); response.Code != 200 {
 		t.Fatal("admin pace", response.Code)
 	}
+	if response := request(server, http.MethodGet, origin, "/api/v1/quotas/model-usage", "", nil, false); response.Code != 401 {
+		t.Fatal("anonymous model-usage", response.Code)
+	}
+	if response := reportingRequest(server, origin, http.MethodGet, "/api/v1/quotas/model-usage", "", collector); response.Code != 403 {
+		t.Fatal("collector model-usage", response.Code)
+	}
+	if response := request(server, http.MethodGet, origin, "/api/v1/quotas/model-usage?provider=agy", "", &administrator, false); response.Code != 400 {
+		t.Fatal("missing account_key/window_key model-usage", response.Code)
+	}
+	missingHex := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if response := request(server, http.MethodGet, origin, "/api/v1/quotas/model-usage?provider=agy&account_key="+missingHex+"&window_key="+missingHex, "", &administrator, false); response.Code != 404 {
+		t.Fatal("missing AGY window model-usage", response.Code)
+	}
 }

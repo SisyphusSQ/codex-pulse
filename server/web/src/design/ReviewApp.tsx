@@ -1,10 +1,10 @@
 import {useEffect,useState} from 'react';
 import {PulseApp,createQueryClient} from '../App';
 import {api} from '../api/client';
-import {installReviewApi,type ReviewModelUsage} from './reviewApi';
+import {installReviewApi,type ReviewModelUsageInput} from './reviewApi';
 import type {ReviewScenario} from './reviewFixtures';
 
-export function ReviewApp({initialPath='/',scenario='current',ticket,previewTitle='当前 Web 实现',modelUsage}:{initialPath?:string;scenario?:ReviewScenario;ticket?:string;previewTitle?:string;modelUsage?:ReviewModelUsage}) {
+export function ReviewApp({initialPath='/',scenario='current',ticket,previewTitle='当前 Web 实现',modelUsage}:{initialPath?:string;scenario?:ReviewScenario;ticket?:string;previewTitle?:string;modelUsage?:ReviewModelUsageInput}) {
  const [client]=useState(createQueryClient);
  const [ready,setReady]=useState(false);
  useEffect(()=>{

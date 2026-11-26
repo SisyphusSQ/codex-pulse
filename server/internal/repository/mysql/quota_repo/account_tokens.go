@@ -13,28 +13,28 @@ import (
 
 const accountTokenFactLimit = 200000
 
-func (r *Quota) accountTokenPeriods(ctx context.Context, q quota_dto.Query, account string, start, now int64) *gorm.DB {
+func (r *Quota) accountTokenPeriods(ctx context.Context, q quota_dto.Query, provider, account string, start, end, now int64) *gorm.DB {
 	periods := r.engine.DB(ctx).Model(&reporting_do.AccountTokenPeriod{}).
-		Where("account_key = ? AND provider = 'codex' AND collected_at_ms >= ? AND collected_at_ms <= ? AND window_start_at_ms <= ? AND resets_at_ms > ?", account, start, now+5*60*1000, now, now)
+		Where("account_key = ? AND provider = ? AND collected_at_ms >= ? AND collected_at_ms <= ? AND window_start_at_ms <= ? AND resets_at_ms > ? AND (resets_at_ms - window_start_at_ms) = ?", account, provider, start, now+5*60*1000, now, now, end-start)
 	if q.ClientID != "" {
 		periods = periods.Where("client_id = ?", q.ClientID)
 	}
 	return periods.Select("1")
 }
 
-func (r *Quota) accountTokenFacts(ctx context.Context, q quota_dto.Query, account string, start, end, now int64) *gorm.DB {
+func (r *Quota) accountTokenFacts(ctx context.Context, q quota_dto.Query, provider, account string, start, end, now int64) *gorm.DB {
 	facts := r.engine.DB(ctx).Model(&reporting_do.AccountTokenFact{}).
-		Where("account_key = ? AND provider = 'codex' AND observed_at_ms >= ? AND observed_at_ms < ? AND observed_at_ms <= ?", account, start, end, now)
+		Where("account_key = ? AND provider = ? AND observed_at_ms >= ? AND observed_at_ms < ? AND observed_at_ms <= ?", account, provider, start, end, now)
 	if q.ClientID != "" {
 		facts = facts.Where("EXISTS (SELECT 1 FROM pulse_account_token_sources s WHERE s.fact_id = pulse_account_token_facts.id AND s.client_id = ?)", q.ClientID)
 	}
 	return facts.Limit(accountTokenFactLimit + 1)
 }
 
-func (r *Quota) AccountTokenTotal(ctx context.Context, q quota_dto.Query, account string, start, end, now int64) (string, bool, error) {
+func (r *Quota) AccountTokenTotal(ctx context.Context, q quota_dto.Query, provider, account string, start, end, now int64) (string, bool, error) {
 	db := r.engine.DB(ctx)
-	periods := r.accountTokenPeriods(ctx, q, account, start, now)
-	bounded := r.accountTokenFacts(ctx, q, account, start, end, now).Select("total_tokens").Where("EXISTS (?)", periods)
+	periods := r.accountTokenPeriods(ctx, q, provider, account, start, end, now)
+	bounded := r.accountTokenFacts(ctx, q, provider, account, start, end, now).Select("total_tokens").Where("EXISTS (?)", periods)
 	// 限额内分别累加整数商与余数，两部分都能放入 int64，兼容 SQLite 的整数 SUM。
 	const base = 1000000
 	var available bool

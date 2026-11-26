@@ -218,7 +218,7 @@ func (s *Reporting) Sync(ctx context.Context, p access_dto.Principal) (reporting
 	if client.RevokedAtMS != nil {
 		return reporting_vo.SyncView{}, utils.ErrUnauthorized
 	}
-	return reporting_vo.SyncView{ProtocolVersion: reportingv1.Version, LastReceivedAtMS: client.LastReceivedAtMS, Batches: batches, PaidCredits: true}, nil
+	return reporting_vo.SyncView{ProtocolVersion: reportingv1.Version, LastReceivedAtMS: client.LastReceivedAtMS, Batches: batches, PaidCredits: true, MultiProviderAccountUsage: true}, nil
 }
 func (s *Reporting) acceptSession(ctx context.Context, p access_dto.Principal, snapshot reportingv1.SessionSnapshot) error {
 	sessionKey := reportingv1.Key(snapshot.Provider, snapshot.SessionID)

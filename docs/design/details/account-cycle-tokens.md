@@ -12,7 +12,13 @@ Go Helper 复用已运行账号 owner 的 typed account/read 与额度读取所�
 
 候选会话按活动 Token 索引代中的实际消费时间筛选，不依赖 App Server 的会话 recency；长时间运行的旧会话即使 recency 停滞或缺失，也必须继续统计。筛选会话后仍完整导出事实，用边界前端点判定可归属增量，并保持重复 ordinal 和全局事实 ID 不变。未激活的扫描代不能用于近期筛选。
 
-当前账号事实只覆盖可信当前周期。Cursor/Grok 现有读取缺少可靠原始账户身份，账号周期 Token 仅适用于 Codex。上报事实携带 provider，未来可靠来源可扩展对应采集和校验。
+当前账号事实只覆盖可信当前周期。Codex 与 Antigravity（`agy`）均具备已确认的账号身份与窗口观测，支持按账号周期记录与按模型明细聚合；Cursor/Grok 现有读取缺少可靠原始账户身份，不伪造归属。上报事实携带 `provider`，协议与中心均按多 Provider 通用实现。
+
+## 多 Provider 与 AGY 扩展（TOO-742）
+
+- **能力协商**：`GET /api/v1/sync` 返回 `multi_provider_account_usage: true`；旧中心缺失或为 `false` 时，Helper 自动跳过非 Codex 的 `account_usage` 上报，保证向后兼容。
+- **AGY 归属边界**：本地基于 `agy_quota_observations` 连续同 `account_scope` 观测构建不重叠确认区间；账号切换空档及同一时间戳出现多账号观测的歧义点均不归属。AGY 离散消费步按真实 `occurred_at_ms` 匹配确认区间与当前活跃窗口（支持 5h / 周窗口），复用会话快照的精确 `ContributionID`（允许 `reasoning_tokens` 为 `null`，且 `total_tokens = input_tokens + output_tokens`）。
+- **中心隔离与展示**：复用既有 Schema v10 表结构（零 DDL 变更）。非 Codex 7 天窗口的 period 主键纳入 `window_start_at_ms`，查询侧按 `(provider, account_key, window_duration)` 隔离 5h 与周窗口能力标记；`/api/v1/quotas/model-usage` 按窗口实际 `provider` 关联已发布会话贡献并解析 AGY 规范模型展示名；Web 账号页在 AGY 配额池卡片展示已记录 Token，并在选中窗口下按需展开“本周期模型用量”。
 
 ## 上报与幂等
 

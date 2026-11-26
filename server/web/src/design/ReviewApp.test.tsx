@@ -27,4 +27,9 @@ describe('current production pages in Storybook',()=>{
   render(<ConfigProvider><App><ReviewApp scenario="anonymous"/></App></ConfigProvider>);
   expect(await screen.findByRole('button',{name:'配对并进入'})).toBeInTheDocument();
  });
+ it('renders AGY recorded tokens and model usage section in Storybook preview',async()=>{
+  render(<ConfigProvider><App><ReviewApp initialPath="/quota?provider=agy"/></App></ConfigProvider>);
+  expect(await screen.findByText('1984万')).toBeInTheDocument();
+  expect(await screen.findByRole('button',{name:'本周期模型用量'})).toBeInTheDocument();
+ });
 });

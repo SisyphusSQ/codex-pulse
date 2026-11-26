@@ -294,3 +294,57 @@ it.each([["0","0"],["12345678","1234.6万"],["1234567890","12.3亿"],[null,"—"
   await screen.findByText('Claude & GPT · 周 节奏评估');
   expect(fetcher.mock.calls.some(([p])=>new URL(String(p),'http://localhost').searchParams.get('window_key')==='win:agy.claude_gpt:secondary')).toBe(true);
  });
+
+ it('loads AGY account model usage on expand, shows recorded tokens, and updates on window switch',async()=>{
+  const now=1795680000000;
+  const agyAccount={key:'agy-acct-model',provider:'agy',raw_id:'b2c3d4e5f6a10000'.repeat(4),email:null,plan:'Google AI Ultra 20×',collected_at_ms:now-60000};
+  const win5h={
+   key:'win:agy.gemini:primary',provider:'agy',account_key:agyAccount.key,identity_state:'confirmed',
+   limit_id:'agy.gemini',window_kind:'primary',window_minutes:300,recorded_tokens:'2050',
+   current:{used_percent:40,remaining_percent:60,window_start_at_ms:now-7200000,resets_at_ms:now+3600000,reset_remaining_ms:3600000,snapshot_reset_remaining_ms:3600000,observed_at_ms:now-60000,freshness:'fresh',conflict:false,reason:'trusted',selected_observation_id:'obs-1',selected_client_id:'mac-studio',source:'agy_ls_rpc'},
+   cycles:[],observations:[],coverage:'observed_only',
+  };
+  const winWeekly={
+   ...win5h,key:'win:agy.gemini:secondary',window_kind:'secondary',window_minutes:10080,recorded_tokens:'3250',
+   current:{...win5h.current,window_start_at_ms:now-3*86400000,resets_at_ms:now+4*86400000},
+  };
+  const agyQuota={evaluated_at_ms:now,rule_version:'center-v1',accounts:[agyAccount],windows:[win5h,winWeekly],credits:[],coverage:'observed_only'};
+  fetcher.mockImplementation(async path=>{
+   const u=new URL(String(path),'http://localhost');
+   if(u.pathname.endsWith('/devices/status'))return success([]);
+   if(u.pathname.endsWith('/pace'))return success({...paceFixture(),accounts:[agyAccount],windows:[{...paceFixture().windows[0],key:u.searchParams.get('window_key')??win5h.key,provider:'agy',account_key:agyAccount.key,limit_id:'agy.gemini'}]});
+   if(u.pathname.endsWith('/model-usage')){
+    expect(u.searchParams.get('provider')).toBe('agy');
+    expect(u.searchParams.get('account_key')).toBe(agyAccount.key);
+    const isWeekly=u.searchParams.get('window_key')===winWeekly.key;
+    return success({
+     evaluated_at_ms:now,
+     window_start_at_ms:isWeekly?winWeekly.current.window_start_at_ms:win5h.current.window_start_at_ms,
+     resets_at_ms:isWeekly?winWeekly.current.resets_at_ms:win5h.current.resets_at_ms,
+     recorded_tokens:isWeekly?'3250':'2050',
+     models:isWeekly?[
+      {kind:'model',model:'gemini-4-carbon-high',name:'Gemini 4 Carbon (High)',total_tokens:'2800',input_tokens:'2500',cached_tokens:'900',output_tokens:'300',reasoning_tokens:'90'},
+      {kind:'model',model:'claude-opus-5-5-high',name:'Claude Opus 5.5 (High)',total_tokens:'450',input_tokens:'400',cached_tokens:'100',output_tokens:'50',reasoning_tokens:null},
+     ]:[
+      {kind:'model',model:'gemini-4-carbon-high',name:'Gemini 4 Carbon (High)',total_tokens:'1600',input_tokens:'1500',cached_tokens:'500',output_tokens:'100',reasoning_tokens:'40'},
+      {kind:'model',model:'claude-opus-5-5-high',name:'Claude Opus 5.5 (High)',total_tokens:'450',input_tokens:'400',cached_tokens:'100',output_tokens:'50',reasoning_tokens:null},
+     ],
+    });
+   }
+   return success(agyQuota);
+  });
+  mount();
+  expect(await screen.findByText('2,050')).toBeInTheDocument();
+  expect(screen.getByText('3,250')).toBeInTheDocument();
+  // Collapsed by default: no /model-usage request until expanded.
+  expect(fetcher.mock.calls.some(([p])=>String(p).includes('/model-usage'))).toBe(false);
+  const user=userEvent.setup();
+  await user.click(screen.getByRole('button',{name:'本周期模型用量'}));
+  expect(await screen.findByText('Gemini 4 Carbon (High)')).toBeInTheDocument();
+  expect(screen.getByText('Claude Opus 5.5 (High)')).toBeInTheDocument();
+  expect(screen.getByText('缓存输入已包含在输入 Token 中，推理 Token 已包含在输出 Token 中。')).toBeInTheDocument();
+  expect(screen.getByRole('row',{name:/合计 2,050/})).toBeInTheDocument();
+  // Switch AGY window to 周: refreshes model usage for weekly window.
+  await user.click(screen.getByRole('button',{name:'Gemini · 周'}));
+  expect(await screen.findByRole('row',{name:/合计 3,250/})).toBeInTheDocument();
+ });

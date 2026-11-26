@@ -67,3 +67,44 @@ func TestReportingAccountRangesUseCompletedClaimsAndKeepRestartGenerations(t *te
 		t.Fatalf("clipped ranges = %#v, %v, want %#v", got, err, want)
 	}
 }
+
+func TestReportingAGYAccountRangesIsolateSwitchesAndAmbiguousTimestamps(t *testing.T) {
+	repo := openRuntimeRepository(t)
+	ctx := t.Context()
+	const base = int64(1_795_000_000_000)
+	scopeA := SHA256DigestOf([]byte("agy-a")).String()
+	scopeB := SHA256DigestOf([]byte("agy-b")).String()
+	reset := base + 3600000
+	add := func(scope, limit string, offset int64) {
+		t.Helper()
+		if err := repo.AppendAGYQuotaObservation(ctx, AGYQuotaObservation{
+			AccountScope: scope, LimitID: limit, WindowKind: "primary",
+			ObservedAtMS: base + offset, UsedPercent: 10, ResetsAtMS: &reset,
+		}, 256); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Run 1: A [100, 200] (multiple pools at same timestamp for same account are valid)
+	add(scopeA, "agy.gemini", 100)
+	add(scopeA, "agy.claude_gpt", 100)
+	add(scopeA, "agy.gemini", 200)
+	// Switch gap (200, 300), Run 2: B [300, 400]
+	add(scopeB, "agy.gemini", 300)
+	add(scopeB, "agy.gemini", 400)
+	// Same timestamp with both A and B at 450 is ambiguous and must break runs
+	add(scopeA, "agy.gemini", 450)
+	add(scopeB, "agy.gemini", 450)
+	// Run 3: A [500, 600]
+	add(scopeA, "agy.gemini", 500)
+	add(scopeA, "agy.gemini", 600)
+
+	got, err := repo.ReportingAGYAccountRanges(ctx, base+50, base+700)
+	want := []ReportingAccountRange{
+		{AccountScope: scopeA, BindingGeneration: 1, FromMS: base + 100, ThroughMS: base + 200},
+		{AccountScope: scopeB, BindingGeneration: 2, FromMS: base + 300, ThroughMS: base + 400},
+		{AccountScope: scopeA, BindingGeneration: 3, FromMS: base + 500, ThroughMS: base + 600},
+	}
+	if err != nil || !slices.Equal(got, want) {
+		t.Fatalf("agy ranges = %#v, %v, want %#v", got, err, want)
+	}
+}

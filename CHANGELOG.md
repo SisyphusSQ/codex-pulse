@@ -1,5 +1,16 @@
 ## Unreleased
 
+## v0.19.4 - 2026-11-27
+
+#### feature:
+1. [TOO-742] 将账号当前额度周期 Token 与按模型 Token 明细能力从 Codex 7 天窗口扩展为多 Provider 通用实现，完整打通 Antigravity（AGY）的本机周期用量导出、`/api/v1/sync` 能力协商、中心聚合查询与中心 Web 账号页展示。
+
+#### bugFix:
+1. [TOO-738] 修复 Windows Antigravity 采集句柄释放问题并补充免登录验收记录。
+
+#### optimization:
+1. [TOO-742] 对齐 Storybook 合成接口与多 Provider 账号模型用量预览（含 Codex 与 AGY 窗口切换及部分未知场景），并修复账号卡片中已记录 Token 数值与单位异常断行的问题。
+
 ## v0.19.3 - 2026-11-26
 
 #### bugFix:

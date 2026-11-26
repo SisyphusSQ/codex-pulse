@@ -50,10 +50,18 @@ func (e *Exporter) PaidCreditFacts(ctx context.Context, start int64) ([]FactsGro
 	return groups, nil
 }
 
-func (c *Client) supportsPaidCredits(ctx context.Context, credential string) (bool, error) {
-	var out struct {
-		PaidCredits bool `json:"paid_credits"`
-	}
+type syncCapabilities struct {
+	PaidCredits               bool `json:"paid_credits"`
+	MultiProviderAccountUsage bool `json:"multi_provider_account_usage"`
+}
+
+func (c *Client) syncCapabilities(ctx context.Context, credential string) (syncCapabilities, error) {
+	var out syncCapabilities
 	err := c.requestMethod(ctx, "GET", "/api/v1/sync", credential, nil, &out)
-	return out.PaidCredits, err
+	return out, err
+}
+
+func (c *Client) supportsPaidCredits(ctx context.Context, credential string) (bool, error) {
+	caps, err := c.syncCapabilities(ctx, credential)
+	return caps.PaidCredits, err
 }
