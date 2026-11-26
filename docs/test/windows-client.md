@@ -237,3 +237,16 @@ C# executable tests 148 项断言通过，新增 4 项验证 Provider 类型隔�
 WinUI Release/self-contained/no-restore 发布成功。真实 Home、私有 runtime、同一账号和已配对中心下实际验证：打开英文结束日期弹窗并 Escape → 中文 → 打开中文开始日期弹窗并 Escape → 英文，双向完成且范围不变；随后切到概览、用键盘恢复系统语言，深色/浅色/系统外观、Ctrl+R/Escape 后仍已连接。未采用全局 catch 或继续运行已损坏控件。临时诊断代码已移除；正式安装版本的受影响场景将纳入 Master 最终结果。
 
 安全自查：只调整原生展示控件生命周期，不改权限、数据读取、网络或 IPC；无新增秘密日志、后台任务或异常吞噬。提交与合并收尾复用上述开发证据，不重复测试，无 CI checks 不记 CI 通过。
+
+### TOO-738 · AGY 的 Windows 本地安装与免登录验收（2026-11-26）
+
+在 Windows 11 x64（系统 build 26100）使用 Go 1.27.3 和 .NET SDK 10.0.403。集成基线为 `v0.19.3`（`8669086`）。安装包 `0.19.3+too.738` / build 1017 含本轮 Windows 句柄修复，沿用本地开发包签名策略。
+
+| 检查 | 实测结果 |
+| --- | --- |
+| WinUI 构建与展示 | `scripts/windows/build.ps1 -LockedRestore -Configuration Release` 生成 Core 协议并构建成功，0 警告、0 错误。`dotnet run --project app/windows/CodexPulse.Tests` 执行 220 项断言，覆盖五路切换、禁用、额度池排序、过期回退、隐私与设置回读。 |
+| Windows 采集 | 初测发现读取普通文件后父目录句柄未释放，另有四个用例预建的测试目录缺少私有 ACL。保留完整文件句柄对象并由存储层创建测试目录后，`go test -count=1 ./internal/agyprovider/...` 的 13 个顶层用例全部通过，覆盖 WAL 增量、hub 发现、进程与端口解析、账号切换竞态、离线与跨期。 |
+| 安装与绑定 | 本机由 0.18.6 / build 1016 升至 build 1017。安装器回执 `ready`，App 启动回执 `connected`。通过稳定入口显式继承真实 `CODEX_HOME` 并指定原私有 runtime 后，`probe-binding` 确认 App、Helper、偏好三方的 Home 物理身份一致，Helper 的 runtime 参数和目录 ACL 均匹配。 |
+| 免登录真机界面 | 在已安装的主窗口切换至 Antigravity，Codex 专属账号额度入口隐藏。额度页提示“尚未获得可展示的额度窗口。”和“尚无足够的节奏观察。”，模型参考价格仍可见。独立切换托盘至 Antigravity，摘要显示 `AGY · --`，展开可见无可用配额池提示、近 7 天用量与每日模型趋势、近 7 天项目前 5。检查后主窗口和托盘均选回 Codex。 |
+
+按本次验收范围，本机不再登录 AGY。未取得真实会话样本，在线额度未实测。真实账号、在线额度池及倒计时、真实跨账号切换、带数据图表和中英／深浅色全页截图矩阵仍缺少真机验收证据。上述隔离用例使用合成数据。本机日志与安装包保存在忽略目录 `.artifacts/windows/too-738/`。
