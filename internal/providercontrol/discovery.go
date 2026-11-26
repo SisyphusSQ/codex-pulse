@@ -78,6 +78,7 @@ func DefaultProbes(_ PreferencesReader, defaultCodexHome func() string) ProbeSet
 			}
 			return worseProbe(home, sessions)
 		},
+		AGY: probeAGY,
 	}
 }
 
@@ -208,4 +209,58 @@ func grokProbePaths() (homePath, sessionsRoot string, err error) {
 		homePath = filepath.Join(userHome, ".grok")
 	}
 	return homePath, filepath.Join(homePath, "sessions"), nil
+}
+
+var agyProductDirectories = []string{
+	"antigravity",
+	"antigravity-ide",
+	"antigravity-cli",
+	"antigravity-idea",
+}
+
+// probeAGY 仅对 Antigravity 产品目录及关键数据路径执行 metadata-only lstat 探测，
+// 不打开 SQLite、不读正文、不发起任何网络调用。
+func probeAGY(ctx context.Context) ProbeResult {
+	if ctx.Err() != nil {
+		return ProbeResult{State: DiscoveryInvalid, ReasonCode: ReasonProbeFailed}
+	}
+	baseRoot, failResult, ok := agyBaseRoot()
+	if !ok {
+		return failResult
+	}
+	if rootResult := probeDirectory(baseRoot); rootResult.State != DiscoveryAvailable {
+		return rootResult
+	}
+	results := make([]ProbeResult, 0, len(agyProductDirectories))
+	for _, product := range agyProductDirectories {
+		results = append(results, probeAGYProduct(filepath.Join(baseRoot, product)))
+	}
+	return firstAvailable(results...)
+}
+
+func agyBaseRoot() (string, ProbeResult, bool) {
+	for _, envKey := range []string{"CODEX_PULSE_AGY_HOME", "ANTIGRAVITY_GEMINI_DIR"} {
+		if raw := strings.TrimSpace(os.Getenv(envKey)); raw != "" {
+			if !safeAbsolutePath(raw) {
+				return "", ProbeResult{State: DiscoveryInvalid, ReasonCode: ReasonUnsafePath}, false
+			}
+			return raw, ProbeResult{}, true
+		}
+	}
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return "", ProbeResult{State: DiscoveryInvalid, ReasonCode: ReasonProbeFailed}, false
+	}
+	return filepath.Join(userHome, ".gemini"), ProbeResult{}, true
+}
+
+func probeAGYProduct(productPath string) ProbeResult {
+	if dirResult := probeDirectory(productPath); dirResult.State != DiscoveryAvailable {
+		return dirResult
+	}
+	return firstAvailable(
+		probeFile(filepath.Join(productPath, "conversation_summaries.db")),
+		probeDirectory(filepath.Join(productPath, "conversations")),
+		probeDirectory(filepath.Join(productPath, "brain")),
+	)
 }

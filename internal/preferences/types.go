@@ -4,7 +4,8 @@ const (
 	preferencesSchemaV2             = 2
 	preferencesSchemaV3             = 3
 	preferencesSchemaV4             = 4
-	CurrentPreferencesSchemaVersion = 5
+	preferencesSchemaV5             = 5
+	CurrentPreferencesSchemaVersion = 6
 	DefaultDataStoreKey             = "default"
 )
 
@@ -25,6 +26,7 @@ type ProviderPreferences struct {
 	Cursor ProviderPreference `json:"cursor"`
 	Grok   ProviderPreference `json:"grok"`
 	DSH    ProviderPreference `json:"dsh"`
+	AGY    ProviderPreference `json:"agy"`
 }
 
 type UpdateChannel string
@@ -87,6 +89,7 @@ type OnlinePreferences struct {
 	CursorOnlineEnabled    bool `json:"cursor_online_enabled"`
 	GrokQuotaEnabled       bool `json:"grok_quota_enabled"`
 	GrokAutoRefreshEnabled bool `json:"grok_auto_refresh_enabled"`
+	AGYOnlineEnabled       bool `json:"agy_online_enabled"`
 }
 
 type CodexAccountPreferences struct {
@@ -192,13 +195,14 @@ func DefaultProviderPreferences() ProviderPreferences {
 		Cursor: ProviderPreference{Intent: ProviderIntentAuto},
 		Grok:   ProviderPreference{Intent: ProviderIntentAuto},
 		DSH:    ProviderPreference{Intent: ProviderIntentAuto},
+		AGY:    ProviderPreference{Intent: ProviderIntentAuto},
 	}
 }
 
 func DefaultOnlinePreferences() OnlinePreferences {
 	return OnlinePreferences{
 		QuotaEnabled: true, ResetCreditsEnabled: true, CursorOnlineEnabled: true,
-		GrokQuotaEnabled: true, GrokAutoRefreshEnabled: true,
+		GrokQuotaEnabled: true, GrokAutoRefreshEnabled: true, AGYOnlineEnabled: true,
 	}
 }
 

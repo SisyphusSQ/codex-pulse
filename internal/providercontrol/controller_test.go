@@ -106,10 +106,12 @@ func TestBeginRejectsDisabledAndUnavailable(t *testing.T) {
 	if _, err := controller.Begin(context.Background(), agentprovider.Cursor); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("Begin(auto missing) error = %v, want unavailable", err)
 	}
-	result, err := controller.Apply(context.Background(), preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+	result, err := controller.Apply(context.Background(), preferences.ProviderPreferences{
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
+		DSH:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		AGY:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 	})
 	if err != nil || !result.Applied {
 		t.Fatalf("Apply(disabled) = %#v, %v", result, err)
@@ -146,10 +148,12 @@ func TestLateWriterCannotCommitAfterDisable(t *testing.T) {
 		operation.Finish()
 	}()
 	<-entered
-	result, err := controller.Apply(context.Background(), preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+	result, err := controller.Apply(context.Background(), preferences.ProviderPreferences{
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		DSH:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		AGY:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 	})
 	if err != nil {
 		t.Fatalf("Apply() error = %v", err)
@@ -185,10 +189,12 @@ func TestDisableWaitsForHeldCommitLease(t *testing.T) {
 	}
 	done := make(chan TransitionResult, 1)
 	go func() {
-		result, applyErr := controller.Apply(context.Background(), preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		result, applyErr := controller.Apply(context.Background(), preferences.ProviderPreferences{
 			Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 			Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 			Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
+			DSH:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+			AGY:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		})
 		if applyErr != nil {
 			t.Errorf("Apply() error = %v", applyErr)
@@ -232,10 +238,12 @@ func TestDisableTimeoutContinuesDrainInBackground(t *testing.T) {
 	}
 	applyCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	result, err := controller.Apply(applyCtx, preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+	result, err := controller.Apply(applyCtx, preferences.ProviderPreferences{
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		DSH:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		AGY:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 	})
 	if err != nil || result.Applied || !result.ReconcileRequired {
 		t.Fatalf("Apply(timeout) = %#v, %v, want reconcile required", result, err)
@@ -261,10 +269,12 @@ func TestDiscoveryReasonAndGenerationChangeWithVisibleState(t *testing.T) {
 	probes := &recordingProbes{result: ProbeResult{
 		State: DiscoveryMissing, ReasonCode: ReasonNotFound,
 	}}
-	controller, err := NewController(testPreferences(preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+	controller, err := NewController(testPreferences(preferences.ProviderPreferences{
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
+		DSH:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		AGY:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 	}), probes.set())
 	if err != nil {
 		t.Fatalf("NewController() error = %v", err)
@@ -292,18 +302,22 @@ func TestDiscoveryReasonAndGenerationChangeWithVisibleState(t *testing.T) {
 func TestExplicitDisabledSourceReappearingStaysDisabled(t *testing.T) {
 	t.Parallel()
 	probes := &recordingProbes{result: ProbeResult{State: DiscoveryMissing, ReasonCode: ReasonNotFound}}
-	controller, err := NewController(testPreferences(preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+	controller, err := NewController(testPreferences(preferences.ProviderPreferences{
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
+		DSH:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		AGY:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 	}), probes.set())
 	if err != nil {
 		t.Fatalf("NewController() error = %v", err)
 	}
-	if _, err := controller.Apply(context.Background(), preferences.ProviderPreferences{DSH: preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+	if _, err := controller.Apply(context.Background(), preferences.ProviderPreferences{
 		Codex:  preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Cursor: preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
 		Grok:   preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled},
+		DSH:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
+		AGY:    preferences.ProviderPreference{Intent: preferences.ProviderIntentAuto},
 	}); err != nil {
 		t.Fatalf("Apply() error = %v", err)
 	}
@@ -371,4 +385,96 @@ func TestDefaultPathProbeClassifiesMetadataOnly(t *testing.T) {
 	if got := probeDirectory(file); got.State != DiscoveryInvalid || got.ReasonCode != ReasonInvalidType {
 		t.Fatalf("probeDirectory(file) = %#v", got)
 	}
+}
+
+func TestAGYDisableCancelsDrainsAndStaysDisabledOnRediscovery(t *testing.T) {
+	t.Parallel()
+	probes := &recordingProbes{}
+	set := probes.set()
+	set.AGY = func(context.Context) ProbeResult {
+		return ProbeResult{State: DiscoveryAvailable, ReasonCode: ReasonAvailable}
+	}
+	prefs := preferences.DefaultProviderPreferences()
+	reader := &mutablePreferences{snapshot: testPreferences(prefs).snapshot}
+	controller, err := NewController(reader, set)
+	if err != nil {
+		t.Fatalf("NewController() error = %v", err)
+	}
+	if _, err := controller.RefreshDiscovery(context.Background(), "startup"); err != nil {
+		t.Fatalf("RefreshDiscovery() error = %v", err)
+	}
+	op, err := controller.Begin(context.Background(), agentprovider.AGY)
+	if err != nil {
+		t.Fatalf("Begin(agy) error = %v", err)
+	}
+	finishCommit, err := op.BeginCommit()
+	if err != nil {
+		t.Fatalf("BeginCommit(agy) error = %v", err)
+	}
+
+	disabledPrefs := preferences.DefaultProviderPreferences()
+	disabledPrefs.AGY = preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled}
+	reader.setProviders(disabledPrefs)
+
+	applyDone := make(chan TransitionResult, 1)
+	go func() {
+		res, applyErr := controller.Apply(context.Background(), disabledPrefs)
+		if applyErr != nil {
+			t.Errorf("Apply(agy disabled) error = %v", applyErr)
+		}
+		applyDone <- res
+	}()
+
+	// operation context 必须先被取消，且新的 Begin 被拒绝，但 Apply 需等待 commit/op drain
+	select {
+	case <-op.Context().Done():
+	case <-time.After(time.Second):
+		t.Fatal("AGY operation context was not cancelled on disable")
+	}
+	if _, err := controller.Begin(context.Background(), agentprovider.AGY); !errors.Is(err, ErrDisabled) {
+		t.Fatalf("Begin(agy during disable) error = %v, want ErrDisabled", err)
+	}
+	select {
+	case res := <-applyDone:
+		t.Fatalf("Apply returned before AGY commit drained: %#v", res)
+	case <-time.After(60 * time.Millisecond):
+	}
+	finishCommit()
+	op.Finish()
+
+	select {
+	case res := <-applyDone:
+		if !res.Applied || res.ReconcileRequired {
+			t.Fatalf("Apply(agy disabled) = %#v, want applied", res)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Apply did not settle after AGY drain")
+	}
+
+	// 数据源依然存在时再次 RefreshDiscovery，AGY 仍必须保持 disabled
+	if _, err := controller.RefreshDiscovery(context.Background(), "wake"); err != nil {
+		t.Fatalf("RefreshDiscovery(wake) error = %v", err)
+	}
+	state, err := controller.ProviderState(agentprovider.AGY)
+	if err != nil || state.Intent != preferences.ProviderIntentDisabled ||
+		state.Discovery != DiscoveryAvailable || state.Effective != EffectiveDisabled || state.ReasonCode != ReasonDisabled {
+		t.Fatalf("AGY state after wake = %#v, %v", state, err)
+	}
+}
+
+type mutablePreferences struct {
+	mu       sync.Mutex
+	snapshot preferences.Snapshot
+}
+
+func (store *mutablePreferences) LoadPreferences(context.Context) (preferences.Snapshot, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	return store.snapshot, nil
+}
+
+func (store *mutablePreferences) setProviders(providers preferences.ProviderPreferences) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.snapshot.Providers = providers
 }

@@ -7282,6 +7282,8 @@ public nonisolated struct Codexpulse_Core_V1_SettingsOnlineSnapshot: Sendable {
 
   public var cursorOnlineEnabled: Bool = false
 
+  public var agyOnlineEnabled: Bool = false
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
@@ -7516,9 +7518,20 @@ public nonisolated struct Codexpulse_Core_V1_SettingsOnlineUpdate: Sendable {
 
   public var cursorOnlineEnabled: Bool = false
 
+  public var agyOnlineEnabled: Bool {
+    get {_agyOnlineEnabled ?? false}
+    set {_agyOnlineEnabled = newValue}
+  }
+  /// Returns true if `agyOnlineEnabled` has been explicitly set.
+  public var hasAgyOnlineEnabled: Bool {self._agyOnlineEnabled != nil}
+  /// Clears the value of `agyOnlineEnabled`. Subsequent reads from it will return its default value.
+  public mutating func clearAgyOnlineEnabled() {self._agyOnlineEnabled = nil}
+
   public var unknownFields = SwiftProtobuf.UnknownStorage()
 
   public init() {}
+
+  fileprivate var _agyOnlineEnabled: Bool? = nil
 }
 
 public nonisolated struct Codexpulse_Core_V1_SettingsCodexAccountsUpdate: Sendable {
@@ -19034,7 +19047,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsHomeSnapshot: SwiftProtobuf.Mes
 
 nonisolated extension Codexpulse_Core_V1_SettingsOnlineSnapshot: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsOnlineSnapshot"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}quota_enabled\0\u{3}reset_credits_enabled\0\u{3}grok_quota_enabled\0\u{3}grok_auto_refresh_enabled\0\u{3}cursor_online_enabled\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}quota_enabled\0\u{3}reset_credits_enabled\0\u{3}grok_quota_enabled\0\u{3}grok_auto_refresh_enabled\0\u{3}cursor_online_enabled\0\u{3}agy_online_enabled\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -19047,6 +19060,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineSnapshot: SwiftProtobuf.M
       case 3: try { try decoder.decodeSingularBoolField(value: &self.grokQuotaEnabled) }()
       case 4: try { try decoder.decodeSingularBoolField(value: &self.grokAutoRefreshEnabled) }()
       case 5: try { try decoder.decodeSingularBoolField(value: &self.cursorOnlineEnabled) }()
+      case 6: try { try decoder.decodeSingularBoolField(value: &self.agyOnlineEnabled) }()
       default: break
       }
     }
@@ -19068,6 +19082,9 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineSnapshot: SwiftProtobuf.M
     if self.cursorOnlineEnabled != false {
       try visitor.visitSingularBoolField(value: self.cursorOnlineEnabled, fieldNumber: 5)
     }
+    if self.agyOnlineEnabled != false {
+      try visitor.visitSingularBoolField(value: self.agyOnlineEnabled, fieldNumber: 6)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -19077,6 +19094,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineSnapshot: SwiftProtobuf.M
     if lhs.grokQuotaEnabled != rhs.grokQuotaEnabled {return false}
     if lhs.grokAutoRefreshEnabled != rhs.grokAutoRefreshEnabled {return false}
     if lhs.cursorOnlineEnabled != rhs.cursorOnlineEnabled {return false}
+    if lhs.agyOnlineEnabled != rhs.agyOnlineEnabled {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -19440,7 +19458,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsResponse: SwiftProtobuf.Message
 
 nonisolated extension Codexpulse_Core_V1_SettingsOnlineUpdate: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   public static let protoMessageName: String = _protobuf_package + ".SettingsOnlineUpdate"
-  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}quota_enabled\0\u{3}reset_credits_enabled\0\u{3}grok_quota_enabled\0\u{3}grok_auto_refresh_enabled\0\u{3}cursor_online_enabled\0")
+  public static let _protobuf_nameMap = SwiftProtobuf._NameMap(bytecode: "\0\u{3}quota_enabled\0\u{3}reset_credits_enabled\0\u{3}grok_quota_enabled\0\u{3}grok_auto_refresh_enabled\0\u{3}cursor_online_enabled\0\u{3}agy_online_enabled\0")
 
   public mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
     while let fieldNumber = try decoder.nextFieldNumber() {
@@ -19453,12 +19471,17 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineUpdate: SwiftProtobuf.Mes
       case 3: try { try decoder.decodeSingularBoolField(value: &self.grokQuotaEnabled) }()
       case 4: try { try decoder.decodeSingularBoolField(value: &self.grokAutoRefreshEnabled) }()
       case 5: try { try decoder.decodeSingularBoolField(value: &self.cursorOnlineEnabled) }()
+      case 6: try { try decoder.decodeSingularBoolField(value: &self._agyOnlineEnabled) }()
       default: break
       }
     }
   }
 
   public func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
     if self.quotaEnabled != false {
       try visitor.visitSingularBoolField(value: self.quotaEnabled, fieldNumber: 1)
     }
@@ -19474,6 +19497,9 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineUpdate: SwiftProtobuf.Mes
     if self.cursorOnlineEnabled != false {
       try visitor.visitSingularBoolField(value: self.cursorOnlineEnabled, fieldNumber: 5)
     }
+    try { if let v = self._agyOnlineEnabled {
+      try visitor.visitSingularBoolField(value: v, fieldNumber: 6)
+    } }()
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -19483,6 +19509,7 @@ nonisolated extension Codexpulse_Core_V1_SettingsOnlineUpdate: SwiftProtobuf.Mes
     if lhs.grokQuotaEnabled != rhs.grokQuotaEnabled {return false}
     if lhs.grokAutoRefreshEnabled != rhs.grokAutoRefreshEnabled {return false}
     if lhs.cursorOnlineEnabled != rhs.cursorOnlineEnabled {return false}
+    if lhs._agyOnlineEnabled != rhs._agyOnlineEnabled {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

@@ -460,3 +460,7 @@ DSH 使用独立的 `dsh_sessions`、`dsh_session_lineage`、`dsh_usage_events`�
 v37 保留 v36 checksum，在事务中保留会话 ID、lineage、usage 与工具事实并扩展标题约束：最多 512 个 Unicode 字符，来源新增 `dsh_title_event`，取最新官方 `session/title`（包括继承 seed 中的标题）。无标题仍使用 fallback。
 
 同一 canonical 文件摘要、标题和来源均不变时只更新来源健康；成功解析的会话事务替换，未读到或失败的文件不删除已索引历史。标题比对确保升级解析器后补齐已有日志的名称，而不会重复计量。来源失败与会话缺失 usage 保持 partial/unknown。详细格式、峰谷 USD 计算及范围见 [DSH](../providers/dsh.md)。
+
+### Antigravity (AGY) 本地事实（v40）
+
+v40（`agy-local-facts`）在保留 v1–v39 全部历史 migration checksum 与既有表数据的前提下，将 `agent_provider_snapshots` / `agent_provider_sources` 的 `provider` 白名单扩展至五个客户端（新增 `'agy'`），并新增五张独立 STRICT 事实表：`agy_sessions`、`agy_session_lineage`、`agy_usage_events`、`agy_quota_snapshots`、`agy_quota_observations` 及其四条查询索引。不建 `agy_tool_events`，不在 `agy_sessions` 建 `tool_call_count`，且 `agy_quota_snapshots.account_scope` 仅保存 64 位 hex 摘要、不存邮箱原文。详细边界见 [Antigravity](../providers/agy.md)。

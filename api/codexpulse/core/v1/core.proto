@@ -1238,6 +1238,7 @@ message SettingsOnlineSnapshot {
   bool grok_quota_enabled = 3;
   bool grok_auto_refresh_enabled = 4;
   bool cursor_online_enabled = 5;
+  bool agy_online_enabled = 6;
 }
 
 message SettingsCodexAccountsSnapshot {
@@ -1292,6 +1293,7 @@ message SettingsOnlineUpdate {
   bool grok_quota_enabled = 3;
   bool grok_auto_refresh_enabled = 4;
   bool cursor_online_enabled = 5;
+  optional bool agy_online_enabled = 6;
 }
 
 message SettingsCodexAccountsUpdate {

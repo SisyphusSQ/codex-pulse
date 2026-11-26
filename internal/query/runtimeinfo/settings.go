@@ -100,6 +100,7 @@ func mapSettings(snapshot preferences.Snapshot, providers providercontrol.StateR
 			GrokQuotaEnabled:       snapshot.Online.GrokQuotaEnabled,
 			GrokAutoRefreshEnabled: snapshot.Online.GrokAutoRefreshEnabled,
 			CursorOnlineEnabled:    snapshot.Online.CursorOnlineEnabled,
+			AGYOnlineEnabled:       snapshot.Online.AGYOnlineEnabled,
 		},
 		CodexAccounts: SettingsCodexAccountsSnapshot{
 			RetainQuotaHistory: snapshot.CodexAccounts.RetainQuotaHistory,
@@ -142,7 +143,7 @@ func mapProviderSettings(snapshot preferences.Snapshot, providers providercontro
 				Generation:     strconv.FormatUint(state.Generation, 10),
 			})
 		}
-		if len(mapped) == 4 {
+		if len(mapped) == 5 {
 			return mapped
 		}
 	}
@@ -151,6 +152,7 @@ func mapProviderSettings(snapshot preferences.Snapshot, providers providercontro
 		syntheticProviderSettings(agentprovider.Cursor, snapshot.Providers.Cursor.Intent),
 		syntheticProviderSettings(agentprovider.Grok, snapshot.Providers.Grok.Intent),
 		syntheticProviderSettings(agentprovider.DSH, snapshot.Providers.DSH.Intent),
+		syntheticProviderSettings(agentprovider.AGY, snapshot.Providers.AGY.Intent),
 	}
 }
 
@@ -205,11 +207,13 @@ func settingsEditableFields() []EditableField {
 		booleanField("online.cursorOnlineEnabled", true),
 		booleanField("online.grokQuotaEnabled", true),
 		booleanField("online.grokAutoRefreshEnabled", true),
+		booleanField("online.agyOnlineEnabled", true),
 		booleanField("codexAccounts.retainQuotaHistory", true),
 		enumField("providers.codex.intent", true, []string{"enabled", "disabled"}),
 		enumField("providers.cursor.intent", true, []string{"enabled", "disabled"}),
 		enumField("providers.grok.intent", true, []string{"enabled", "disabled"}),
 		enumField("providers.dsh.intent", true, []string{"enabled", "disabled"}),
+		enumField("providers.agy.intent", true, []string{"enabled", "disabled"}),
 		integerField("refresh.quotaIntervalSeconds", true, 60, 1800),
 		integerField("refresh.resetCreditsIntervalSeconds", true, 60, 86400),
 		integerField("refresh.reconcileIntervalSeconds", true, 60, 86400),

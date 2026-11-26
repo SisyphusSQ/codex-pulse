@@ -59,6 +59,8 @@ func (service *Service) Current(ctx context.Context, scope agentprovider.Scope) 
 		return currentGrokResponse(evaluatedAtMS)
 	case agentprovider.DSH:
 		return currentDSHResponse(evaluatedAtMS)
+	case agentprovider.AGY:
+		return CurrentResponse{}, unavailableCatalog()
 	case agentprovider.Codex:
 	default:
 		return CurrentResponse{}, basequery.NewValidationFailure("provider", agentprovider.ErrInvalidProvider)

@@ -36,11 +36,12 @@ type SettingsProviderUpdate struct {
 }
 
 type SettingsOnlineUpdate struct {
-	QuotaEnabled           bool `json:"quotaEnabled"`
-	ResetCreditsEnabled    bool `json:"resetCreditsEnabled"`
-	CursorOnlineEnabled    bool `json:"cursorOnlineEnabled"`
-	GrokQuotaEnabled       bool `json:"grokQuotaEnabled"`
-	GrokAutoRefreshEnabled bool `json:"grokAutoRefreshEnabled"`
+	QuotaEnabled           bool  `json:"quotaEnabled"`
+	ResetCreditsEnabled    bool  `json:"resetCreditsEnabled"`
+	CursorOnlineEnabled    bool  `json:"cursorOnlineEnabled"`
+	GrokQuotaEnabled       bool  `json:"grokQuotaEnabled"`
+	GrokAutoRefreshEnabled bool  `json:"grokAutoRefreshEnabled"`
+	AGYOnlineEnabled       *bool `json:"agyOnlineEnabled,omitempty"`
 }
 
 type SettingsCodexAccountsUpdate struct {
@@ -242,13 +243,13 @@ func validSettingsUpdateRequest(request SettingsUpdateRequest) bool {
 }
 
 func validProviderUpdates(values []SettingsProviderUpdate) bool {
-	if len(values) != 3 && len(values) != 4 {
+	if len(values) != 3 && len(values) != 4 && len(values) != 5 {
 		return false
 	}
 	seen := map[string]bool{}
 	for _, item := range values {
 		name := item.Provider
-		if (name != agentprovider.Codex && name != agentprovider.Cursor && name != agentprovider.Grok && name != agentprovider.DSH) || seen[name] {
+		if (name != agentprovider.Codex && name != agentprovider.Cursor && name != agentprovider.Grok && name != agentprovider.DSH && name != agentprovider.AGY) || seen[name] {
 			return false
 		}
 		if _, ok := providercontrol.IntentFromProto(item.Intent); !ok {
@@ -256,7 +257,19 @@ func validProviderUpdates(values []SettingsProviderUpdate) bool {
 		}
 		seen[name] = true
 	}
-	return seen[agentprovider.Codex] && seen[agentprovider.Cursor] && seen[agentprovider.Grok] && (len(values) == 3 || seen[agentprovider.DSH])
+	if !seen[agentprovider.Codex] || !seen[agentprovider.Cursor] || !seen[agentprovider.Grok] {
+		return false
+	}
+	switch len(values) {
+	case 3:
+		return true
+	case 4:
+		return seen[agentprovider.DSH]
+	case 5:
+		return seen[agentprovider.DSH] && seen[agentprovider.AGY]
+	default:
+		return false
+	}
 }
 
 func validHomeSwitchStrategy(value HomeSwitchStrategy) bool {

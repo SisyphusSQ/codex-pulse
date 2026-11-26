@@ -11684,6 +11684,7 @@ type SettingsOnlineSnapshot struct {
 	GrokQuotaEnabled       bool                   `protobuf:"varint,3,opt,name=grok_quota_enabled,json=grokQuotaEnabled,proto3" json:"grok_quota_enabled,omitempty"`
 	GrokAutoRefreshEnabled bool                   `protobuf:"varint,4,opt,name=grok_auto_refresh_enabled,json=grokAutoRefreshEnabled,proto3" json:"grok_auto_refresh_enabled,omitempty"`
 	CursorOnlineEnabled    bool                   `protobuf:"varint,5,opt,name=cursor_online_enabled,json=cursorOnlineEnabled,proto3" json:"cursor_online_enabled,omitempty"`
+	AgyOnlineEnabled       bool                   `protobuf:"varint,6,opt,name=agy_online_enabled,json=agyOnlineEnabled,proto3" json:"agy_online_enabled,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -11749,6 +11750,13 @@ func (x *SettingsOnlineSnapshot) GetGrokAutoRefreshEnabled() bool {
 func (x *SettingsOnlineSnapshot) GetCursorOnlineEnabled() bool {
 	if x != nil {
 		return x.CursorOnlineEnabled
+	}
+	return false
+}
+
+func (x *SettingsOnlineSnapshot) GetAgyOnlineEnabled() bool {
+	if x != nil {
+		return x.AgyOnlineEnabled
 	}
 	return false
 }
@@ -12200,6 +12208,7 @@ type SettingsOnlineUpdate struct {
 	GrokQuotaEnabled       bool                   `protobuf:"varint,3,opt,name=grok_quota_enabled,json=grokQuotaEnabled,proto3" json:"grok_quota_enabled,omitempty"`
 	GrokAutoRefreshEnabled bool                   `protobuf:"varint,4,opt,name=grok_auto_refresh_enabled,json=grokAutoRefreshEnabled,proto3" json:"grok_auto_refresh_enabled,omitempty"`
 	CursorOnlineEnabled    bool                   `protobuf:"varint,5,opt,name=cursor_online_enabled,json=cursorOnlineEnabled,proto3" json:"cursor_online_enabled,omitempty"`
+	AgyOnlineEnabled       *bool                  `protobuf:"varint,6,opt,name=agy_online_enabled,json=agyOnlineEnabled,proto3,oneof" json:"agy_online_enabled,omitempty"`
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -12265,6 +12274,13 @@ func (x *SettingsOnlineUpdate) GetGrokAutoRefreshEnabled() bool {
 func (x *SettingsOnlineUpdate) GetCursorOnlineEnabled() bool {
 	if x != nil {
 		return x.CursorOnlineEnabled
+	}
+	return false
+}
+
+func (x *SettingsOnlineUpdate) GetAgyOnlineEnabled() bool {
+	if x != nil && x.AgyOnlineEnabled != nil {
+		return *x.AgyOnlineEnabled
 	}
 	return false
 }
@@ -18588,13 +18604,14 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"generation\x12#\n" +
 	"\rswitch_status\x18\x03 \x01(\tR\fswitchStatus\x123\n" +
 	"\x13last_switch_outcome\x18\x04 \x01(\tH\x00R\x11lastSwitchOutcome\x88\x01\x01B\x16\n" +
-	"\x14_last_switch_outcome\"\x8e\x02\n" +
+	"\x14_last_switch_outcome\"\xbc\x02\n" +
 	"\x16SettingsOnlineSnapshot\x12#\n" +
 	"\rquota_enabled\x18\x01 \x01(\bR\fquotaEnabled\x122\n" +
 	"\x15reset_credits_enabled\x18\x02 \x01(\bR\x13resetCreditsEnabled\x12,\n" +
 	"\x12grok_quota_enabled\x18\x03 \x01(\bR\x10grokQuotaEnabled\x129\n" +
 	"\x19grok_auto_refresh_enabled\x18\x04 \x01(\bR\x16grokAutoRefreshEnabled\x122\n" +
-	"\x15cursor_online_enabled\x18\x05 \x01(\bR\x13cursorOnlineEnabled\"Q\n" +
+	"\x15cursor_online_enabled\x18\x05 \x01(\bR\x13cursorOnlineEnabled\x12,\n" +
+	"\x12agy_online_enabled\x18\x06 \x01(\bR\x10agyOnlineEnabled\"Q\n" +
 	"\x1dSettingsCodexAccountsSnapshot\x120\n" +
 	"\x14retain_quota_history\x18\x01 \x01(\bR\x12retainQuotaHistory\"\x92\x02\n" +
 	"\x17SettingsRefreshSnapshot\x124\n" +
@@ -18630,13 +18647,15 @@ const file_api_codexpulse_core_v1_core_proto_rawDesc = "" +
 	"\x10SettingsResponse\x124\n" +
 	"\x04meta\x18\x01 \x01(\v2 .codexpulse.core.v1.ResponseMetaR\x04meta\x12@\n" +
 	"\bsnapshot\x18\x02 \x01(\v2$.codexpulse.core.v1.SettingsSnapshotR\bsnapshot\x12J\n" +
-	"\x0feditable_fields\x18\x03 \x03(\v2!.codexpulse.core.v1.EditableFieldR\x0eeditableFields\"\x8c\x02\n" +
+	"\x0feditable_fields\x18\x03 \x03(\v2!.codexpulse.core.v1.EditableFieldR\x0eeditableFields\"\xd6\x02\n" +
 	"\x14SettingsOnlineUpdate\x12#\n" +
 	"\rquota_enabled\x18\x01 \x01(\bR\fquotaEnabled\x122\n" +
 	"\x15reset_credits_enabled\x18\x02 \x01(\bR\x13resetCreditsEnabled\x12,\n" +
 	"\x12grok_quota_enabled\x18\x03 \x01(\bR\x10grokQuotaEnabled\x129\n" +
 	"\x19grok_auto_refresh_enabled\x18\x04 \x01(\bR\x16grokAutoRefreshEnabled\x122\n" +
-	"\x15cursor_online_enabled\x18\x05 \x01(\bR\x13cursorOnlineEnabled\"O\n" +
+	"\x15cursor_online_enabled\x18\x05 \x01(\bR\x13cursorOnlineEnabled\x121\n" +
+	"\x12agy_online_enabled\x18\x06 \x01(\bH\x00R\x10agyOnlineEnabled\x88\x01\x01B\x15\n" +
+	"\x13_agy_online_enabled\"O\n" +
 	"\x1bSettingsCodexAccountsUpdate\x120\n" +
 	"\x14retain_quota_history\x18\x01 \x01(\bR\x12retainQuotaHistory\"\x90\x02\n" +
 	"\x15SettingsRefreshUpdate\x124\n" +
@@ -20119,6 +20138,7 @@ func file_api_codexpulse_core_v1_core_proto_init() {
 	file_api_codexpulse_core_v1_core_proto_msgTypes[129].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[132].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[136].OneofWrappers = []any{}
+	file_api_codexpulse_core_v1_core_proto_msgTypes[140].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[173].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[174].OneofWrappers = []any{}
 	file_api_codexpulse_core_v1_core_proto_msgTypes[175].OneofWrappers = []any{}

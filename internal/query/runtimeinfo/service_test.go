@@ -48,12 +48,15 @@ func TestQuotaCurrentAndSettingsReturnVersionedRedactedFacts(t *testing.T) {
 		settings.Snapshot.Home.SwitchStatus != HomeSwitchPending ||
 		!settings.Snapshot.Online.GrokAutoRefreshEnabled ||
 		!settings.Snapshot.Online.CursorOnlineEnabled ||
+		!settings.Snapshot.Online.AGYOnlineEnabled ||
 		!settings.Snapshot.CodexAccounts.RetainQuotaHistory ||
-		len(settings.Snapshot.Providers) != 4 ||
+		len(settings.Snapshot.Providers) != 5 ||
 		settings.Snapshot.Providers[0].Provider != "codex" ||
 		settings.Snapshot.Providers[0].Intent != "PROVIDER_INTENT_AUTO" ||
 		settings.Snapshot.Providers[1].Intent != "PROVIDER_INTENT_AUTO" ||
 		settings.Snapshot.Providers[2].Intent != "PROVIDER_INTENT_AUTO" ||
+		settings.Snapshot.Providers[4].Provider != "agy" ||
+		settings.Snapshot.Providers[4].Intent != "PROVIDER_INTENT_AUTO" ||
 		len(settings.EditableFields) < 10 {
 		t.Fatalf("Settings() = %#v", settings)
 	}
@@ -73,9 +76,14 @@ func TestQuotaCurrentAndSettingsReturnVersionedRedactedFacts(t *testing.T) {
 	assertEditableField(t, settings.EditableFields, "updates.channel", true, nil, nil)
 	assertEditableField(t, settings.EditableFields, "online.grokAutoRefreshEnabled", true, nil, nil)
 	assertEditableField(t, settings.EditableFields, "online.cursorOnlineEnabled", true, nil, nil)
+	assertEditableField(t, settings.EditableFields, "online.agyOnlineEnabled", true, nil, nil)
 	assertEditableField(t, settings.EditableFields, "codexAccounts.retainQuotaHistory", true, nil, nil)
 	assertEditableOptions(
 		t, settings.EditableFields, "providers.codex.intent",
+		[]string{"enabled", "disabled"},
+	)
+	assertEditableOptions(
+		t, settings.EditableFields, "providers.agy.intent",
 		[]string{"enabled", "disabled"},
 	)
 	assertEditableOptions(
@@ -824,7 +832,7 @@ func validSensitivePreferences() preferences.Snapshot {
 		CodexHome: preferences.CodexHomePointer(active),
 		Providers: preferences.DefaultProviderPreferences(),
 		Online: preferences.OnlinePreferences{
-			QuotaEnabled: true, ResetCreditsEnabled: true, CursorOnlineEnabled: true, GrokAutoRefreshEnabled: true,
+			QuotaEnabled: true, ResetCreditsEnabled: true, CursorOnlineEnabled: true, GrokAutoRefreshEnabled: true, AGYOnlineEnabled: true,
 		},
 		CodexAccounts: preferences.DefaultCodexAccountPreferences(),
 		Refresh:       preferences.DefaultRefreshPreferences(),
