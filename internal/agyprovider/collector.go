@@ -993,7 +993,7 @@ func (c *Collector) readTrajectoryDB(
 	}
 
 	// 读取 gen_metadata（按 origin cascade_id 过滤克隆记录）
-	genByStep := make(map[int64]protoGenMeta)
+	genByStep := make(map[int64]*protoGenMeta)
 	if cols := tableColumns(ctx, tx, "gen_metadata"); cols["data"] {
 		if rows, err := tx.QueryContext(ctx, "SELECT data FROM gen_metadata ORDER BY idx ASC"); err == nil {
 			defer rows.Close()
@@ -1013,7 +1013,7 @@ func (c *Collector) readTrajectoryDB(
 					out.RootID = gm.RootCascadeID
 				}
 				for _, idx := range gm.StepIndices {
-					genByStep[idx] = gm
+					genByStep[idx] = &gm
 				}
 			}
 		}
@@ -1028,55 +1028,28 @@ func (c *Collector) readTrajectoryDB(
 	if stepCols["status"] {
 		statusExpr = "status"
 	}
-	stepTypeExpr := "0"
-	if stepCols["step_type"] {
-		stepTypeExpr = "step_type"
-	}
-	rows, err := tx.QueryContext(ctx, fmt.Sprintf("SELECT idx, %s, %s, metadata FROM steps ORDER BY idx ASC", stepTypeExpr, statusExpr))
+	rows, err := tx.QueryContext(ctx, fmt.Sprintf("SELECT idx, %s, metadata FROM steps ORDER BY idx ASC", statusExpr))
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
 
+	steps, err := selectTrajectoryUsageSteps(rows, cascadeID, genByStep)
+	if err != nil {
+		return out, err
+	}
 	hasher := sha256.New()
-	seenStepIdx := make(map[int64]struct{})
-	for rows.Next() {
-		var idx, stepType, status int64
-		var metaBlob []byte
-		if err := rows.Scan(&idx, &stepType, &status, &metaBlob); err != nil {
-			continue
-		}
-		meta := decodeStepMetadata(metaBlob, idx)
-		if meta.OriginCascadeID != "" && meta.OriginCascadeID != cascadeID {
-			// 过滤分叉/旁路提问克隆自父会话的步骤，避免重复计费
-			continue
-		}
-		stepIdx := meta.StepIndex
-		if _, dup := seenStepIdx[stepIdx]; dup {
-			continue
-		}
-		seenStepIdx[stepIdx] = struct{}{}
-
-		gm, hasGM := genByStep[stepIdx]
-		var usage *protoModelUsage
-		if meta.ModelUsage != nil && meta.ModelUsage.hasAnyTokens() {
-			usage = meta.ModelUsage
-		} else if hasGM && gm.Usage != nil && gm.Usage.hasAnyTokens() {
-			usage = gm.Usage
-		}
-		if usage == nil {
-			continue
-		}
-
-		rawModel := firstNonEmpty(usage.Model, meta.GeneratorModel, gm.Model)
-		canonicalModel, _ := pricing.ResolveAGYModelID(rawModel, gm.ResponseModel)
+	for _, selected := range steps {
+		meta, usage := selected.meta, selected.usage
+		rawModel := firstNonEmpty(usage.Model, meta.GeneratorModel, selected.generationModel)
+		canonicalModel, _ := pricing.ResolveAGYModelID(rawModel, selected.responseModel)
 
 		startedNS := meta.CreatedNS
 		if startedNS == 0 {
 			startedNS = meta.StartedNS
 		}
 		endedNS := meta.FinishedGeneratingNS
-		if endedNS == 0 && status != protoStepStatusCleared {
+		if endedNS == 0 && selected.status != protoStepStatusCleared {
 			endedNS = meta.CompletedNS
 		}
 		occurredMS := endedNS / 1_000_000
@@ -1099,8 +1072,12 @@ func (c *Collector) readTrajectoryDB(
 			thinking = usage.OutputTokens
 		}
 
+		// 多个步骤共享的生成用量可计入总量，但没有可归属的单步生成时长。
+		if selected.ambiguousTiming {
+			startedNS, endedNS = 0, 0
+		}
 		step := parsedStep{
-			StepIndex:           stepIdx,
+			StepIndex:           meta.StepIndex,
 			OccurredAtMS:        occurredMS,
 			StartedNS:           startedNS,
 			EndedNS:             endedNS,
@@ -1121,6 +1098,62 @@ func (c *Collector) readTrajectoryDB(
 	out.ContentDigest = hex.EncodeToString(hasher.Sum(nil))
 	c.trajectoryCache[dbPath] = cachedTrajectoryDB{walSig: walSig, parsed: out}
 	return out, nil
+}
+
+type trajectoryUsageStep struct {
+	meta            protoStepMeta
+	status          int64
+	usage           *protoModelUsage
+	generationModel string
+	responseModel   string
+	ambiguousTiming bool
+}
+
+// 同一条 gen_metadata 可关联多个步骤。用记录身份归并，优先选择自身有用量的步骤，
+// 即使它排在工具步骤之后。两次生成即使用量完全相同也分别保留。
+func selectTrajectoryUsageSteps(rows *sql.Rows, cascadeID string, genByStep map[int64]*protoGenMeta) ([]trajectoryUsageStep, error) {
+	var selected []trajectoryUsageStep
+	position := make(map[*protoGenMeta]int)
+	seen := make(map[int64]bool)
+	for rows.Next() {
+		var idx, status int64
+		var blob []byte
+		if err := rows.Scan(&idx, &status, &blob); err != nil {
+			continue
+		}
+		meta := decodeStepMetadata(blob, idx)
+		if meta.OriginCascadeID != "" && meta.OriginCascadeID != cascadeID || seen[meta.StepIndex] {
+			continue
+		}
+		seen[meta.StepIndex] = true
+
+		step := trajectoryUsageStep{meta: meta, status: status, usage: meta.ModelUsage}
+		generation := genByStep[meta.StepIndex]
+		direct := step.usage.hasAnyTokens()
+		if generation != nil {
+			step.generationModel = generation.Model
+			step.responseModel = generation.ResponseModel
+			if !direct {
+				step.usage = generation.Usage
+				step.ambiguousTiming = len(generation.StepIndices) > 1
+			}
+		}
+		if !step.usage.hasAnyTokens() {
+			continue
+		}
+		if generation != nil {
+			if i, ok := position[generation]; ok {
+				if direct && !selected[i].meta.ModelUsage.hasAnyTokens() {
+					selected[i] = step
+				}
+				continue
+			}
+			position[generation] = len(selected)
+		}
+		selected = append(selected, step)
+	}
+	sort.Slice(selected, func(i, j int) bool { return selected[i].meta.StepIndex < selected[j].meta.StepIndex })
+	return selected, rows.Err()
 }
 
 func resolveTranscriptFile(logsDir string) string {

@@ -55,6 +55,7 @@ Antigravity 是独立的第五个 Agent Provider（代码、协议、数据库�
   - 扫描 `CODEX_PULSE_AGY_HOME` → `ANTIGRAVITY_GEMINI_DIR` → `$HOME/.gemini` 下 4 个产品子目录（`antigravity`、`antigravity-ide`、`antigravity-cli`、`antigravity-idea`）；通过 `mode=ro` + `query_only(1)` + `busy_timeout(3000)` 只读事务与 Windows 句柄钉住读取 `conversation_summaries.db` 与 `conversations/<uuid>.db`。
   - 严格隐私白名单：绝不读取 `preview`、`conversations_fts` 或 `steps.step_payload`；仅从 `raw_summary` / `steps.metadata` / `gen_metadata` 白名单解码时间戳、模型、Token 与 `originCascadeId`，在解析边界丢弃正文、思考过程、工具参数/结果及本机绝对路径。
   - 克隆步骤去重（过滤 `originCascadeId != cascadeId` 与 `gen_metadata.cascade_id != cascadeId`）；子代理 / Swarm Worker / Side-Question 保留独立会话，仅在同库可解析父会话时继承父项目（`inherited_parent`），否则归入 `未归属项目`。
+  - 一个生成记录（`gen_metadata` 的一行）关联多个步骤时，仅记一次请求和用量，优先归属到自身携带用量的非克隆步骤。只有生成级用量可用时仍计入 Token 和费用；若关联多个步骤、无法确定生成时长，则从 TPS 的分子和分母同时排除。不同生成记录独立计数。
   - Token 口径按 Uncached Input 语义映射：`input = uncached + cache_read`、`cached_input = cache_read`、`output = outputTokens`、`reasoning = thinkingOutputTokens`（输出子集，不重复计费）、`total = uncached + cache_read + output`；步骤级 TPS 使用纳秒级 `createdAt → finishedGeneratingAt`（非 `CLEARED` 步回退 `completedAt`），严格过滤 `< 0.5s` 短步。
   - `annotations/<uuid>.pbtxt` 仅解析顶层 `title`；`.db` 缺失或无用量时安全回退有界 `brain/<uuid>/.system_generated/logs/transcript.jsonl`（24 MB 上限，丢弃正文）；仅存在加密 `.pb` 时标记 `partial`，不伪造 Token。
   - 全部统计查询（`UsageCost`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail`）与 `pricingcatalog`、`dashboardsummary`、`providerrefresh`、`app` 装配完成。

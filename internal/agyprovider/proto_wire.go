@@ -206,8 +206,8 @@ type protoModelUsage struct {
 	HasResponse          bool
 }
 
-func (u protoModelUsage) hasAnyTokens() bool {
-	return u.InputTokens > 0 || u.CacheReadTokens > 0 || u.OutputTokens > 0 || u.ThinkingOutputTokens > 0
+func (u *protoModelUsage) hasAnyTokens() bool {
+	return u != nil && (u.InputTokens > 0 || u.CacheReadTokens > 0 || u.OutputTokens > 0 || u.ThinkingOutputTokens > 0)
 }
 
 func decodeModelUsage(buf []byte, start, end int) protoModelUsage {

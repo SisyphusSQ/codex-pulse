@@ -379,3 +379,53 @@ func TestCollectorMultiProductDedupInheritancePrivacyAndWAL(t *testing.T) {
 		}
 	}
 }
+
+func TestTrajectoryCountsSharedGenerationOnce(t *testing.T) {
+	const cid = "11111111-1111-4111-8111-111111111111"
+	path := filepath.Join(t.TempDir(), cid+".db")
+	db := openTestDB(t, path)
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE steps (idx INTEGER PRIMARY KEY, status INTEGER, metadata BLOB); CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB)"); err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Unix(1_700_000_000, 0)
+	usage := pbModelUsage(1429, 100, 20, 10, 5)
+	for idx := 1; idx <= 6; idx++ {
+		var direct []byte
+		if idx == 2 {
+			direct = pbModelUsage(1429, 110, 25, 12, 6)
+		}
+		created := start.Add(time.Duration(idx) * time.Second)
+		meta := pbStepMeta(created, created.Add(time.Second), time.Time{}, direct, uint64(idx), cid)
+		if _, err := db.Exec("INSERT INTO steps VALUES (?, 3, ?)", idx, meta); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 1..3: direct usage is on the middle step. 4..5: only shared usage.
+	// 6: an independent generation with identical counters and an unambiguous interval.
+	for gen, linked := range [][]byte{{1, 2, 3}, {4, 5}, {6}} {
+		raw := append(pbBytesField(1, pbBytesField(4, usage)), pbBytesField(2, linked)...)
+		if _, err := db.Exec("INSERT INTO gen_metadata VALUES (?, ?)", gen, raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := Collector{trajectoryCache: make(map[string]cachedTrajectoryDB)}
+	traj, err := c.readTrajectoryDB(context.Background(), path, cid, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(traj.Steps) != 3 {
+		t.Fatalf("got %d usage events for 3 generations", len(traj.Steps))
+	}
+	direct, shared, single := traj.Steps[0], traj.Steps[1], traj.Steps[2]
+	if direct.StepIndex != 2 || direct.OutputTokens != 25 || direct.StartedNS != start.Add(2*time.Second).UnixNano() || direct.EndedNS-direct.StartedNS != int64(time.Second) {
+		t.Fatalf("expected direct step usage and its own timing: %+v", direct)
+	}
+	if shared.OutputTokens != 20 || shared.OccurredAtMS == 0 || shared.StartedNS != 0 || shared.EndedNS != 0 {
+		t.Fatalf("shared fallback should contribute usage without a speed sample: %+v", shared)
+	}
+	if single.StepIndex != 6 || single.OutputTokens != 20 || single.EndedNS-single.StartedNS != int64(time.Second) {
+		t.Fatalf("single-step fallback lost usage or timing: %+v", single)
+	}
+}
