@@ -204,6 +204,7 @@ public struct SettingsDraft: Equatable, Sendable {
     public var cursorOnlineEnabled: Bool
     public var grokQuotaEnabled: Bool
     public var grokAutoRefreshEnabled: Bool
+    public var agyOnlineEnabled: Bool
     public var quotaIntervalSeconds: Int64
     public var resetCreditsIntervalSeconds: Int64
     public var reconcileIntervalSeconds: Int64
@@ -217,8 +218,9 @@ public struct SettingsDraft: Equatable, Sendable {
     public var retainCodexAccountQuotaHistory: Bool
     public var codexIntent: Codexpulse_Core_V1_ProviderIntent
     public var cursorIntent: Codexpulse_Core_V1_ProviderIntent
+    public var grokIntent: Codexpulse_Core_V1_ProviderIntent
     public var dshIntent: Codexpulse_Core_V1_ProviderIntent
- public var grokIntent: Codexpulse_Core_V1_ProviderIntent
+    public var agyIntent: Codexpulse_Core_V1_ProviderIntent
 
     public init(_ response: Codexpulse_Core_V1_SettingsResponse) {
         let snapshot = response.snapshot
@@ -227,6 +229,7 @@ public struct SettingsDraft: Equatable, Sendable {
         cursorOnlineEnabled = snapshot.online.cursorOnlineEnabled
         grokQuotaEnabled = snapshot.online.grokQuotaEnabled
         grokAutoRefreshEnabled = snapshot.online.grokAutoRefreshEnabled
+        agyOnlineEnabled = snapshot.online.agyOnlineEnabled
         quotaIntervalSeconds = snapshot.refresh.quotaIntervalSeconds
         resetCreditsIntervalSeconds = snapshot.refresh.resetCreditsIntervalSeconds
         reconcileIntervalSeconds = snapshot.refresh.reconcileIntervalSeconds
@@ -243,6 +246,7 @@ public struct SettingsDraft: Equatable, Sendable {
         cursorIntent = catalog.state(for: .cursor)?.intent ?? .auto
         grokIntent = catalog.state(for: .grok)?.intent ?? .auto
         dshIntent = catalog.state(for: .dsh)?.intent ?? .auto
+        agyIntent = catalog.state(for: .agy)?.intent ?? .auto
     }
 
     public func makeRequest(
@@ -263,6 +267,8 @@ public struct SettingsDraft: Equatable, Sendable {
             ? grokQuotaEnabled : current.grokQuotaEnabled
         online.grokAutoRefreshEnabled = editable.contains("online.grokAutoRefreshEnabled")
             ? grokAutoRefreshEnabled : current.grokAutoRefreshEnabled
+        online.agyOnlineEnabled = editable.contains("online.agyOnlineEnabled")
+            ? agyOnlineEnabled : current.agyOnlineEnabled
         request.online = online
 
         var refresh = Codexpulse_Core_V1_SettingsRefreshUpdate()
@@ -313,6 +319,10 @@ public struct SettingsDraft: Equatable, Sendable {
                 provider: .dsh,
                 intent: editable.contains("providers.dsh.intent") ? dshIntent : current.dshIntent
             ),
+            providerUpdate(
+                provider: .agy,
+                intent: editable.contains("providers.agy.intent") ? agyIntent : current.agyIntent
+            ),
         ]
         return request
     }
@@ -339,6 +349,7 @@ public struct SettingsDraft: Equatable, Sendable {
         case .cursor: cursorIntent
         case .grok: grokIntent
         case .dsh: dshIntent
+        case .agy: agyIntent
         }
     }
 
@@ -348,6 +359,7 @@ public struct SettingsDraft: Equatable, Sendable {
         case .cursor: cursorIntent = intent
         case .grok: grokIntent = intent
         case .dsh: dshIntent = intent
+        case .agy: agyIntent = intent
         }
     }
 

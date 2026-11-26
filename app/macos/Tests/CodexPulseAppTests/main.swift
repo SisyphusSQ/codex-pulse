@@ -2298,9 +2298,9 @@ private func testDashboardSummaryIsIndependentOfProviderSelector() async throws 
     )
     try expect(
         newUser.selectedFeature == .dashboardSummary
-            && AgentProvider.allCases.map(\.rawValue) == ["codex", "cursor", "grok", "dsh"]
+            && AgentProvider.allCases.map(\.rawValue) == ["codex", "cursor", "grok", "dsh", "agy"]
             && !AgentProvider.allCases.map(\.rawValue).contains("all"),
-        "new users must land on the summary page and DSH must remain a scoped provider"
+        "new users must land on the summary page and all five providers must remain scoped"
     )
     newUser.navigate(to: .projects)
     try expect(
@@ -2872,8 +2872,8 @@ private func testSettingsExplainsAutomaticDefaultHome() throws {
             "response.snapshot.home.configured ? \"已配置\" : \"未配置 Codex Home\""),
         "settings must distinguish an unconfigured Codex Home from a failed launch")
     try expect(
-        source.contains("没有 Codex Home 时，Cursor、Grok、DSH 和设置仍然可用。"),
-        "settings must keep Cursor, Grok, and Settings available without a Codex Home")
+        source.contains("没有 Codex Home 时，Cursor、Grok、DSH、Antigravity 和设置仍然可用。"),
+        "settings must keep Cursor, Grok, DSH, Antigravity, and Settings available without a Codex Home")
 }
 
 private enum FakeLoginItemServiceError: Error {
@@ -4278,7 +4278,7 @@ private actor FakeCore: AppCoreServing {
         calls.append("provider_refresh:\(request.trigger)")
         var receipt = Codexpulse_Core_V1_ProviderRefreshReceipt()
         receipt.trigger = request.trigger
-        for provider in ["codex", "cursor", "grok", "dsh"] {
+        for provider in ["codex", "cursor", "grok", "dsh", "agy"] {
             var result = Codexpulse_Core_V1_ProviderRefreshResult()
             result.provider = provider
             result.status = "skipped_unavailable"
@@ -4874,6 +4874,7 @@ private func makeSettingsResponse(
     response.snapshot.online.cursorOnlineEnabled = true
     response.snapshot.online.grokQuotaEnabled = true
     response.snapshot.online.grokAutoRefreshEnabled = true
+    response.snapshot.online.agyOnlineEnabled = true
     response.snapshot.refresh.quotaIntervalSeconds = 300
     response.snapshot.refresh.resetCreditsIntervalSeconds = 600
     response.snapshot.refresh.reconcileIntervalSeconds = 900
@@ -4886,6 +4887,8 @@ private func makeSettingsResponse(
         makeProviderSnapshot(.codex),
         makeProviderSnapshot(.cursor),
         makeProviderSnapshot(.grok),
+        makeProviderSnapshot(.dsh),
+        makeProviderSnapshot(.agy),
     ]
     response.editableFields = [
         makeEditableField("online.quotaEnabled"),
@@ -4893,9 +4896,12 @@ private func makeSettingsResponse(
         makeEditableField("online.cursorOnlineEnabled"),
         makeEditableField("online.grokQuotaEnabled"),
         makeEditableField("online.grokAutoRefreshEnabled"),
+        makeEditableField("online.agyOnlineEnabled"),
         makeEditableField("providers.codex.intent"),
         makeEditableField("providers.cursor.intent"),
         makeEditableField("providers.grok.intent"),
+        makeEditableField("providers.dsh.intent"),
+        makeEditableField("providers.agy.intent"),
     ]
     return response
 }
@@ -5964,11 +5970,11 @@ private func testGlobalRefreshMapsFourProviderReceipt() async throws {
     }
     model.refreshAllFeatures()
     try await waitUntil("global refresh mapped") {
-        await MainActor.run { model.globalRefreshPresentation?.providers.count == 4 }
+        await MainActor.run { model.globalRefreshPresentation?.providers.count == 5 }
     }
     let presentation = model.globalRefreshPresentation
-    try expect(presentation?.providers.map(\.provider) == ["codex", "cursor", "grok", "dsh"], "receipt must keep stable provider order")
-    try expect(presentation?.skippedCount == 4, "expected skip summary must not clear presentation")
+    try expect(presentation?.providers.map(\.provider) == ["codex", "cursor", "grok", "dsh", "agy"], "receipt must keep stable provider order")
+    try expect(presentation?.skippedCount == 5, "expected skip summary must not clear presentation")
     try expect(!(model.state.isUnavailable), "skipped providers must not mark the app unavailable")
     _ = await model.shutdown()
 }
@@ -7417,10 +7423,10 @@ private func testSettingsRevisionRequest() throws {
         request.ui.locale == "en-US",
         "editable locale must carry the user's explicit language selection")
     try expect(
-        request.providers.map(\.provider) == ["codex", "cursor", "grok", "dsh"],
+        request.providers.map(\.provider) == ["codex", "cursor", "grok", "dsh", "agy"],
         "settings writes must send every provider exactly once")
     try expect(
-        request.providers.map(\.intent) == [.auto, .auto, .auto, .auto],
+        request.providers.map(\.intent) == [.auto, .auto, .auto, .auto, .auto],
         "non-editable provider intents must preserve the authoritative auto default")
     try expect(
         request.online.cursorOnlineEnabled,
@@ -7855,10 +7861,11 @@ private func testAgentProviderScopesAndIndependentPersistence() async throws {
     )
 	let grokUsage = FeatureRequestFactory.usage(range: .today, provider: .grok)
 	try expect(
-		AgentProvider.allCases.map(\.rawValue) == ["codex", "cursor", "grok", "dsh"]
+		AgentProvider.allCases.map(\.rawValue) == ["codex", "cursor", "grok", "dsh", "agy"]
 			&& AgentProvider.grok.title == "Grok"
+			&& AgentProvider.agy.title == "Antigravity"
 			&& grokUsage.provider.provider == AgentProvider.grok.rawValue,
-		"Grok must be an explicit third client, not a Cursor model alias"
+		"Grok and Antigravity must be explicit independent clients"
 	)
 
     let suiteName = "CodexPulseAppTests.Provider.\(UUID().uuidString)"
@@ -13970,6 +13977,11 @@ struct CodexPulseAppTestMain {
         try await testHelperExitAutomaticallyReconnects()
         try await testHelperExitCannotBecomeFeatureCancelled()
         try await testShutdownDeadlineForcesHelperStop()
+        try testAGYProviderRoutingAndFiveWayFallback()
+        try testAGYStatusBarTightestPoolSelectionAndOfflineFallback()
+        try testAGYMultiPoolGroupingPaceRoleAndAccountMasking()
+        try testAGYSettingsDraftAndOnlineToggleRoundtrip()
+        try await testAGYInvocationUsageHiddenWithZeroRPCAndSwitching()
         print("CodexPulseApp deterministic tests passed")
     }
 }
@@ -14043,4 +14055,416 @@ private func testPaidCreditsPresentation() throws {
     try expect(PaidCreditsPresentation.amount("0", localization: l) == "0", "Observed zero is retained")
     try expect(PaidCreditsPresentation.amount(nil, localization: l) == "--", "Missing balance is unknown")
     try expect(PaidCreditsPresentation.amount(nil, unlimited: true, localization: l) == "Unlimited", "Unlimited has no numeric sentinel")
+}
+
+private func makeAGYQuotaWindow(
+    limitID: String,
+    limitName: String,
+    windowKind: String,
+    remainingPercent: Double?,
+    freshness: String = "fresh",
+    resetsAtMS: Int64? = nil,
+    resetRemainingMS: Int64? = nil,
+    lastSuccessAtMS: Int64? = nil
+) -> Codexpulse_Core_V1_CurrentWindow {
+    var window = Codexpulse_Core_V1_CurrentWindow()
+    window.limitID = limitID
+    window.limitName = limitName
+    window.windowKind = windowKind
+    window.windowMinutes = windowKind == "primary" ? 300 : 10_080
+    if let remainingPercent {
+        window.remainingPercent = remainingPercent
+        window.usedPercent = 100 - remainingPercent
+    }
+    window.freshness = freshness
+    if let resetsAtMS { window.resetsAtMs = resetsAtMS }
+    if let resetRemainingMS { window.resetRemainingMs = resetRemainingMS }
+    if let lastSuccessAtMS { window.lastSuccessAtMs = lastSuccessAtMS }
+    return window
+}
+
+private func testAGYProviderRoutingAndFiveWayFallback() throws {
+    try expect(
+        AgentProvider.allCases.map(\.rawValue) == ["codex", "cursor", "grok", "dsh", "agy"],
+        "AgentProvider must preserve 5-way order codex -> cursor -> grok -> dsh -> agy"
+    )
+    try expect(
+        AgentProvider.agy.title == "Antigravity"
+            && AgentProvider.agy.compactTitle == "AGY"
+            && AgentProvider.agy.defaultOverviewRange == .sevenDays
+            && !AgentProvider.agy.supportsInvocationStatistics
+            && !AgentProvider.agy.supportsResetCredits
+            && !AgentProvider.agy.usesOfficialPeriodRing,
+        "AgentProvider.agy capabilities and metadata must match contract"
+    )
+    try expect(
+        AppFeature.usageFeatures(for: .agy) == [.overview, .sessions, .projects, .quotaUsage]
+            && !AppFeature.usageFeatures(for: .agy).contains(.accountQuotas),
+        "AGY sidebar must expose overview/sessions/projects/quotaUsage and omit Codex-exclusive accountQuotas"
+    )
+
+    // 5-way fallback: disabling first 4 providers resolves to .agy
+    let onlyAGYCatalog = ProviderCatalog(
+        makeSettingsResponse(
+            revision: "rev-agy-1",
+            quotaEnabled: true,
+            providers: [
+                makeProviderSnapshot(.codex, intent: .disabled, effective: .disabled, reasonCode: "disabled"),
+                makeProviderSnapshot(.cursor, intent: .disabled, effective: .disabled, reasonCode: "disabled"),
+                makeProviderSnapshot(.grok, intent: .disabled, effective: .disabled, reasonCode: "disabled"),
+                makeProviderSnapshot(.dsh, intent: .disabled, effective: .disabled, reasonCode: "disabled"),
+                makeProviderSnapshot(.agy, intent: .enabled, effective: .enabled, reasonCode: "available"),
+            ]
+        )
+    )
+    try expect(onlyAGYCatalog.enabledProviders == [.agy], "only AGY should be enabled")
+    try expect(
+        onlyAGYCatalog.resolvedSelection(preferred: .codex) == .agy
+            && onlyAGYCatalog.resolvedSelection(preferred: .agy) == .agy,
+        "5-way fallback must select AGY when other 4 providers are disabled"
+    )
+
+    // Disabling AGY falls back in canonical order to DSH when only DSH is enabled
+    let fallbackToDSH = ProviderCatalog(
+        makeSettingsResponse(
+            revision: "rev-agy-2",
+            quotaEnabled: true,
+            providers: [
+                makeProviderSnapshot(.codex, intent: .disabled, effective: .disabled, reasonCode: "disabled"),
+                makeProviderSnapshot(.cursor, intent: .disabled, effective: .disabled, reasonCode: "disabled"),
+                makeProviderSnapshot(.grok, intent: .disabled, effective: .disabled, reasonCode: "disabled"),
+                makeProviderSnapshot(.dsh, intent: .enabled, effective: .enabled, reasonCode: "available"),
+                makeProviderSnapshot(.agy, intent: .disabled, effective: .disabled, reasonCode: "disabled"),
+            ]
+        )
+    )
+    try expect(
+        fallbackToDSH.resolvedSelection(preferred: .agy) == .dsh,
+        "disabling AGY must fall back cleanly to the remaining enabled provider"
+    )
+
+    // Calendar 7-day project ranking request is produced for AGY popover
+    let range = OverviewRequestSet.resolveRange(.sevenDays, quota: makeResponses().quota)
+    let projectRankReq = OverviewRequestSet.periodProjectRanking(range: range, provider: .agy)
+    try expect(
+        projectRankReq != nil && projectRankReq?.query.provider.provider == "agy",
+        "AGY must build a 7-day project ranking request for the popover"
+    )
+}
+
+private func testAGYStatusBarTightestPoolSelectionAndOfflineFallback() throws {
+    let base = makeResponses()
+    let nowMS: Int64 = 1_760_000_000_000
+    let futureMS = nowMS + 3_600_000
+
+    // 1. Tie-break: equal remaining % -> prefer 5h (primary) over weekly (secondary)
+    let windowsTieWindow = [
+        QuotaWindowPresentation(makeAGYQuotaWindow(
+            limitID: "agy.gemini", limitName: "Gemini", windowKind: "secondary",
+            remainingPercent: 40, resetsAtMS: futureMS, resetRemainingMS: 3_600_000
+        )),
+        QuotaWindowPresentation(makeAGYQuotaWindow(
+            limitID: "agy.claude_gpt", limitName: "Claude & GPT", windowKind: "primary",
+            remainingPercent: 40, resetsAtMS: futureMS, resetRemainingMS: 3_600_000
+        )),
+    ]
+    let pickedPrimary = AGYQuotaPoolResolver.tightestNonExpiredWindow(
+        from: windowsTieWindow, evaluatedAtMS: nowMS
+    )
+    try expect(
+        pickedPrimary?.limitID == "agy.claude_gpt" && pickedPrimary?.windowKind == "primary",
+        "Equal remaining % must prefer 5h primary window over weekly secondary window"
+    )
+
+    // 2. Tie-break: equal remaining % & same windowKind -> canonical pool order gemini -> argon -> carbon -> claude_gpt -> agy.pool.* alpha
+    let windowsTiePool = [
+        QuotaWindowPresentation(makeAGYQuotaWindow(
+            limitID: "agy.pool.zeta", limitName: "Zeta", windowKind: "primary",
+            remainingPercent: 50, resetsAtMS: futureMS, resetRemainingMS: 3_600_000
+        )),
+        QuotaWindowPresentation(makeAGYQuotaWindow(
+            limitID: "agy.pool.alpha", limitName: "Alpha", windowKind: "primary",
+            remainingPercent: 50, resetsAtMS: futureMS, resetRemainingMS: 3_600_000
+        )),
+        QuotaWindowPresentation(makeAGYQuotaWindow(
+            limitID: "agy.claude_gpt", limitName: "Claude & GPT", windowKind: "primary",
+            remainingPercent: 50, resetsAtMS: futureMS, resetRemainingMS: 3_600_000
+        )),
+        QuotaWindowPresentation(makeAGYQuotaWindow(
+            limitID: "agy.carbon", limitName: "Gemini 4 Carbon", windowKind: "primary",
+            remainingPercent: 50, resetsAtMS: futureMS, resetRemainingMS: 3_600_000
+        )),
+        QuotaWindowPresentation(makeAGYQuotaWindow(
+            limitID: "agy.argon", limitName: "Gemini 4 Argon", windowKind: "primary",
+            remainingPercent: 50, resetsAtMS: futureMS, resetRemainingMS: 3_600_000
+        )),
+    ]
+    try expect(
+        AGYQuotaPoolResolver.tightestNonExpiredWindow(from: windowsTiePool, evaluatedAtMS: nowMS)?.limitID == "agy.argon",
+        "Tie-break pool order must prefer argon before carbon/claude_gpt/custom pools"
+    )
+    let customOnly = Array(windowsTiePool.prefix(2))
+    try expect(
+        AGYQuotaPoolResolver.tightestNonExpiredWindow(from: customOnly, evaluatedAtMS: nowMS)?.limitID == "agy.pool.alpha",
+        "Unknown agy.pool.* tie-break must sort alphabetically"
+    )
+
+    // 3. Lower remaining % wins over pool order, ignoring expired windows
+    var quota = base.quota
+    quota.current.evaluatedAtMs = nowMS
+    quota.current.windows = [
+        makeAGYQuotaWindow(
+            limitID: "agy.gemini", limitName: "Gemini", windowKind: "primary",
+            remainingPercent: 10, freshness: "expired_unknown", resetsAtMS: nowMS - 1_000
+        ),
+        makeAGYQuotaWindow(
+            limitID: "agy.gemini", limitName: "Gemini", windowKind: "secondary",
+            remainingPercent: 80, freshness: "fresh", resetsAtMS: futureMS, resetRemainingMS: 3_600_000
+        ),
+        makeAGYQuotaWindow(
+            limitID: "agy.claude_gpt", limitName: "Claude & GPT", windowKind: "secondary",
+            remainingPercent: 25, freshness: "stale", resetsAtMS: futureMS, resetRemainingMS: 3_600_000
+        ),
+    ]
+    var todayUsage = base.usage
+    todayUsage.totals.totalTokens.value = 12_000
+    todayUsage.totals.totalTokens.unit = "tokens"
+
+    let previousLocale = AppLocalizationRegistry.shared.current
+    defer { AppLocalizationRegistry.shared.update(previousLocale) }
+
+    AppLocalizationRegistry.shared.update(.chineseSimplified)
+    let overviewZH = OverviewPresentation(OverviewResponses(
+        provider: .agy, usage: base.usage, quota: quota,
+        sessions: base.sessions, projects: base.projects, health: base.health,
+        todayUsage: todayUsage
+    ))
+    guard let summaryZH = StatusBarQuotaPresentation(overviewZH) else {
+        throw TestFailure.mismatch("AGY status bar summary must be constructed")
+    }
+    try expect(
+        summaryZH.remainingPercent == 25
+            && summaryZH.remainingText == "25%"
+            && summaryZH.usageText == "Claude · 周"
+            && summaryZH.dataState == .stale
+            && summaryZH.compactTextOmitsProviderNames,
+        "AGY status bar must display tightest non-expired pool (Claude · 周, 25%, stale), got \(summaryZH)"
+    )
+
+    AppLocalizationRegistry.shared.update(.englishUS)
+    let overviewEN = OverviewPresentation(OverviewResponses(
+        provider: .agy, usage: base.usage, quota: quota,
+        sessions: base.sessions, projects: base.projects, health: base.health,
+        todayUsage: todayUsage
+    ))
+    guard let summaryEN = StatusBarQuotaPresentation(overviewEN) else {
+        throw TestFailure.mismatch("AGY English status bar summary unavailable")
+    }
+    try expect(
+        summaryEN.remainingText == "25%" && summaryEN.usageText == "Claude · Wk",
+        "AGY English status bar must localize weekly compact label as Claude · Wk, got \(summaryEN.usageText)"
+    )
+
+    // 4. Offline / expired fallback -> top line "--", bottom line "今日 <Token>" / "Today <Token>"
+    var expiredQuota = base.quota
+    expiredQuota.current.evaluatedAtMs = nowMS
+    expiredQuota.current.windows = [
+        makeAGYQuotaWindow(
+            limitID: "agy.gemini", limitName: "Gemini", windowKind: "primary",
+            remainingPercent: nil, freshness: "expired_unknown", resetsAtMS: nowMS - 100
+        ),
+    ]
+    AppLocalizationRegistry.shared.update(.chineseSimplified)
+    let fallbackZH = StatusBarQuotaPresentation(OverviewPresentation(OverviewResponses(
+        provider: .agy, usage: base.usage, quota: expiredQuota,
+        sessions: base.sessions, projects: base.projects, health: base.health,
+        todayUsage: todayUsage
+    )))
+    try expect(
+        fallbackZH?.remainingPercent == nil
+            && fallbackZH?.remainingText == "--"
+            && fallbackZH?.usageText == "今日 1.2万"
+            && fallbackZH?.dataState == .unavailable,
+        "AGY offline fallback (zh-Hans) must show -- and 今日 1.2万, got \(String(describing: fallbackZH))"
+    )
+
+    AppLocalizationRegistry.shared.update(.englishUS)
+    let fallbackEN = StatusBarQuotaPresentation(OverviewPresentation(OverviewResponses(
+        provider: .agy, usage: base.usage, quota: expiredQuota,
+        sessions: base.sessions, projects: base.projects, health: base.health,
+        todayUsage: todayUsage
+    )))
+    try expect(
+        fallbackEN?.remainingText == "--" && fallbackEN?.usageText == "Today 12K",
+        "AGY offline fallback (en-US) must show -- and Today 12K, got \(String(describing: fallbackEN))"
+    )
+}
+
+private func testAGYMultiPoolGroupingPaceRoleAndAccountMasking() throws {
+    let nowMS: Int64 = 1_760_000_000_000
+    let futureMS = nowMS + 7_200_000
+    let rawWindows = [
+        makeAGYQuotaWindow(
+            limitID: "agy.claude_gpt", limitName: "Claude & GPT", windowKind: "secondary",
+            remainingPercent: 60, freshness: "stale", resetsAtMS: futureMS, lastSuccessAtMS: nowMS - 60_000
+        ),
+        makeAGYQuotaWindow(
+            limitID: "agy.gemini", limitName: "Gemini", windowKind: "primary",
+            remainingPercent: 85, freshness: "fresh", resetsAtMS: futureMS, lastSuccessAtMS: nowMS
+        ),
+        makeAGYQuotaWindow(
+            limitID: "agy.gemini", limitName: "Gemini", windowKind: "secondary",
+            remainingPercent: 90, freshness: "fresh", resetsAtMS: futureMS, lastSuccessAtMS: nowMS
+        ),
+        makeAGYQuotaWindow(
+            limitID: "agy.argon", limitName: "Gemini 4 Argon", windowKind: "secondary",
+            remainingPercent: 75, freshness: "fresh", resetsAtMS: futureMS, lastSuccessAtMS: nowMS
+        ),
+    ]
+    let pools = AGYQuotaPoolResolver.groupPools(rawWindows.map(QuotaWindowPresentation.init))
+    try expect(
+        pools.map(\.limitID) == ["agy.gemini", "agy.argon", "agy.claude_gpt"],
+        "Multi-pool grouping must order gemini -> argon -> claude_gpt"
+    )
+    try expect(
+        pools[0].primaryWindow?.remainingPercent == 85
+            && pools[0].secondaryWindow?.remainingPercent == 90
+            && !pools[0].isStale
+            && pools[2].isStale
+            && pools[2].lastSuccessAtMS == nowMS - 60_000,
+        "Pool grouping must pair primary/secondary windows and propagate stale metadata"
+    )
+
+    // QuotaPace pool grouping
+    var paceWin1 = Codexpulse_Core_V1_QuotaPaceWindow()
+    paceWin1.limitID = "agy.claude_gpt"
+    paceWin1.windowKind = "primary"
+    var paceWin2 = Codexpulse_Core_V1_QuotaPaceWindow()
+    paceWin2.limitID = "agy.gemini"
+    paceWin2.windowKind = "secondary"
+    let paceGroups = AGYQuotaPoolResolver.groupPacePools(
+        [
+            QuotaPaceWindowPresentation(paceWin1, evaluatedAtMS: nowMS),
+            QuotaPaceWindowPresentation(paceWin2, evaluatedAtMS: nowMS),
+        ],
+        currentWindows: rawWindows
+    )
+    try expect(
+        paceGroups.map(\.limitID) == ["agy.gemini", "agy.claude_gpt"]
+            && paceGroups[0].displayName == "Gemini"
+            && paceGroups[1].displayName == "Claude & GPT",
+        "QuotaPace pool grouping must preserve AGY pool order and display names"
+    )
+
+    // Session role badge parsing
+    try expect(
+        SessionRolePresentation(titleReason: "role:subagent") == .subagent
+            && SessionRolePresentation(titleReason: "role:swarm_worker") == .swarmWorker
+            && SessionRolePresentation(titleReason: "role:side_question") == .sideQuestion
+            && SessionRolePresentation(titleReason: "role:main") == nil
+            && SessionRolePresentation(titleReason: "provider_metadata") == nil,
+        "SessionRolePresentation must parse subagent/swarm_worker/side_question only"
+    )
+
+    // AGY account presentation & email masking
+    var acct = Codexpulse_Core_V1_AccountSnapshotResponse()
+    acct.account.type = "agy"
+    acct.account.email = "alice@example.com"
+    acct.account.planType = "Google AI Ultra 20×"
+    let acctPres = CodexAccountPresentation(acct)
+    try expect(
+        acctPres.availability == .available
+            && acctPres.planText == "Google AI Ultra 20×"
+            && acctPres.emailText == "alice@example.com",
+        "CodexAccountPresentation must support type=agy with plan name"
+    )
+    try expect(
+        PopoverAccountEmailMasker.mask("alice@example.com") == "al***@example.com"
+            && PopoverAccountEmailMasker.mask("a@b.com") == "a***@b.com",
+        "Email masker must safely obfuscate local part"
+    )
+}
+
+private func testAGYSettingsDraftAndOnlineToggleRoundtrip() throws {
+    var response = makeSettingsResponse(revision: "rev-agy-settings", quotaEnabled: true)
+    response.snapshot.online.agyOnlineEnabled = true
+    response.snapshot.providers = AgentProvider.allCases.map { provider in
+        makeProviderSnapshot(
+            provider,
+            intent: provider == .agy ? .auto : .enabled,
+            effective: .enabled,
+            reasonCode: "available"
+        )
+    }
+
+    // Editable roundtrip
+    var draft = SettingsDraft(response)
+    try expect(draft.agyOnlineEnabled && draft.agyIntent == .auto, "Draft must read AGY online and intent fields")
+    draft.agyOnlineEnabled = false
+    draft.agyIntent = .disabled
+    let req = draft.makeRequest(authoritative: response)
+    try expect(
+        req.online.hasAgyOnlineEnabled
+            && !req.online.agyOnlineEnabled
+            && req.providers.map(\.provider) == ["codex", "cursor", "grok", "dsh", "agy"]
+            && req.providers.last?.intent == .disabled,
+        "Editable AGY settings must roundtrip into UpdateSettingsRequest"
+    )
+
+    // Non-editable preserves authoritative truth
+    response.editableFields = response.editableFields.filter {
+        $0.key != "online.agyOnlineEnabled" && $0.key != "providers.agy.intent"
+    }
+    let lockedReq = draft.makeRequest(authoritative: response)
+    try expect(
+        lockedReq.online.agyOnlineEnabled && lockedReq.providers.last?.intent == .auto,
+        "Non-editable AGY fields must preserve authoritative values"
+    )
+}
+
+@MainActor
+private func testAGYInvocationUsageHiddenWithZeroRPCAndSwitching() async throws {
+    let suiteName = "CodexPulseAppTests.AGYZeroInvocation.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        throw TestFailure.mismatch("AGY defaults suite unavailable")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set(AgentProvider.agy.rawValue, forKey: "CodexPulse.selectedProvider")
+    defaults.set(AgentProvider.agy.rawValue, forKey: "CodexPulse.statusProvider")
+
+    let core = FakeCore(bootstrap: makeNormalBootstrap(), responses: makeResponses())
+    let runtime = AppRuntime(supervisor: FakeSupervisor(), clientFactory: { _ in core })
+    let model = AppModel(runtime: runtime, providerDefaults: defaults)
+    model.start()
+    try await waitUntil("AGY overview loaded") {
+        await MainActor.run {
+            model.presentation?.provider == .agy && model.statusPresentation?.provider == .agy
+        }
+    }
+    let calls = await core.recordedCalls()
+    try expect(
+        !calls.contains(where: { $0.contains("invocation") }),
+        "AGY must NEVER issue an InvocationUsage RPC, got calls=\(calls)"
+    )
+
+    // Disabling AGY via provider catalog cancels AGY and falls back cleanly in 5-way order
+    let fallbackCatalog = ProviderCatalog(
+        makeSettingsResponse(
+            revision: "rev-agy-disable",
+            quotaEnabled: true,
+            providers: [
+                makeProviderSnapshot(.codex, intent: .enabled, effective: .enabled, reasonCode: "available"),
+                makeProviderSnapshot(.cursor, intent: .disabled, effective: .disabled, reasonCode: "disabled"),
+                makeProviderSnapshot(.grok, intent: .disabled, effective: .disabled, reasonCode: "disabled"),
+                makeProviderSnapshot(.dsh, intent: .disabled, effective: .disabled, reasonCode: "disabled"),
+                makeProviderSnapshot(.agy, intent: .disabled, effective: .disabled, reasonCode: "disabled"),
+            ]
+        )
+    )
+    let resolved = model.applyProviderCatalog(fallbackCatalog)
+    try expect(
+        resolved == .codex && model.selectedProvider == .codex && model.statusProvider == .codex,
+        "Disabling AGY must auto-fallback main and status provider to Codex"
+    )
+    _ = await model.shutdown()
 }

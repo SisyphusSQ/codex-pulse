@@ -35,7 +35,7 @@ struct DashboardSummaryView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(AppFeature.dashboardSummary.title(localization: model.localization))
                     .font(.title.bold())
-                Text(model.localization.textValue("跨 Codex、Cursor、Grok 和 DSH 查看 Token、成本与额度"))
+                Text(model.localization.textValue("跨 Codex、Cursor、Grok、DSH 和 Antigravity 查看 Token、成本与额度"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -88,6 +88,7 @@ private enum DashboardActivityScope: String, CaseIterable, Identifiable {
     case cursor
     case grok
     case dsh
+    case agy
 
     var id: String { rawValue }
 
@@ -97,7 +98,8 @@ private enum DashboardActivityScope: String, CaseIterable, Identifiable {
         case .codex: .codex
         case .cursor: .cursor
         case .grok: .grok
- case .dsh: .dsh
+        case .dsh: .dsh
+        case .agy: .agy
         }
     }
 
@@ -1087,7 +1089,8 @@ private struct DashboardSummaryContentView: View {
         case .codex: "terminal.fill"
         case .cursor: "cursorarrow.rays"
         case .grok: "sparkles"
- case .dsh: "bolt"
+        case .dsh: "bolt"
+        case .agy: "atom"
         }
     }
 
@@ -1117,7 +1120,107 @@ private struct DashboardSummaryContentView: View {
         }
     }
 
+    @ViewBuilder
     private func quotaRow(_ card: DashboardSummaryPresentation.QuotaCard) -> some View {
+        if card.provider == .agy {
+            agyQuotaRow(card)
+        } else {
+            standardQuotaRow(card)
+        }
+    }
+
+    private func agyQuotaRow(_ card: DashboardSummaryPresentation.QuotaCard) -> some View {
+        let pools = AGYQuotaPoolResolver.groupPools(card.windows)
+        let tightest = AGYQuotaPoolResolver.tightestNonExpiredWindow(
+            from: card.windows,
+            evaluatedAtMS: 0
+        )
+        let summaryProgress = QuotaProgressPresentation(
+            remainingPercent: tightest?.remainingPercent,
+            localization: localization
+        )
+        return Button {
+            onOpenProvider(card.provider)
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(providerColor(card.provider))
+                        .frame(width: 8, height: 8)
+                    Text(card.provider.title)
+                        .font(.headline)
+                    Spacer(minLength: 10)
+                    Text(summaryProgress.percentText)
+                        .font(.title3.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(quotaLevelColor(summaryProgress.level))
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                        .foregroundStyle(.tertiary)
+                }
+                if pools.isEmpty {
+                    Text(quotaDetail(card: card, window: nil))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(pools) { pool in
+                            HStack(spacing: 8) {
+                                Text(pool.compactName)
+                                    .font(.caption.weight(.medium))
+                                    .frame(width: 58, alignment: .leading)
+                                    .lineLimit(1)
+                                if let primary = pool.primaryWindow {
+                                    agyDashboardPoolPill(label: "5h", window: primary)
+                                }
+                                if let secondary = pool.secondaryWindow {
+                                    agyDashboardPoolPill(
+                                        label: localization.textValue("周"),
+                                        window: secondary
+                                    )
+                                }
+                                Spacer(minLength: 4)
+                                if pool.isStale {
+                                    Text(localization.textValue("上次观测"))
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("dashboard.summary.quota.\(card.provider.rawValue)")
+        .accessibilityHint(localization.format("dashboard.open.provider", card.provider.title))
+    }
+
+    private func agyDashboardPoolPill(
+        label: String,
+        window: QuotaWindowPresentation
+    ) -> some View {
+        let progress = QuotaProgressPresentation(
+            remainingPercent: window.remainingPercent,
+            localization: localization
+        )
+        return HStack(spacing: 4) {
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(progress.percentText)
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(quotaLevelColor(progress.level))
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Color.secondary.opacity(0.08), in: Capsule())
+    }
+
+    private func standardQuotaRow(_ card: DashboardSummaryPresentation.QuotaCard) -> some View {
         let window = card.windows.first
         let progress = QuotaProgressPresentation(
             remainingPercent: window?.remainingPercent,
@@ -1235,7 +1338,8 @@ private struct DashboardSummaryContentView: View {
         case .codex: "1"
         case .cursor: "2"
         case .grok: "3"
- case .dsh: "4"
+        case .dsh: "4"
+        case .agy: "5"
         }
     }
 
@@ -1273,7 +1377,8 @@ private func providerColor(_ provider: AgentProvider) -> Color {
         case .codex: .blue
         case .cursor: .orange
         case .grok: .purple
- case .dsh: .teal
+        case .dsh: .teal
+        case .agy: .mint
         }
     }
 
@@ -1364,7 +1469,8 @@ private struct DashboardTrendChart: View {
             AgentProvider.codex.title: providerColor(.codex),
             AgentProvider.cursor.title: providerColor(.cursor),
             AgentProvider.grok.title: providerColor(.grok),
- AgentProvider.dsh.title: providerColor(.dsh),
+            AgentProvider.dsh.title: providerColor(.dsh),
+            AgentProvider.agy.title: providerColor(.agy),
         ])
         .chartLegend(.hidden)
         .chartXScale(

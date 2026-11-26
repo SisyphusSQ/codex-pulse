@@ -503,7 +503,7 @@ public actor AppRuntime {
 				try await client.usageCost(content.usage, retryPolicy: .transportDefault)
 			}
 			async let todayUsageResult = captureOverviewSection {
-				guard provider == .cursor || provider == .dsh else {
+				guard provider == .cursor || provider == .dsh || provider == .agy else {
 					return unavailableUsage(for: todayContent.usage, provider: provider)
 				}
 				return try await client.usageCost(
@@ -1467,7 +1467,7 @@ public actor AppRuntime {
                 && range.endAtMS == weeklyProjectRange.endAtMS
                 && range.timeZone == weeklyProjectRange.timeZone
                 && range.granularity == weeklyProjectRange.granularity
-			let weeklyUsageRequest = sharesWeeklyUsage || provider == .cursor
+			let weeklyUsageRequest = sharesWeeklyUsage || provider == .cursor || provider == .agy
 				? nil
 				: OverviewRequestSet.weeklyUsageRequest(quota: quotaResponse, provider: provider)
 			let weeklyProjectRequest = OverviewRequestSet.weeklyProjectRanking(
@@ -1520,7 +1520,7 @@ public actor AppRuntime {
                     content.invocationUsage, retryPolicy: .transportDefault)
             }
 			async let todayUsageResult = captureOverviewSection {
-				guard provider == .cursor || provider == .dsh else {
+				guard provider == .cursor || provider == .dsh || provider == .agy else {
 					return unavailableUsage(for: todayContent.usage, provider: provider)
 				}
 				return try await client.usageCost(
@@ -1570,7 +1570,7 @@ public actor AppRuntime {
             case .failure: weeklyProjectResponse = unavailableProjects(provider: provider)
             }
             let weeklyUsageResponse: Codexpulse_Core_V1_UsageCostResponse
-			if sharesWeeklyUsage || provider == .cursor {
+			if sharesWeeklyUsage || provider == .cursor || provider == .agy {
                 weeklyUsageResponse = usageResponse
             } else {
                 switch sectionResults.5 {
