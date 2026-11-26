@@ -2,7 +2,7 @@ import { Descriptions, Tag, Tooltip, Typography } from 'antd';
 import type { CacheHitRateStats } from '../api/records';
 import { tokens } from '../format';
 
-const reasons:Record<string,string>={mixed_providers:'跨平台缓存口径不同，请选择Codex查看',not_reported:'客户端尚未上报',unsupported_provider:'此 Provider 暂不支持',not_applicable:'没有输入 Token',unavailable:'输入计数不可用',rollup_missing:'尚未建立会话统计',rollup_ambiguous:'会话统计不明确',history_filtered:'上报历史范围未包含整个会话',source_conflict:'来源存在冲突'};
+const reasons:Record<string,string>={mixed_providers:'跨平台缓存口径不同，请单选 Codex、DSH 或 Antigravity 查看',not_reported:'客户端尚未上报',unsupported_provider:'此 Provider 暂不支持',not_applicable:'没有输入 Token',unavailable:'输入计数不可用',rollup_missing:'尚未建立会话统计',rollup_ambiguous:'会话统计不明确',history_filtered:'上报历史范围未包含整个会话',source_conflict:'来源存在冲突'};
 export function cacheHitRate(value?:CacheHitRateStats|null){
  if(value?.unit!=='basis_points'||value.basis_points===null||value.basis_points===undefined||!/^\d+$/.test(value.basis_points))return '—';
  const basis=BigInt(value.basis_points);if(basis>10_000n)return '—';

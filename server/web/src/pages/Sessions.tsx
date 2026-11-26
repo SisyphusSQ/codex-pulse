@@ -20,7 +20,7 @@ export default function Sessions(){
  const detailFilter={...filter,page:1,limit:25};
  function change(v:ListFilter){setFilter(v);if(!sameRecordScope(v,filter))setSelected(undefined);}
  return <section><ListFilters value={filter} onChange={change} refresh={()=>void query.refetch()} busy={query.isFetching} />
- {query.data&&<TotalsLine totals={query.data.totals} />}
+ {query.data&&<TotalsLine totals={query.data.totals} provider={filter.provider} />}
  <RecordWorkspace selectedId={selected} listLabel="会话列表" detailLabel="会话详情" list={<>
   <RecordSearchControls value={filter} onChange={change} /><div className="record-list-heading">会话记录{query.data?` · 共 ${integer(query.data.page.total)} 条`:''}</div>
   {query.isPending?<LoadingState />:query.error&&!query.data?<ErrorState error={query.error} retry={()=>void query.refetch()} />:query.data&&<><SessionTable compact selectedId={selected} rows={query.data.items} page={query.data.page} loading={query.isFetching} zone={filter.time_zone} onPage={(page,limit)=>change({...filter,page,limit})} onOpen={setSelected} /><CoverageNotice coverage={query.data.coverage} zone={filter.time_zone} /></>}

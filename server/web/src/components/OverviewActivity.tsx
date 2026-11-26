@@ -4,7 +4,9 @@ import {useFeedbackQuery as useQuery} from './QueryNotifications';
 import {Link} from 'react-router-dom';
 import type {EChartsCoreOption} from 'echarts/core';
 import {getActivity,getTopSessions,getSourceUsage,statsParams,type CollectorUsage,type StatsFilter,type Summary,type Activity,type TopSessions} from '../api/statistics';
-import {dayjs,dateTime,integer,tokens,tokenAxis,coordinate} from '../format';
+import {dayjs,dateTime,integer,providerLabel,tokens,tokenAxis,coordinate} from '../format';
+import {cacheHitRate} from './CacheHitRate';
+import {tps} from './Throughput';
 import {sourceNames} from './RecordViews';
 import {ErrorState,LoadingState} from './QueryState';
 import {decimalSorter} from './sorting';
@@ -23,7 +25,7 @@ function ActivityCard({data,filter,onDay}:{data:Activity;filter:StatsFilter;onDa
  <div className="weekday-scroll"><div className="weekday-heatmap"><span/>{Array.from({length:24},(_,hour)=><span className="weekday-hour" key={`h:${hour}`}>{hour%3===0?hour:''}</span>)}{[1,2,3,4,5,6,0].flatMap((weekday,index)=>[<span key={`d:${weekday}`} className="weekday-name">{['周一','周二','周三','周四','周五','周六','周日'][index]}</span>,...Array.from({length:24},(_,hour)=>{const row=data.weekday_hours.find(r=>r.weekday===weekday&&r.hour===hour),value=metric==='tokens'?row?.tokens??(!row||row.sessions===0?'0':null):row?.session_count??String(row?.sessions??0);const label=`${['周一','周二','周三','周四','周五','周六','周日'][index]} ${hour}时 · ${value===null?'—':metric==='tokens'?`${tokens(value)} Token`:`${integer(value)} 个会话`}`;return <Tooltip key={`${weekday}:${hour}`} title={label}><span tabIndex={0} aria-label={label} className={`activity-cell weekday-cell ${value===null?'unknown':Number(value)===0?'none':`level-${1+Math.min(3,Math.floor(Number(value)/max*4))}`}`}/></Tooltip>;})])}</div></div><div className="weekday-legend" aria-label="星期小时热力图色阶"><span>少</span>{['none','level-1','level-2','level-3','level-4'].map(level=><span key={level} className={`activity-cell ${level}`}/>)}多</div></Card>;
 }
 function TopCard({data,filter}:{data:TopSessions;filter:StatsFilter}){
- return <Card title="高消耗会话"><div className="metric-note">所选范围内的 Token · 前 5 个会话</div>{data.top_sessions.length?<ol className="top-sessions">{data.top_sessions.map(r=><li key={r.id}><Link to={sessionsTarget(filter,r.id)}><span className="top-session-name">{r.title||'未命名会话'}<small><Tooltip title={`${r.project_name||'未归因项目'} · ${sourceNames(r.sources)}`}><span className="top-session-meta">{r.project_name||'未归因项目'} · {sourceNames(r.sources)}</span></Tooltip></small></span><strong>{usageTokens(usageDecimal(r.totals,'total_tokens'))} Token</strong></Link></li>)}</ol>:<Empty description="当前范围暂无高消耗会话" image={Empty.PRESENTED_IMAGE_SIMPLE}/>}<Link to={sessionsTarget(filter)}>查看全部会话 →</Link></Card>;
+ return <Card title="高消耗会话"><div className="metric-note">所选范围内的 Token · 前 5 个会话</div>{data.top_sessions.length?<ol className="top-sessions">{data.top_sessions.map(r=>{const hit=cacheHitRate(r.cache_hit_rate),speed=r.throughput?.average_output_milli_tps!=null?`${tps(r.throughput.average_output_milli_tps)} TPS`:null,meta=[providerLabel(r.provider),r.project_name||'未归因项目',sourceNames(r.sources),...(hit!=='—'?[`缓存 ${hit}`]:[]),...(speed?[speed]:[])].join(' · ');return <li key={r.id}><Link to={sessionsTarget(filter,r.id)}><span className="top-session-name">{r.title||'未命名会话'}<small><Tooltip title={meta}><span className="top-session-meta">{meta}</span></Tooltip></small></span><strong>{usageTokens(usageDecimal(r.totals,'total_tokens'))} Token</strong></Link></li>;})}</ol>:<Empty description="当前范围暂无高消耗会话" image={Empty.PRESENTED_IMAGE_SIMPLE}/>}<Link to={sessionsTarget(filter)}>查看全部会话 →</Link></Card>;
 }
 export function MachineUsage({filter,onSelect}:{filter:StatsFilter;onSelect(client:string):void}){
  const query=useQuery({queryKey:['statistics','source-usage',filter],queryFn:({signal})=>getSourceUsage(filter,signal),refetchInterval:60_000});
