@@ -48,6 +48,9 @@ func (e *Exporter) source(ctx context.Context, provider string, start int64) (st
 	switch provider {
 	case "codex":
 		intent = prefs.Providers.Codex.Intent
+		if intent == preferences.ProviderIntentDisabled {
+			return s, store.ErrReportingProviderDisabled
+		}
 		if prefs.CodexHome == nil {
 			return s, store.ErrReportingSource
 		}
@@ -67,11 +70,13 @@ func (e *Exporter) source(ctx context.Context, provider string, start int64) (st
 		intent = prefs.Providers.DSH.Intent
 	case "grok":
 		intent = prefs.Providers.Grok.Intent
+	case "agy":
+		intent = prefs.Providers.AGY.Intent
 	default:
 		return s, store.ErrReportingSource
 	}
 	if intent == preferences.ProviderIntentDisabled {
-		return s, store.ErrReportingSource
+		return s, store.ErrReportingProviderDisabled
 	}
 	return s, nil
 }
@@ -97,6 +102,9 @@ func (e *Exporter) Page(ctx context.Context, provider, after string, start int64
 
 func (e *Exporter) Status(ctx context.Context, provider string, start int64) (reportingv1.DeviceStatus, error) {
 	source, err := e.source(ctx, provider, start)
+	if errors.Is(err, store.ErrReportingProviderDisabled) {
+		return reportingv1.DeviceStatus{Provider: provider, Status: "disabled"}, nil
+	}
 	if errors.Is(err, store.ErrReportingSource) {
 		status := "source_unavailable"
 		if prefs, loadErr := e.preferences.LoadPreferences(ctx); loadErr == nil {
@@ -115,6 +123,10 @@ func (e *Exporter) Status(ctx context.Context, provider string, start int64) (re
 				}
 			case "grok":
 				if prefs.Providers.Grok.Intent == preferences.ProviderIntentDisabled {
+					status = "disabled"
+				}
+			case "agy":
+				if prefs.Providers.AGY.Intent == preferences.ProviderIntentDisabled {
 					status = "disabled"
 				}
 			}

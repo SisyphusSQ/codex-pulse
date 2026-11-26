@@ -43,7 +43,7 @@ func validThroughputMeasures(m ThroughputMeasures) bool {
 		m.IncludedTurns < 0 || m.ExcludedTurns < 0 || m.OpenTurns < 0 || m.UnattributedEvents < 0 ||
 		m.IncludedTurns > 50000 || m.ExcludedTurns > 50000 || m.OpenTurns > 50000 || m.UnattributedEvents > MaxTimestampMS ||
 		m.IncludedTurns+m.ExcludedTurns+m.OpenTurns > 50000 ||
-		!slices.Contains([]string{"", "duration_ms", "log_timestamp", "source_seconds", "mixed"}, m.DurationSource) {
+		!slices.Contains([]string{"", "duration_ms", "log_timestamp", "source_seconds", "step_metadata", "mixed"}, m.DurationSource) {
 		return false
 	}
 	if m.Status == "complete" || m.Status == "partial" {
@@ -63,7 +63,7 @@ func validThroughput(snapshot SessionSnapshot) bool {
 	if c == nil {
 		return true
 	}
-	if !((snapshot.Provider == "codex" && snapshot.SourceKind == "light_index") || (snapshot.Provider == "dsh" && snapshot.SourceKind == "dsh_local")) || snapshot.Deleted || c.Version != 1 || c.Basis != "closed_turn_lifetime_output" || !validThroughputMeasures(c.Measures) || len(c.RecentTurns) > MaxThroughputTurns || c.TurnsTotal < int64(len(c.RecentTurns)) || c.TurnsTotal > 50000 {
+	if !((snapshot.Provider == "codex" && snapshot.SourceKind == "light_index") || (snapshot.Provider == "dsh" && snapshot.SourceKind == "dsh_local") || (snapshot.Provider == "agy" && snapshot.SourceKind == "agy_local")) || snapshot.Deleted || c.Version != 1 || c.Basis != "closed_turn_lifetime_output" || !validThroughputMeasures(c.Measures) || len(c.RecentTurns) > MaxThroughputTurns || c.TurnsTotal < int64(len(c.RecentTurns)) || c.TurnsTotal > 50000 {
 		return false
 	}
 	if c.Measures.CoverageKnown && c.TurnsTotal != c.Measures.IncludedTurns+c.Measures.ExcludedTurns+c.Measures.OpenTurns {

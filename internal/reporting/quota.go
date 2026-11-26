@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
+	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
@@ -20,21 +21,49 @@ type ExportFactsPage struct {
 }
 
 func (e *Exporter) captureIdentities(ctx context.Context) error {
-	if e.identities == nil {
-		return nil
+	if e.identities != nil {
+		identities, err := e.identities.ReportingAccountIdentities(ctx)
+		if err != nil {
+			return err
+		}
+		if err := e.state.RememberIdentities(ctx, identities); err != nil {
+			return err
+		}
 	}
-	identities, err := e.identities.ReportingAccountIdentities(ctx)
-	if err != nil {
-		return err
+	if e.repository != nil && e.preferences != nil {
+		if prefs, err := e.preferences.LoadPreferences(ctx); err == nil &&
+			prefs.Providers.AGY.Intent != preferences.ProviderIntentDisabled {
+			accounts, err := e.repository.ReportingAGYAccounts(ctx)
+			if err != nil {
+				return err
+			}
+			if len(accounts) > 0 {
+				agyIdentities := make([]AccountIdentity, 0, len(accounts))
+				for _, acc := range accounts {
+					agyIdentities = append(agyIdentities, AccountIdentity{
+						Provider:      "agy",
+						LocalScope:    acc.ID,
+						AccountID:     acc.ID,
+						Email:         nil,
+						Plan:          acc.Plan,
+						ConfirmedAtMS: acc.CollectedAtMS,
+						CollectedAtMS: acc.CollectedAtMS,
+					})
+				}
+				if err := e.state.RememberIdentities(ctx, agyIdentities); err != nil {
+					return err
+				}
+			}
+		}
 	}
-	return e.state.RememberIdentities(ctx, identities)
+	return nil
 }
 func (e *Exporter) FactsPartition(ctx context.Context, provider string) (string, error) {
-	if err := e.captureIdentities(ctx); err != nil {
-		return "", err
-	}
 	source, err := e.source(ctx, provider, 0)
 	if err != nil {
+		return "", err
+	}
+	if err := e.captureIdentities(ctx); err != nil {
 		return "", err
 	}
 	revision := ""

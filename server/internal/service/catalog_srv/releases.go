@@ -59,6 +59,10 @@ func applyModelReleases(models []catalog_vo.Model) error {
 				if rate, ok := pricing.GrokRateForModel(model); ok {
 					model = rate.ModelID
 				}
+			case "agy":
+				if canonical, _ := pricing.ResolveAGYModelID(model, ""); canonical != "" {
+					model = canonical
+				}
 			}
 		}
 		if release, exists := releases[releaseModelKey(model)]; exists {

@@ -115,3 +115,148 @@ func TestQuotaAssociationAndCreditsExpiryContract(t *testing.T) {
 		t.Fatal("complete inventory does not reconcile")
 	}
 }
+
+func TestAGYProtocolAllowsLocalSessionMultiPoolQuotaAndFiveProviderStatuses(t *testing.T) {
+	scope := Key("agy-account", "synthetic-account-digest")
+	c := Contribution{
+		ObservedAtMS:    new(int64(1784000000000)),
+		Model:           new("gemini-4-carbon"),
+		InputTokens:     new(int64(1500)),
+		CachedTokens:    new(int64(500)),
+		OutputTokens:    new(int64(250)),
+		ReasoningTokens: new(int64(100)),
+		TotalTokens:     new(int64(1750)),
+		CostMicroUSD:    new(int64(4550)),
+		PricingVersion:  new("agy-api-2026-11-25:phase1"),
+		CostStatus:      "known",
+		PricingMode:     "event_cost",
+	}
+	c.ID = ContributionID("agy", "agy-cascade-1", c, 0)
+	b := Batch{
+		Version: Version,
+		ID:      "00000000-0000-0000-0000-000000000002",
+		Sessions: []SessionSnapshot{{
+			Provider:      "agy",
+			HomeID:        "home-agy",
+			SessionID:     "agy-cascade-1",
+			Revision:      1,
+			CollectedAtMS: 1784000005000,
+			Title:         "AGY 会话",
+			ProjectID:     Key("agy", "workspace"),
+			ProjectName:   "workspace",
+			SourceKind:    "agy_local",
+			SessionKind:   "session",
+			Complete:      true,
+			Contributions: []Contribution{c},
+			CacheUsage: &CacheUsageCapsule{
+				Version:           1,
+				Basis:             "lifetime_cached_input",
+				InputTokens:       new(int64(1500)),
+				CachedInputTokens: new(int64(500)),
+			},
+			Throughput: &ThroughputCapsule{
+				Version: 1,
+				Basis:   "closed_turn_lifetime_output",
+				Measures: ThroughputMeasures{
+					OutputTokens:     new(int64(250)),
+					ActiveDurationMS: new(int64(2000)),
+					IncludedTurns:    1,
+					CoverageKnown:    true,
+					Status:           "complete",
+					DurationSource:   "step_metadata",
+				},
+				TurnsTotal: 1,
+				RecentTurns: []ThroughputTurn{{
+					Key:         Key("agy", "agy-cascade-1", "turn", "0"),
+					StartedAtMS: new(int64(1783999998000)),
+					EndedAtMS:   new(int64(1784000000000)),
+					Measures: ThroughputMeasures{
+						OutputTokens:     new(int64(250)),
+						ActiveDurationMS: new(int64(2000)),
+						IncludedTurns:    1,
+						CoverageKnown:    true,
+						Status:           "complete",
+						DurationSource:   "step_metadata",
+					},
+				}},
+			},
+		}},
+		Accounts: []Account{{
+			Provider:      "agy",
+			ID:            scope,
+			Plan:          new("Google AI Ultra 20×"),
+			CollectedAtMS: 1784000005000,
+		}},
+		Bindings: []AccountBinding{{
+			Provider:      "agy",
+			LocalScope:    "public-agy-scope",
+			AccountID:     scope,
+			ConfirmedAtMS: 1784000005000,
+		}},
+		Quotas: []QuotaObservation{
+			{
+				Provider:        "agy",
+				ID:              "agy-q-gemini-5h",
+				AccountID:       new(scope),
+				LocalScope:      "public-agy-scope",
+				LimitID:         "agy.gemini",
+				WindowKind:      "primary",
+				WindowMinutes:   new(int64(300)),
+				WindowStartAtMS: new(int64(1783982000000)),
+				ResetsAtMS:      new(int64(1784000000000)),
+				ObservedAtMS:    1783990000000,
+				UsedPercent:     new(25.0),
+				Validity:        "accepted",
+				Source:          "agy_ls_rpc",
+				HistoryOrigin:   "confirmed",
+			},
+			{
+				Provider:        "agy",
+				ID:              "agy-q-claude-weekly",
+				AccountID:       new(scope),
+				LocalScope:      "public-agy-scope",
+				LimitID:         "agy.claude_gpt",
+				WindowKind:      "secondary",
+				WindowMinutes:   new(int64(10080)),
+				WindowStartAtMS: new(int64(1783395200000)),
+				ResetsAtMS:      new(int64(1784000000000)),
+				ObservedAtMS:    1783990000000,
+				UsedPercent:     new(10.0),
+				Validity:        "accepted",
+				Source:          "agy_ls_rpc",
+				HistoryOrigin:   "confirmed",
+			},
+		},
+		Status: []DeviceStatus{
+			{Provider: "codex", Status: "ready"},
+			{Provider: "cursor", Status: "ready"},
+			{Provider: "grok", Status: "ready"},
+			{Provider: "dsh", Status: "ready"},
+			{Provider: "agy", Status: "disabled"},
+		},
+	}
+	if err := b.Validate(); err != nil {
+		t.Fatalf("valid AGY batch rejected: %v", err)
+	}
+
+	// Reject unknown source kind, unknown quota source, and >5 device statuses.
+	badSource := b
+	badSource.Sessions = []SessionSnapshot{b.Sessions[0]}
+	badSource.Sessions[0].SourceKind = "agy_unknown"
+	if !errors.Is(badSource.Validate(), ErrInvalid) {
+		t.Fatal("unknown AGY source_kind accepted")
+	}
+
+	badQuota := b
+	badQuota.Quotas = []QuotaObservation{b.Quotas[0]}
+	badQuota.Quotas[0].Source = "agy_oauth"
+	if !errors.Is(badQuota.Validate(), ErrInvalid) {
+		t.Fatal("unknown AGY quota source accepted")
+	}
+
+	tooManyStatuses := b
+	tooManyStatuses.Status = append(append([]DeviceStatus(nil), b.Status...), DeviceStatus{Provider: "agy", Status: "ready"})
+	if !errors.Is(tooManyStatuses.Validate(), ErrInvalid) {
+		t.Fatal("more than 5 device statuses accepted")
+	}
+}
