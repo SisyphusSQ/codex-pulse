@@ -72,7 +72,7 @@ func pinSourceDatabase(path string) (func(), error) {
 	return release, nil
 }
 
-func openRegularFileReadOnly(path string) (*os.File, os.FileInfo, error) {
+func openRegularFileReadOnly(path string) (*platformfs.BoundFile, os.FileInfo, error) {
 	if !filepath.IsAbs(path) || strings.Contains(filepath.Base(path), ":") {
 		return nil, nil, platformfs.ErrUnsafe
 	}
@@ -90,7 +90,7 @@ func openRegularFileReadOnly(path string) (*os.File, os.FileInfo, error) {
 		_ = opened.Close()
 		return nil, nil, platformfs.ErrUnsafe
 	}
-	return opened.File, info, nil
+	return opened, info, nil
 }
 
 func readDirSafe(path string) ([]os.DirEntry, error) {

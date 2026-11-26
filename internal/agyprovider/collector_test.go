@@ -124,11 +124,7 @@ func openTestDB(t *testing.T, path string) *sql.DB {
 
 func openPulseRepo(t *testing.T) *store.Repository {
 	t.Helper()
-	dir := filepath.Join(t.TempDir(), "runtime")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	dbPath := filepath.Join(dir, "pulse.sqlite")
+	dbPath := filepath.Join(t.TempDir(), "runtime", "pulse.sqlite")
 	s, err := storesqlite.Open(context.Background(), storesqlite.Config{Path: dbPath})
 	if err != nil {
 		t.Fatalf("storesqlite.Open: %v", err)
