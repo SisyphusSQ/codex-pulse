@@ -1043,8 +1043,6 @@
 "跟踪多配额池双窗状态、消耗节奏、Token 趋势与 API 参考价" = "Track multi-pool 5h & weekly quotas, pace, token trends, and reference API pricing";
 "上次观测" = "Last known";
 "上次观测 %@" = "Last known %@";
-"当前显示上次观测数据" = "Showing last-known observation";
-"当前显示上次观测数据（%@）" = "Showing last-known observation (%@)";
 "Antigravity 本机服务未运行或不可达" = "Antigravity local service is not running or unreachable";
 "模型 API 公价估算" = "Estimated API Cost";
 "模型 API 公价估算 %@" = "Estimated API Cost %@";

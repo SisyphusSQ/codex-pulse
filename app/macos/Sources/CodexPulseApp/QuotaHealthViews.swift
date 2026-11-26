@@ -280,16 +280,6 @@ private struct QuotaContentView: View {
                 let pools = AGYQuotaPoolResolver.groupPools(displayWindows.map(QuotaWindowPresentation.init))
                 ForEach(pools) { pool in
                     SectionCard(title: pool.displayName) {
-                        if pool.isStale {
-                            Label(
-                                pool.lastSuccessAtMS.map {
-                                    localization.format("当前显示上次观测数据（%@）", timestampText($0))
-                                } ?? localization.textValue("当前显示上次观测数据"),
-                                systemImage: "clock.badge.exclamationmark"
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                        }
                         LazyVGrid(
                             columns: [GridItem(.adaptive(minimum: 250), spacing: 12)],
                             alignment: .leading,

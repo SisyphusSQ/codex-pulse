@@ -535,14 +535,6 @@ private struct CursorOverviewContentView: View {
 								Text(pool.displayName)
 									.font(.subheadline.weight(.semibold))
 								Spacer(minLength: 4)
-								if pool.isStale {
-									Text(localization.textValue("上次观测"))
-										.font(.caption2.weight(.medium))
-										.foregroundStyle(.orange)
-										.padding(.horizontal, 6)
-										.padding(.vertical, 2)
-										.background(Color.orange.opacity(0.14), in: Capsule())
-								}
 							}
 							if let primary = pool.primaryWindow {
 								agyOverviewPoolWindowRow(window: primary, label: "5h")

@@ -1180,11 +1180,6 @@ private struct DashboardSummaryContentView: View {
                                     )
                                 }
                                 Spacer(minLength: 4)
-                                if pool.isStale {
-                                    Text(localization.textValue("上次观测"))
-                                        .font(.caption2)
-                                        .foregroundStyle(.orange)
-                                }
                             }
                         }
                     }
