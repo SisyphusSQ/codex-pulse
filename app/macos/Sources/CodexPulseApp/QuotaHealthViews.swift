@@ -259,7 +259,8 @@ private struct QuotaContentView: View {
 				}
             }
 			refreshStatus(title: "额度", state: quotaRefreshState)
-			if let notice = QuotaRefreshPresentation.notice(response.current.refresh, localization: localization) {
+			if provider != .agy,
+			   let notice = QuotaRefreshPresentation.notice(response.current.refresh, localization: localization) {
 				Label(notice, systemImage: "exclamationmark.triangle")
 					.font(.caption)
 					.foregroundStyle(.orange)
@@ -268,7 +269,7 @@ private struct QuotaContentView: View {
 			if provider.supportsResetCredits {
 				refreshStatus(title: "重置次数", state: resetCreditsRefreshState)
 			}
-            if let failedSource = response.current.sources.first(where: {
+            if provider != .agy, let failedSource = response.current.sources.first(where: {
                 $0.hasFailureCode && $0.hasLastAttemptAtMs &&
                     (!$0.hasLastSuccessAtMs || $0.lastAttemptAtMs > $0.lastSuccessAtMs)
             }) {
