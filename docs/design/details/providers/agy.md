@@ -67,7 +67,7 @@ Antigravity 是独立的第五个 Agent Provider（代码、协议、数据库�
   - 严格限定回环地址（`127.0.0.1` / `localhost` / `::1`），禁止 HTTP 重定向；白名单仅允许 `GetUserStatus` 与 `RetrieveUserQuotaSummary`，拒绝 `GetAllCascadeTrajectories` / `GetCascadeTrajectory`。
 - **账号夹心与账号胶囊（`ls_client.go` / `account.go`）**：
   - 依次执行 `GetUserStatus → RetrieveUserQuotaSummary({forceRefresh}) → GetUserStatus`，若前后账号不一致则立即丢弃脏观测，防止切号串数据；常规自动刷新最小间隔为 `5m` 且固定传 `forceRefresh: false`，不要求 LS 强制刷新；是否访问上游仍由 LS 自身实现决定，不能据此保证完全离线。仅用户显式手动刷新（`RequestQuotaRefresh` / 全局 `manual` 触发）绕过节流并传 `forceRefresh: true`。
-  - `AccountSnapshot(provider=agy)` 返回 `type="agy"`、`email`（仅内存即时展示，不写盘）与标准化 `plan_type`（`Google AI Ultra 20×`、`Google AI Ultra 5×`、`Google AI Pro`、`Google AI Free`）；`agy_quota_snapshots.account_scope` 仅存 64 位 SHA-256 摘要，CSRF token 与原始响应体永不落库或写日志。
+  - `AccountSnapshot(provider=agy)` 返回 `type="agy"`、`email`（仅内存即时展示，不写盘）与标准化 `plan_type`（`Google AI Ultra 20×`、`Google AI Ultra 5×`、`Google AI Pro`、`Google AI Free`）；档位优先按 LS `userTier.id` 映射：`g1-ultra-lite-tier` 为 `Google AI Ultra 5×`，`g1-ultra-tier` 为 `Google AI Ultra 20×`；仅有通用 Ultra 名称时显示 `Google AI Ultra`，不推断倍数。`agy_quota_snapshots.account_scope` 仅存 64 位 SHA-256 摘要，CSRF token 与原始响应体永不落库或写日志。
 - **多配额池归一化与离线语义（`quota_pools.go` / `quota_collector.go` / `quota_query.go`）**：
   - 兼容 Google AI Ultra 共享池、Google AI Pro 独立 Argon/Carbon 分组或嵌套周桶、`clientModelConfigs.quotaInfo` 差异推断，以及 Proto3 零值省略规则（仅当 `remainingFraction` 省略且 `resetTime > now` 时判为 `100%` 已用；已过期则不判耗尽）。
   - 映射为 `agy.gemini`、`agy.argon`、`agy.carbon`、`agy.claude_gpt`（未知池 `agy.pool.<slug>`）× `primary`（300m / 5h）与 `secondary`（10080m / weekly），写入 `agy_quota_snapshots` 与有界 `agy_quota_observations`（每窗最多 256 条），接入 `QuotaCurrent`、`QuotaPace`、`RequestQuotaRefresh(source=quota)`、`providerrefresh`（`online_quota`）与 `runtimeinfo`（`agy.ls_rpc`）。
@@ -78,6 +78,7 @@ Antigravity 是独立的第五个 Agent Provider（代码、协议、数据库�
 - **统一五路排序与能力边界**：`codex → cursor → grok → dsh → agy`（显示名 `Antigravity`，极窄状态栏紧凑名 `AGY`）；隐藏 AGY 调用统计入口并保证零 `InvocationUsage` RPC，不接入 Codex 专属 Reset Credits / Paid Credits / Account Quotas 视图。
 - **菜单栏 / 托盘与多配额池展开**：
   - 菜单栏/托盘摘要展示**最紧缺未过期配额池**（同剩余%优先 `5h`，再按 `Gemini → Argon → Carbon → Claude & GPT → agy.pool.*` 确定性选取）；无有效额度时顶行 `--`、底行回退 `今日 <Token>`。
+  - macOS Popover 的 AGY 账号与状态概览在同一轮读取完成后一起发布；后台刷新期间保留上一幅完整展示，避免先发布空账号再异步补回造成胶囊跳变。账号结果变更或退出时发布本轮真实结果，不沿用旧身份。
   - Popover / 托盘面板展示账号胶囊（含邮箱隐私脱敏与标准化套餐标签）、全部返回配额池（每池 5h + 周双窗、重置倒计时、stale 提示）、每日模型趋势与“近 7 天”Top 5 项目。
 - **全页面与平台边界**：主窗口 `DashboardSummary`、`Overview`、`Quota`（按 `limit_id` 分组多池卡片 + 节奏多池切换 + 直接“刷新额度”按钮）、`Sessions`（缓存命中率、步骤级 TPS、轻量角色徽章 `subagent`/`swarm_worker`/`side_question`）、`Projects`、`Pricing`、`Sources`（`Antigravity` 来源分组）与 `Settings`（三态 + `agy_online_enabled` 开关）全量支持；Windows Go Helper 补充 `platform_windows_test.go` 校验无 reparse 句柄钉住与 PowerShell 进程/端口 JSON 解析。
 

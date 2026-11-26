@@ -2576,10 +2576,10 @@ public final class AppModel: ObservableObject {
 					? .partial(cached, notices: cached.notices)
 					: .ready(cached)
 				codexCardAccountIsLoading = false
-			} else if !reuseAccountOnIndex || provider != .codex ||
+			} else if provider != .agy && (!reuseAccountOnIndex || provider != .codex ||
 				(accountKey != nil &&
-				CodexAccountContext.key(fromQuota: responses.quota) != nil &&
-				accountKey != CodexAccountContext.key(fromQuota: responses.quota)) {
+					CodexAccountContext.key(fromQuota: responses.quota) != nil &&
+					accountKey != CodexAccountContext.key(fromQuota: responses.quota))) {
 				loadStatusAccount(for: responses, provider: provider)
 			}
 			if provider.usesOfficialPeriodRing {

@@ -17,6 +17,7 @@ public struct AppLaunchConfiguration: Sendable {
     public let smokeMode: Bool
     public let nativeSurfaceSmoke: Bool
     public let cursorProviderSmoke: Bool
+    public let agyAccountSmoke: Bool
     public let sendLifecycleToHelper: Bool
 
     public init(
@@ -27,6 +28,7 @@ public struct AppLaunchConfiguration: Sendable {
         creditsSmoke: Bool = false,
         nativeSurfaceSmoke: Bool = false,
         cursorProviderSmoke: Bool = true,
+        agyAccountSmoke: Bool = false,
         sendLifecycleToHelper: Bool = true
     ) throws {
         guard FileManager.default.isExecutableFile(atPath: helperExecutablePath) else {
@@ -54,6 +56,7 @@ public struct AppLaunchConfiguration: Sendable {
         self.creditsSmoke = creditsSmoke
         self.nativeSurfaceSmoke = nativeSurfaceSmoke
         self.cursorProviderSmoke = cursorProviderSmoke
+        self.agyAccountSmoke = agyAccountSmoke
         self.sendLifecycleToHelper = sendLifecycleToHelper
     }
 
@@ -69,6 +72,7 @@ public struct AppLaunchConfiguration: Sendable {
         var creditsSmoke = false
         var nativeSurfaceSmoke = false
         var cursorProviderSmoke = true
+        var agyAccountSmoke = false
         var sendLifecycle = true
         var index = 1
         while index < arguments.count {
@@ -93,6 +97,11 @@ public struct AppLaunchConfiguration: Sendable {
             case "--ui-smoke":
                 smokeMode = true
                 nativeSurfaceSmoke = true
+                index += 1
+            case "--agy-account-smoke":
+                smokeMode = true
+                nativeSurfaceSmoke = true
+                agyAccountSmoke = true
                 index += 1
             case "--skip-live-lifecycle":
                 sendLifecycle = false
@@ -128,6 +137,7 @@ public struct AppLaunchConfiguration: Sendable {
             creditsSmoke: creditsSmoke,
             nativeSurfaceSmoke: nativeSurfaceSmoke,
             cursorProviderSmoke: cursorProviderSmoke,
+            agyAccountSmoke: agyAccountSmoke,
             sendLifecycleToHelper: sendLifecycle
         )
     }

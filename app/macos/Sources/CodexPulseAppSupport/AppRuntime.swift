@@ -468,6 +468,15 @@ public actor AppRuntime {
 		provider: AgentProvider
 	) async throws -> OverviewResponses {
 		try await performRead { client in
+			// AGY 账号与概览一起发布，避免每次本地失效通知先显示空账号再补回。
+			// 读取沿用有截止时间的 RPC；其余 provider 保留原来的独立账号生命周期。
+			async let accountResult = captureOverviewSection {
+				guard provider == .agy else {
+					return Codexpulse_Core_V1_AccountSnapshotResponse()
+				}
+				return try await client.accountSnapshot(
+					Self.makeAccountSnapshotRequest(provider: provider), retryPolicy: .none)
+			}
 			let now = Date()
 			let requests = OverviewRequestSet.make(provider: provider, now: now)
 			let quotaResult = await captureOverviewSection {
@@ -524,8 +533,16 @@ public actor AppRuntime {
 				quotaPaceResult,
 				usageResult,
 				todayUsageResult,
-				projectsResult
+				projectsResult,
+				accountResult
 			)
+			var account: Codexpulse_Core_V1_AccountSnapshotResponse?
+			if provider == .agy {
+				switch results.4 {
+				case .value(let response): account = response
+				case .failure: account = .init()
+				}
+			}
 			let usage: Codexpulse_Core_V1_UsageCostResponse
 			switch results.1 {
 			case .value(let response): usage = response
@@ -568,7 +585,7 @@ public actor AppRuntime {
 				usage: usage,
 				quota: quota,
 				quotaPace: quotaPace,
-				account: nil,
+				account: account,
 				sessions: unavailableSessions(provider: provider),
 				projects: projects,
 				health: unavailableHealth(),

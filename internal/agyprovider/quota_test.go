@@ -441,3 +441,38 @@ func TestQuotaCollectorForceRefreshAndAutoInterval(t *testing.T) {
 		t.Fatalf("due auto refresh forceRefresh = %v, want [false true false]", recordedForce)
 	}
 }
+
+func TestLSPlanTierIdentityAndUnknownMultiplier(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, plan, tierName, tierID, want string }{
+		{"ultra lite ID", "Pro", "Google AI Ultra", "g1-ultra-lite-tier", "Google AI Ultra 5×"},
+		{"ultra ID", "Pro", "Google AI Ultra", "g1-ultra-tier", "Google AI Ultra 20×"},
+		{"unknown ultra multiplier", "Pro", "Google AI Ultra", "", "Google AI Ultra"},
+		{"unrecognized ultra ID", "Pro", "Google AI Ultra", "future-ultra-tier", "Google AI Ultra"},
+		{"explicit multiplier", "Google AI Ultra 5x", "", "", "Google AI Ultra 5×"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == lsServicePath+lsMethodGetUserStatus {
+					_ = json.NewEncoder(w).Encode(map[string]any{"userStatus": map[string]any{
+						"email": "test@example.com", "planStatus": map[string]any{"planInfo": map[string]any{"planName": tc.plan}},
+						"userTier": map[string]any{"name": tc.tierName, "id": tc.tierID},
+					}})
+				} else {
+					_, _ = w.Write([]byte(`{}`))
+				}
+			}))
+			defer srv.Close()
+			client := NewLSClient(nil, newLoopbackHTTPClient(time.Second))
+			client.endpoint = &LSEndpoint{BaseURL: srv.URL, CSRFToken: "test"}
+			result, err := client.FetchAccountAndQuota(context.Background(), false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.PlanType != tc.want {
+				t.Fatalf("plan = %q, want %q", result.PlanType, tc.want)
+			}
+		})
+	}
+}

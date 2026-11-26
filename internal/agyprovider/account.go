@@ -22,7 +22,7 @@ func (service *QueryService) ReadAccountSnapshot(ctx context.Context) (AccountSn
 	if qc != nil && qc.isEnabled() {
 		if status, err := qc.client.GetUserStatus(ctx); err == nil {
 			email := strings.TrimSpace(status.Email)
-			plan := NormalizeAGYPlanType(status.PlanName, status.TierName)
+			plan := NormalizeAGYPlanType(status.PlanName, status.TierName, status.TierID)
 			if email != "" || plan != "" {
 				qc.mu.Lock()
 				qc.lastAccountEmail = email

@@ -490,6 +490,74 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         return png
     }
 
+    // 针对真实 Home 的局部原生验收，不运行无关页面或触碰剪贴板。
+    func verifyAGYAccountForSmoke() async -> (passed: Bool, summary: String) {
+        guard nativeAcceptanceEnabled else { return (false, "disabled") }
+        model.selectStatusProvider(.agy)
+        guard await waitForNativeSmoke({
+            self.model.statusAccountCardSummary?.planText == "Google AI Ultra 5×"
+                && !self.model.statusOverviewState.isLoading
+        }, maximumAttempts: 1_500) else { return (false, "initial_plan_unavailable") }
+        showPopover()
+        // 局部验收保持弹窗可见，外部查看证据不作为退出弹窗交互测试。
+        removeDismissMonitors()
+        defer { closePopover() }
+        guard let view = popover.contentViewController?.view,
+              let window = view.window,
+              let account = model.statusAccountCardSummary
+        else { return (false, "popover_unavailable") }
+        view.layoutSubtreeIfNeeded()
+        let initialFrame = window.frame
+        var missingAccount = 0
+        var changedAccount = 0
+        var frameChanges = 0
+        var samples = 0
+        let observer = model.$statusOverviewState.sink { state in
+            guard let value = state.value, value.provider == .agy else { return }
+            let next = value.popoverAccountSummary
+            if next.availability != .available { missingAccount += 1 }
+            if next.planText != account.planText || next.emailText != account.emailText {
+                changedAccount += 1
+            }
+        }
+        defer { observer.cancel() }
+        func capture(_ name: String) throws {
+            guard let path = ProcessInfo.processInfo.environment["CODEX_PULSE_AGY_ACCEPTANCE_DIR"] else { return }
+            view.layoutSubtreeIfNeeded()
+            guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            guard let png = bitmap.representation(using: .png, properties: [:]) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            let url = URL(fileURLWithPath: path).appendingPathComponent(name + ".png")
+            try png.write(to: url, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        }
+        do { try capture("popover-before") } catch { return (false, "capture_failed") }
+        // 两轮显式刷新，加一段后台更新观察；全程保留真实原生窗口。
+        for cycle in 0..<3 {
+            if cycle < 2 { model.refreshStatusProvider() }
+            for tick in 0..<300 {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                samples += 1
+                view.layoutSubtreeIfNeeded()
+                guard popover.isShown && window.isVisible else { return (false, "popover_closed") }
+                if window.frame != initialFrame { frameChanges += 1 }
+                if tick >= (cycle == 2 ? 159 : 79),
+                    !model.statusOverviewState.isLoading && !model.isGlobalRefreshing { break }
+            }
+            guard !model.statusOverviewState.isLoading && !model.isGlobalRefreshing else {
+                return (false, "refresh_incomplete samples=\(samples) missing=\(missingAccount) label_changes=\(changedAccount) frame_changes=\(frameChanges)")
+            }
+        }
+        do { try capture("popover-after") } catch { return (false, "capture_failed") }
+        let passed = missingAccount == 0 && changedAccount == 0 && frameChanges == 0
+            && model.statusAccountCardSummary?.planText == "Google AI Ultra 5×"
+        return (passed, "ultra_5x samples=\(samples) missing=\(missingAccount) label_changes=\(changedAccount) frame_changes=\(frameChanges) manual_refreshes=2")
+    }
+
     func verifyNativeSurfacesForSmoke(
         requireSummary: Bool
     ) async -> (passed: Bool, summary: String) {

@@ -136,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
+        if configuration.agyAccountSmoke { return false }
         if statusItemController?.isSuppressingMainWindowReopen == true {
             return false
         }
@@ -388,6 +389,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     }
                     Task { @MainActor [weak self] in
                         guard let self else { return }
+                        if configuration.agyAccountSmoke {
+                            window?.orderOut(nil)
+                            let result = await statusItemController?.verifyAGYAccountForSmoke()
+                            finishSmoke(success: result?.passed == true,
+                                summary: "app smoke \(result?.passed == true ? "passed" : "failed"): agy_account=\(result?.summary ?? "unavailable")")
+                            return
+                        }
                         let surfaces = await nativeSurfaceSmokeSummary(
                             requireStatusSummary: !overview.quotaWindows.isEmpty
                         )
