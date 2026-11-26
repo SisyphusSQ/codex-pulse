@@ -165,7 +165,7 @@ func TestReportingAGYExportPricingCapsulesHistoryFilterAndStatus(t *testing.T) {
 		t.Fatalf("expected authority=true and 1 session, got authority=%v sessions=%d", page.Authority, len(page.Sessions))
 	}
 	snap := page.Sessions[0]
-	if snap.Provider != "agy" || snap.SourceKind != "agy_local" || !snap.Complete || len(snap.Contributions) != 3 {
+	if snap.Provider != "agy" || snap.SourceKind != "agy_local" || snap.SessionRole != "main" || !snap.Complete || len(snap.Contributions) != 3 {
 		t.Fatalf("unexpected AGY snapshot: %+v", snap)
 	}
 	if snap.CacheUsage == nil || snap.CacheUsage.InputTokens == nil || *snap.CacheUsage.InputTokens != 3300 || *snap.CacheUsage.CachedInputTokens != 1100 {
@@ -182,10 +182,16 @@ func TestReportingAGYExportPricingCapsulesHistoryFilterAndStatus(t *testing.T) {
 	if snap.Contributions[0].CostMicroUSD == nil || *snap.Contributions[0].CostMicroUSD != wantCost1 || *snap.Contributions[0].PricingVersion != "agy-api-2026-11-25:phase1" {
 		t.Fatalf("phase1 pricing mismatch: got=%+v want=%d", snap.Contributions[0], wantCost1)
 	}
+	if snap.Contributions[0].Rates == nil || *snap.Contributions[0].Rates.InputMicroUSD != r1.InputMicros || *snap.Contributions[0].Rates.CachedMicroUSD != r1.CachedMicros || *snap.Contributions[0].Rates.OutputMicroUSD != r1.OutputMicros {
+		t.Fatalf("phase1 rates mismatch: got=%+v want=%+v", snap.Contributions[0].Rates, r1)
+	}
 	if snap.Contributions[1].CostMicroUSD == nil || *snap.Contributions[1].CostMicroUSD != wantCost2 || *snap.Contributions[1].PricingVersion != "agy-api-2026-11-25:phase2" {
 		t.Fatalf("phase2 pricing mismatch: got=%+v want=%d", snap.Contributions[1], wantCost2)
 	}
-	if snap.Contributions[2].CostStatus != "unpriced" || snap.Contributions[2].CostMicroUSD != nil {
+	if snap.Contributions[1].Rates == nil || *snap.Contributions[1].Rates.InputMicroUSD != r2.InputMicros || *snap.Contributions[1].Rates.CachedMicroUSD != r2.CachedMicros || *snap.Contributions[1].Rates.OutputMicroUSD != r2.OutputMicros {
+		t.Fatalf("phase2 rates mismatch: got=%+v want=%+v", snap.Contributions[1].Rates, r2)
+	}
+	if snap.Contributions[2].CostStatus != "unpriced" || snap.Contributions[2].CostMicroUSD != nil || snap.Contributions[2].Rates != nil {
 		t.Fatalf("unknown AGY model must stay unpriced: %+v", snap.Contributions[2])
 	}
 	snap.Revision = 1

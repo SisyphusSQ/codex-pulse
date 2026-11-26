@@ -15,13 +15,15 @@ import publicPlans from '../../../internal/service/catalog_srv/plans-20261002.js
 import publicPlansAdditions from '../../../internal/service/catalog_srv/plans-20261126.json';
 import releases from '../../../internal/service/catalog_srv/releases-20261027.json';
 import releasesAdditions from '../../../internal/service/catalog_srv/releases-20261118.json';
+import releasesAgy from '../../../internal/service/catalog_srv/releases-20261126.json';
 
 export type ReviewScenario='current'|'expired'|'conflict'|'unknown'|'empty'|'error'|'anonymous';
 export const reviewNow=Date.UTC(2026,10,26,8,30);
 const agyVerifiedAt=Date.UTC(2026,10,25);
 const agyCarbonPhase2At=Date.UTC(2026,11,1);
 const key=(model:string)=>model.toLowerCase().replace(/\s+/g,'-');
-const releaseByModel=new Map([...releases,...releasesAdditions].flatMap(r=>r.models.map(model=>[key(model),{released_at_ms:Date.parse(`${r.released_on}T00:00:00Z`),release_source_url:r.source_url}] as const)));
+const releaseByModel=new Map([...releases,...releasesAdditions,...releasesAgy].flatMap(r=>r.models.map(model=>[key(model),{released_at_ms:Date.parse(`${r.released_on}T00:00:00Z`),release_source_url:r.source_url}] as const)));
+const agyRelease=(model:string)=>releaseByModel.get(key(model))??releaseByModel.get(key(model).replace(/-(?:thinking|xhigh|high|medium|low|max|tiered|extra-low|preview)$/,''));
 const models:ModelPrice[]=[...publicModels,...publicModelsAdditions].map(r=>({...r,evidence:'current' as const,...releaseByModel.get(key(r.model))})).sort((a,b)=>(b.released_at_ms??-Infinity)-(a.released_at_ms??-Infinity)||a.model.localeCompare(b.model)||a.key.localeCompare(b.key));
 const history:ModelPrice[]=models.filter(r=>r.provider==='codex'&&r.model==='gpt-6.1-sol'&&r.mode==='Standard · 短上下文').map(r=>({...r,key:'synthetic:history:gpt-6.1-sol',evidence:'historical',version:'openai-api-2026-09-29',cache_write_price:null,effective_from_ms:Date.UTC(2026,8,29),notes:'合成历史证据，演示版本查阅；不读取实际历史费用。'}));
 const agyCatalogNotes='Antigravity 公开 API 参考价格目录，按请求时间适用生效阶段单价；不是实际订阅账单，未收录模型保持未定价。';
@@ -29,8 +31,8 @@ const agyModels:ModelPrice[]=[
  {key:'agy:gemini-4-carbon:agy-api-2026-11-25:phase1:reference',provider:'agy',model:'gemini-4-carbon',mode:'Antigravity · API 参考目录 (phase1)',currency:'USD',unit:'1M tokens',input_price:'2',cached_price:'0.1',cache_write_price:null,output_price:'10',version:'agy-api-2026-11-25:phase1',source_url:'agy_provider_api_pricing',verified_at_ms:agyVerifiedAt,effective_from_ms:agyVerifiedAt,evidence:'current',notes:agyCatalogNotes},
  {key:'agy:gemini-4-carbon:agy-api-2026-11-25:phase1',provider:'agy',model:'gemini-4-carbon',mode:'Antigravity · API 公价估算 (phase1)',currency:'USD',unit:'1M tokens',input_price:'2',cached_price:'0.1',cache_write_price:null,output_price:'10',version:'agy-api-2026-11-25:phase1',source_url:'agy_provider_api_pricing',verified_at_ms:agyVerifiedAt,effective_from_ms:agyVerifiedAt,evidence:'historical',notes:agyCatalogNotes},
  {key:'agy:gemini-4-carbon:agy-api-2026-11-25:phase2',provider:'agy',model:'gemini-4-carbon',mode:'Antigravity · API 公价估算 (phase2)',currency:'USD',unit:'1M tokens',input_price:'4',cached_price:'0.2',cache_write_price:null,output_price:'20',version:'agy-api-2026-11-25:phase2',source_url:'agy_provider_api_pricing',verified_at_ms:agyVerifiedAt,effective_from_ms:agyCarbonPhase2At,evidence:'historical',notes:agyCatalogNotes},
- {key:'agy:gemini-3.1-pro-high:agy-api-2026-11-25:reference',provider:'agy',model:'gemini-3.1-pro-high',mode:'Antigravity · API 参考目录',currency:'USD',unit:'1M tokens',input_price:'2',cached_price:'0.2',cache_write_price:null,output_price:'12',version:'agy-api-2026-11-25',source_url:'agy_provider_api_pricing',verified_at_ms:agyVerifiedAt,effective_from_ms:agyVerifiedAt,evidence:'current',notes:agyCatalogNotes},
- {key:'agy:claude-opus-4-6-thinking:agy-api-2026-11-25:reference',provider:'agy',model:'claude-opus-4-6-thinking',mode:'Antigravity · API 参考目录',currency:'USD',unit:'1M tokens',input_price:'5',cached_price:'0.5',cache_write_price:null,output_price:'25',version:'agy-api-2026-11-25',source_url:'agy_provider_api_pricing',verified_at_ms:agyVerifiedAt,effective_from_ms:agyVerifiedAt,evidence:'current',notes:agyCatalogNotes},
+ {key:'agy:gemini-3.1-pro-high:agy-api-2026-11-25:reference',provider:'agy',model:'gemini-3.1-pro-high',mode:'Antigravity · API 参考目录',currency:'USD',unit:'1M tokens',input_price:'2',cached_price:'0.2',cache_write_price:null,output_price:'12',version:'agy-api-2026-11-25',source_url:'agy_provider_api_pricing',verified_at_ms:agyVerifiedAt,effective_from_ms:agyVerifiedAt,evidence:'current',notes:agyCatalogNotes,...agyRelease('gemini-3.1-pro-high')},
+ {key:'agy:claude-opus-4-6-thinking:agy-api-2026-11-25:reference',provider:'agy',model:'claude-opus-4-6-thinking',mode:'Antigravity · API 参考目录',currency:'USD',unit:'1M tokens',input_price:'5',cached_price:'0.5',cache_write_price:null,output_price:'25',version:'agy-api-2026-11-25',source_url:'agy_provider_api_pricing',verified_at_ms:agyVerifiedAt,effective_from_ms:agyVerifiedAt,evidence:'current',notes:agyCatalogNotes,...agyRelease('claude-opus-4-6-thinking')},
  {key:'agy:observed:gemini-experimental-preview',provider:'agy',model:'gemini-experimental-preview',mode:'已观测 · 参考价未知',currency:'USD',unit:'未知',input_price:null,cached_price:null,cache_write_price:null,output_price:null,version:'',source_url:'',verified_at_ms:0,effective_from_ms:null,evidence:'observed',notes:'保留实际模型名；没有匹配公开价格证据，不猜价或视为免费。'},
 ];
 export const reviewCatalog:Catalog={version:'reference-2026-11-18',models:[...models,...history,...agyModels,{key:'codex:observed:unpublished-model',provider:'codex',model:'unpublished-model',mode:'已观测 · 参考价未知',currency:'USD',unit:'未知',input_price:null,cached_price:null,cache_write_price:null,output_price:null,version:'',source_url:'',verified_at_ms:0,effective_from_ms:null,evidence:'observed',notes:'设计用未知型号；没有发布日期和公开价格。'}],plans:[...publicPlans,...publicPlansAdditions] as PlanPrice[]};
@@ -212,10 +214,8 @@ reviewDevices.push(...['SQMC04','SQMC05'].map((name,i)=>({...structuredClone(rev
 reviewSessions[0].sources.push({...reviewSessions[0].sources[0],id:'source-two',client_id:'machine-2',client_name:'SQMC04'});
 reviewProjects[0].machines.push({client_id:'machine-2',client_name:'SQMC04'});
 export function reviewSourceUsage(filter:StatsFilter){
- const targetProvider=filter.provider||'codex';
- const usage=reviewUsage({...filter,provider:targetProvider});
- const matchedDevices=reviewDevices.filter(d=>(!filter.client_id||filter.client_id===d.id)&&(!filter.provider||d.providers.some(p=>p.provider===filter.provider)));
- return {range:usage.range,scope:'collector_copies_may_overlap',items:matchedDevices.map(d=>{const i=reviewDevices.findIndex(r=>r.id===d.id),total=usage.totals.total_tokens===null?null:BigInt(usage.totals.total_tokens)*BigInt([95,70,40][i]??50)/100n;return {machine:{client_id:d.id,client_name:d.name},totals:{...usage.totals,total_tokens:total?.toString()??null,input_tokens:total===null?null:(total*3n/4n).toString(),output_tokens:total===null?null:(total-total*3n/4n).toString(),sessions:5-i},coverage:{...usage.coverage,collected_at_ms:reviewNow,stale:i===2},revoked_at_ms:null};})};
+ const usage=reviewUsage({...filter,provider:'codex'});
+ return {range:usage.range,scope:'collector_copies_may_overlap',items:filter.provider&&filter.provider!=='codex'?[]:reviewDevices.filter(d=>!filter.client_id||filter.client_id===d.id).map(d=>{const i=reviewDevices.findIndex(r=>r.id===d.id),total=usage.totals.total_tokens===null?null:BigInt(usage.totals.total_tokens)*BigInt([95,70,40][i]??50)/100n;return {machine:{client_id:d.id,client_name:d.name},totals:{...usage.totals,total_tokens:total?.toString()??null,input_tokens:total===null?null:(total*3n/4n).toString(),output_tokens:total===null?null:(total-total*3n/4n).toString(),sessions:5-i},coverage:{...usage.coverage,collected_at_ms:reviewNow,stale:i===2},revoked_at_ms:null};})};
 }
 
 reviewClients.push({...reviewClients[1],id:'revoked-machine',name:'已撤销合成机',revoked_at_ms:reviewNow},{...reviewClients[1],id:'machine-2',name:'SQMC04'});

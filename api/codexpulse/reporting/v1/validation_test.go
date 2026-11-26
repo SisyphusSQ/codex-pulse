@@ -146,6 +146,7 @@ func TestAGYProtocolAllowsLocalSessionMultiPoolQuotaAndFiveProviderStatuses(t *t
 			ProjectName:   "workspace",
 			SourceKind:    "agy_local",
 			SessionKind:   "session",
+			SessionRole:   "swarm_worker",
 			Complete:      true,
 			Contributions: []Contribution{c},
 			CacheUsage: &CacheUsageCapsule{
@@ -245,6 +246,12 @@ func TestAGYProtocolAllowsLocalSessionMultiPoolQuotaAndFiveProviderStatuses(t *t
 	badSource.Sessions[0].SourceKind = "agy_unknown"
 	if !errors.Is(badSource.Validate(), ErrInvalid) {
 		t.Fatal("unknown AGY source_kind accepted")
+	}
+	badRole := b
+	badRole.Sessions = []SessionSnapshot{b.Sessions[0]}
+	badRole.Sessions[0].SessionRole = "admin_override"
+	if !errors.Is(badRole.Validate(), ErrInvalid) {
+		t.Fatal("unknown AGY session_role accepted")
 	}
 
 	badQuota := b

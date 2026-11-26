@@ -14,6 +14,9 @@ func exportReportingAGYUsage(db *gorm.DB, id string, s *reportingv1.SessionSnaps
 	if err := db.Where("external_session_id = ?", id).Take(&session).Error; err != nil {
 		return err
 	}
+	if session.SessionRole != "" {
+		s.SessionRole = session.SessionRole
+	}
 	if session.Throughput != nil {
 		if err := json.Unmarshal([]byte(*session.Throughput), &s.Throughput); err != nil {
 			return err
@@ -70,6 +73,12 @@ func exportReportingAGYUsage(db *gorm.DB, id string, s *reportingv1.SessionSnaps
 						version := rate.PricingVersion()
 						c.PricingVersion = &version
 						c.CostStatus = "known"
+						inRate, cachedRate, outRate := rate.InputMicros, rate.CachedMicros, rate.OutputMicros
+						c.Rates = &reportingv1.Rates{
+							InputMicroUSD:  &inRate,
+							CachedMicroUSD: &cachedRate,
+							OutputMicroUSD: &outRate,
+						}
 					}
 				}
 			}

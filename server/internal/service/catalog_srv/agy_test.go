@@ -94,4 +94,27 @@ func TestAGYCatalogVersionedPhasesAndObservedUnknown(t *testing.T) {
 	if agyPlans < 4 {
 		t.Fatalf("expected AGY subscription plans in catalog, got %d", agyPlans)
 	}
+	var hasOpus46Release, hasGemini31Release, carbonReleaseUnknown bool
+	for _, m := range out1.Models {
+		if m.Provider != "agy" || m.Evidence != "current" {
+			continue
+		}
+		switch m.Model {
+		case "claude-opus-4-6":
+			if m.ReleasedAtMS != nil && time.UnixMilli(*m.ReleasedAtMS).UTC().Format(time.DateOnly) == "2026-02-05" {
+				hasOpus46Release = true
+			}
+		case "gemini-3.1-pro":
+			if m.ReleasedAtMS != nil && time.UnixMilli(*m.ReleasedAtMS).UTC().Format(time.DateOnly) == "2026-02-19" {
+				hasGemini31Release = true
+			}
+		case "gemini-4-carbon":
+			if m.ReleasedAtMS == nil {
+				carbonReleaseUnknown = true
+			}
+		}
+	}
+	if !hasOpus46Release || !hasGemini31Release || !carbonReleaseUnknown {
+		t.Fatalf("AGY release dates mismatch: opus46=%v gemini31=%v carbonUnknown=%v", hasOpus46Release, hasGemini31Release, carbonReleaseUnknown)
+	}
 }

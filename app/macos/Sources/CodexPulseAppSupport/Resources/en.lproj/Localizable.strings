@@ -1046,6 +1046,10 @@
 "当前显示上次观测数据" = "Showing last-known observation";
 "当前显示上次观测数据（%@）" = "Showing last-known observation (%@)";
 "Antigravity 本机服务未运行或不可达" = "Antigravity local service is not running or unreachable";
+"模型 API 公价估算" = "Estimated API Cost";
+"模型 API 公价估算 %@" = "Estimated API Cost %@";
+"Antigravity 版本化 API 参考目录" = "Antigravity Versioned API Reference Catalog";
+"Antigravity 官网" = "Antigravity Website";
 "API 参考价估算" = "Estimated API Cost";
 "API 参考价估算 %@" = "Estimated API Cost %@";
 "固定版本公开 API 价目" = "Versioned public API rates";

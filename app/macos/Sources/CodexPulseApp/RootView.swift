@@ -891,8 +891,7 @@ private struct CursorOverviewContentView: View {
 
 	private func nonCursorCostTitle(_ summary: CursorOverviewSummaryPresentation) -> String {
 		switch provider {
-		case .dsh: localization.textValue("模型 API 公价估算")
-		case .agy: localization.textValue("API 参考价估算")
+		case .dsh, .agy: localization.textValue("模型 API 公价估算")
 		case .grok:
 			localization.textValue(summary.rangeCostBasis == .reported ? "Grok 上报费用" : "xAI 参考价估算")
 		case .codex, .cursor:

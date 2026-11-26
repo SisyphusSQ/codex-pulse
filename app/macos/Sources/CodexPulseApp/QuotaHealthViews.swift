@@ -554,8 +554,7 @@ private struct UsageContentView: View {
 		switch provider {
 		case .cursor: "文档价目估算 \(costText(value))"
 		case .grok: "xAI 参考价估算 \(costText(value))"
-		case .dsh: "模型 API 公价估算 \(costText(value))"
-		case .agy: "API 参考价估算 \(costText(value))"
+		case .dsh, .agy: "模型 API 公价估算 \(costText(value))"
 		case .codex: "API 折算成本 \(costText(value))"
 		}
 	}
@@ -600,7 +599,7 @@ private struct UsageContentView: View {
 					title: "完成轮次", value: numericText(response.totals.turnCount), detail: "turn_completed 计数",
 					systemImage: "arrow.triangle.2.circlepath") }
 				if provider == .agy { MetricCard(
-					title: "API 参考价估算", value: costText(response.totals.estimatedUsdMicros),
+					title: "模型 API 公价估算", value: costText(response.totals.estimatedUsdMicros),
 					detail: response.totals.estimatedUsdMicros.hasValue ? "固定版本公开 API 价目" : "部分模型未列入价目", systemImage: "dollarsign.circle") }
 				if provider == .agy { MetricCard(
 					title: "缓存命中率", value: agyCacheHitRateText,
@@ -896,6 +895,13 @@ private struct PricingCatalogView: View {
                     HStack {
                         Link("DeepSeek 官方价格", destination: URL(string: "https://api-docs.deepseek.com/quick_start/pricing/")!)
                         Link("OpenAI 官方价格", destination: URL(string: "https://developers.openai.com/api/docs/pricing")!)
+                    }
+                    .font(.caption)
+                } else if catalogProvider == .agy {
+                    HStack(spacing: 8) {
+                        Text("Antigravity 版本化 API 参考目录")
+                            .foregroundStyle(.secondary)
+                        Link("Antigravity 官网", destination: URL(string: "https://antigravity.google/")!)
                     }
                     .font(.caption)
                 } else if let sourceURL = ReferencePriceFormatter.sourceURL(response) {

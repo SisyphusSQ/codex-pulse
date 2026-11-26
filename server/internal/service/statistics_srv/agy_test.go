@@ -30,6 +30,7 @@ func TestAGYReportingUsageCacheThroughputAnnualAndProviderIsolation(t *testing.T
 		LastActiveAtMS: &evAt,
 		SourceKind:     "agy_local",
 		SessionKind:    "session",
+		SessionRole:    "subagent",
 		Complete:       true,
 		Contributions: []reportingv1.Contribution{
 			{
@@ -122,10 +123,16 @@ func TestAGYReportingUsageCacheThroughputAnnualAndProviderIsolation(t *testing.T
 	if list.Items[0].Throughput.DurationSource != "step_metadata" {
 		t.Fatalf("expected step_metadata duration source, got %+v", list.Items[0].Throughput)
 	}
+	if list.Items[0].SessionRole == nil || *list.Items[0].SessionRole != "subagent" {
+		t.Fatalf("expected AGY session_role=subagent in list, got %v", list.Items[0].SessionRole)
+	}
 
 	detail, err := stats.Session(t.Context(), admin, q, list.Items[0].ID)
 	if err != nil || len(detail.ThroughputTurns.Items) != 1 {
 		t.Fatalf("AGY session detail failed: turns=%d err=%v", len(detail.ThroughputTurns.Items), err)
+	}
+	if detail.Session.SessionRole == nil || *detail.Session.SessionRole != "subagent" {
+		t.Fatalf("expected AGY session_role=subagent in detail, got %v", detail.Session.SessionRole)
 	}
 
 	// Annual heatmap and activity include AGY.
