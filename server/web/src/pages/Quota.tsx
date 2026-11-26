@@ -150,7 +150,6 @@ export function QuotaAccounts(){
      {pool.extras.map(extra=><AgyPoolWindowSlot key={extra.key} poolLabel={pool.label} slotLabel={quotaWindowShortLabel(extra.window_kind,extra.window_minutes)} window={extra} selectedKey={selected?.key} onSelect={setSelectedKey} devices={devices.data??[]} />)}
     </div>
    </Card>)}</div>
-   {weeklyWindow&&group.accountKey&&<AccountModelUsage accountKey={group.accountKey} window={weeklyWindow} clientID={filter.client_id} />}
    {!group.windows.length&&<Typography.Paragraph type="secondary">当前账号暂无已收到的配额池观测。</Typography.Paragraph>}
   </>:<>
    <div className="quota-window-overview">{quotaSlots(group).map(({minutes,window:w})=>w?<Card key={w.key} size="small" className={w.key===selected?.key?'quota-window-summary selected-window':'quota-window-summary'}>

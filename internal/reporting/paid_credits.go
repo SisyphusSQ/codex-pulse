@@ -7,6 +7,7 @@ import (
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
 	"github.com/SisyphusSQ/codex-pulse/internal/creditbalance"
+	"github.com/SisyphusSQ/codex-pulse/internal/store"
 )
 
 func (e *Exporter) PaidCreditFacts(ctx context.Context, start int64) ([]FactsGroup, error) {
