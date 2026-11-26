@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/agentprovider"
+	"github.com/SisyphusSQ/codex-pulse/internal/agyprovider"
 	quotaonline "github.com/SisyphusSQ/codex-pulse/internal/codex/quota"
 	"github.com/SisyphusSQ/codex-pulse/internal/cursorprovider"
 	"github.com/SisyphusSQ/codex-pulse/internal/grokprovider"
@@ -178,7 +179,7 @@ func (a *DSHAdapter) RefreshProvider(ctx context.Context, _ string) ProviderResu
 }
 
 type AGYService interface {
-	RefreshIfDue(context.Context) (bool, error)
+	RefreshForGlobal(context.Context, bool) agyprovider.GlobalRefreshReport
 }
 
 type AGYAdapter struct {
@@ -193,12 +194,26 @@ func NewAGYAdapter(service AGYService, now func() time.Time) *AGYAdapter {
 	return &AGYAdapter{service: service, now: now}
 }
 
-func (a *AGYAdapter) RefreshProvider(ctx context.Context, _ string) ProviderResult {
+func (a *AGYAdapter) RefreshProvider(ctx context.Context, trigger string) ProviderResult {
 	if a == nil || a.service == nil {
-		return UnavailableProvider(agentprovider.AGY, ComponentAGYLocal)
+		return UnavailableProvider(agentprovider.AGY, ComponentAGYLocal, ComponentAGYQuota)
 	}
-	performed, err := a.service.RefreshIfDue(ctx)
+	observed := a.now().UnixMilli()
+	report := a.service.RefreshForGlobal(ctx, InteractiveTrigger(trigger))
+	local := ClassifyLocalError(report.Local.Err, report.Local.Attempted)
+	quota := classifyAGYQuota(report.Quota)
 	return SummarizeProvider(agentprovider.AGY, []ComponentResult{
-		WithComponent(ComponentAGYLocal, ClassifyLocalError(err, performed), a.now().UnixMilli()),
+		WithComponent(ComponentAGYLocal, local, observed),
+		WithComponent(ComponentAGYQuota, quota, observed),
 	})
+}
+
+func classifyAGYQuota(value agyprovider.OnlineRefreshClass) ComponentResult {
+	if value.Disabled {
+		return ComponentResult{Status: StatusSkippedDisabled, ReasonCode: ReasonDisabled}
+	}
+	if value.Err == nil && !value.Attempted {
+		return ComponentResult{Status: StatusNotDue, ReasonCode: ReasonNotDue}
+	}
+	return ClassifyOnlineError(value.Err, value.Remote || value.Attempted && value.Err == nil)
 }
