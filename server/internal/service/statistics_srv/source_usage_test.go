@@ -8,9 +8,12 @@ import (
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
 	access_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/access_do"
 	reporting_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/reporting_do"
+	schema_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/schema_do"
 	access_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/access_dto"
 	reporting_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/reporting_repo"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/schema_repo"
 	statistics_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/statistics_repo"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/service/reporting_srv"
 	centerfixture "github.com/SisyphusSQ/codex-pulse/server/internal/testsupport/center"
 )
 
@@ -80,6 +83,17 @@ func TestSourceUsageArbitratesHomesAndKeepsMachinesSeparate(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if err := db.Migrator().DropTable(&reporting_do.MachineUsageSource{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Model(&schema_do.SchemaVersion{}).Where("id = ?", 1).Updates(map[string]any{
+				"version": 9, "checksum": "a79125d7ad241f8b4a09a73d65a5c897e50155c4f6f7f9ec9b7c484a14a59a4a",
+			}).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := schema_repo.NewSchema(engine).Migrate(t.Context()); err != nil {
+				t.Fatal(err)
+			}
 			stats := NewStatistics(statistics_repo.NewStatistics(engine))
 			admin := access_dto.Principal{ID: "admin", Purpose: access_dto.PurposeAdmin}
 			q := statisticsTestQuery(t, nil)
@@ -109,4 +123,72 @@ func TestSourceUsageArbitratesHomesAndKeepsMachinesSeparate(t *testing.T) {
 			decimal(t, filtered.Totals.TotalTokens, want)
 		})
 	}
+}
+
+func TestSourceUsageReadsSelectedDatesAndKeepsUntimedCoverage(t *testing.T) {
+	engine := centerfixture.Engine(t)
+	db := engine.DB(t.Context())
+	collector := access_dto.Principal{ID: "collector", Purpose: access_dto.PurposeCollector}
+	if err := db.Create(&access_do.Client{ID: collector.ID, Purpose: collector.Purpose, SecretHash: "synthetic"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	reporting := reporting_srv.NewReporting(reporting_repo.NewReporting(engine))
+	stats := NewStatistics(statistics_repo.NewStatistics(engine))
+	admin := access_dto.Principal{ID: "admin", Purpose: access_dto.PurposeAdmin}
+	send := func(snapshot reportingv1.SessionSnapshot) {
+		for i := range snapshot.Contributions {
+			fact := &snapshot.Contributions[i]
+			fact.ID = reportingv1.ContributionID("codex", snapshot.SessionID, *fact, 0)
+		}
+		centerfixture.SendSnapshot(t, reporting, collector, snapshot)
+	}
+	earlier := centerfixture.Snapshot()
+	earlier.SessionID = "older"
+	unknown := centerfixture.Contribution(101, 999)
+	unknown.ObservedAtMS = nil
+	modeled := centerfixture.Contribution(201, 999)
+	modeled.ObservedAtMS = nil
+	modeled.Model = new("gpt-5")
+	earlier.Contributions = []reportingv1.Contribution{centerfixture.Contribution(1, 999), unknown, modeled}
+	send(earlier)
+	current := centerfixture.Snapshot()
+	current.Contributions = []reportingv1.Contribution{
+		centerfixture.Contribution(5, 1000), centerfixture.Contribution(7, 1999), centerfixture.Contribution(97, 2000),
+	}
+	send(current)
+	future := centerfixture.Snapshot()
+	future.SessionID = "future"
+	future.Contributions = []reportingv1.Contribution{centerfixture.Contribution(86, 2000)}
+	send(future)
+	// 如果查询仍打开任一完全超出范围的来源，这个正文会使读取失败。
+	disjoint := []string{reportingv1.Key("codex", earlier.SessionID), reportingv1.Key("codex", future.SessionID)}
+	if err := db.Model(&reporting_do.SessionSource{}).Where("session_key IN ?", disjoint).Update("payload", "outside query range").Error; err != nil {
+		t.Fatal(err)
+	}
+	q := statisticsTestQuery(t, nil)
+	q.StartAtMS, q.EndAtMS = 1000, 2000
+	out, err := stats.SourceUsage(t.Context(), admin, q)
+	if err != nil || len(out.Items) != 1 {
+		t.Fatal("range query failed", err)
+	}
+	item := out.Items[0]
+	decimal(t, item.Totals.TotalTokens, "12")
+	if item.Coverage.UntimedFacts != 2 || item.Totals.Sessions != 1 {
+		t.Fatal("untimed or session coverage changed", item)
+	}
+	q.Model = "gpt-5"
+	out, err = stats.SourceUsage(t.Context(), admin, q)
+	if err != nil || out.Items[0].Totals.TotalTokens != nil || out.Items[0].Coverage.UntimedFacts != 1 {
+		t.Fatal("model filter or unknown amount changed", out, err)
+	}
+	earlier.Revision++
+	earlier.CollectedAtMS++
+	earlier.Contributions = append(earlier.Contributions, centerfixture.Contribution(13, 1500))
+	send(earlier)
+	q.Model = ""
+	out, err = stats.SourceUsage(t.Context(), admin, q)
+	if err != nil || len(out.Items) != 1 || out.Items[0].Coverage.UntimedFacts != 2 {
+		t.Fatal("late contribution did not update the range projection", out, err)
+	}
+	decimal(t, out.Items[0].Totals.TotalTokens, "25")
 }

@@ -7,12 +7,27 @@ import (
 	"strings"
 	"testing"
 
+	"gorm.io/gorm"
+
 	reporting_do "github.com/SisyphusSQ/codex-pulse/server/internal/models/do/mysql/reporting_do"
 	access_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/access_dto"
 	catalog_repo "github.com/SisyphusSQ/codex-pulse/server/internal/repository/mysql/catalog_repo"
 	centerfixture "github.com/SisyphusSQ/codex-pulse/server/internal/testsupport/center"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
+
+func seedPublishedCatalogUsage(t *testing.T, db *gorm.DB, rows ...reporting_do.Usage) {
+	t.Helper()
+	key := rows[0].SessionKey
+	if err := db.Create(&reporting_do.SessionPublication{SessionKey: key, Generation: key}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if err := db.Create(&reporting_do.UsageVersion{Generation: key, Usage: row}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
 
 func TestCatalogAllModelsVersionsAndObservedUnknown(t *testing.T) {
 	engine := centerfixture.Engine(t)
@@ -21,9 +36,7 @@ func TestCatalogAllModelsVersionsAndObservedUnknown(t *testing.T) {
 	if err := engine.DB(t.Context()).Create(&reporting_do.Session{ID: "synthetic", Provider: "codex", SessionID: "synthetic-session", CanonicalRevision: 1}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := engine.DB(t.Context()).Create(&reporting_do.Usage{SessionKey: "synthetic", Position: 1, Model: new("unpublished-model"), CostStatus: "unpriced", PricingMode: "event_cost"}).Error; err != nil {
-		t.Fatal(err)
-	}
+	seedPublishedCatalogUsage(t, engine.DB(t.Context()), reporting_do.Usage{SessionKey: "synthetic", Position: 1, Model: new("unpublished-model"), CostStatus: "unpriced", PricingMode: "event_cost"})
 	out, err := s.Current(t.Context(), admin)
 	if err != nil {
 		t.Fatal(err)
@@ -61,12 +74,12 @@ func TestCatalogReportedHistoricalRateTrace(t *testing.T) {
 	if err := db.Create(&reporting_do.Session{ID: "reported", Provider: "codex", SessionID: "reported-session", CanonicalRevision: 1}).Error; err != nil {
 		t.Fatal(err)
 	}
+	var rows []reporting_do.Usage
 	for _, position := range []int64{1, 2} {
 		row := reporting_do.Usage{SessionKey: "reported", ContributionID: strconv.FormatInt(position, 10), Position: position, Model: new("unpublished-model"), PricingVersion: new("received-historical"), InputPrice: new(int64(2000000)), CachedPrice: new(int64(100000)), OutputPrice: new(int64(10000000)), CostStatus: "known", PricingMode: "codex_model_sum"}
-		if err := db.Create(&row).Error; err != nil {
-			t.Fatal(err)
-		}
+		rows = append(rows, row)
 	}
+	seedPublishedCatalogUsage(t, db, rows...)
 	out, err := NewCatalog(catalog_repo.NewCatalog(engine)).Current(t.Context(), access_dto.Principal{ID: "synthetic-admin", Purpose: "admin"})
 	if err != nil {
 		t.Fatal(err)
@@ -92,9 +105,7 @@ func TestDSHCodexCatalogHasHistoricalPricesAndKnownObservedModel(t *testing.T) {
 	if err := db.Create(&reporting_do.Session{ID: "dsh", Provider: "dsh", SessionID: "dsh-synthetic", CanonicalRevision: 1}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Create(&reporting_do.Usage{SessionKey: "dsh", Position: 1, Model: new("gpt-6.1-sol"), CostStatus: "unpriced", PricingMode: "event_cost"}).Error; err != nil {
-		t.Fatal(err)
-	}
+	seedPublishedCatalogUsage(t, db, reporting_do.Usage{SessionKey: "dsh", Position: 1, Model: new("gpt-6.1-sol"), CostStatus: "unpriced", PricingMode: "event_cost"})
 	out, err := NewCatalog(catalog_repo.NewCatalog(engine)).Current(t.Context(), access_dto.Principal{ID: "synthetic-admin", Purpose: "admin"})
 	if err != nil {
 		t.Fatal(err)

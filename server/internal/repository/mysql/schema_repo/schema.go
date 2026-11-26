@@ -46,7 +46,7 @@ func (s *Schema) Check(ctx context.Context) error {
 	if err := s.checkColumns(ctx); err != nil {
 		return err
 	}
-	return s.queryIndexes(ctx, false)
+	return s.queryIndexes(ctx, schema.Version)
 }
 
 func (s *Schema) checkColumns(ctx context.Context) error {
@@ -111,7 +111,7 @@ func (s *Schema) init(ctx context.Context) error {
 				return fmt.Errorf("initialize center structure: %w", err)
 			}
 		}
-		if err := s.queryIndexes(ctx, true); err != nil {
+		if err := s.queryIndexes(ctx, 0); err != nil {
 			return err
 		}
 		if err := s.checkColumns(ctx); err != nil {

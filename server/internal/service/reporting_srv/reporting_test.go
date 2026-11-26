@@ -37,7 +37,7 @@ func readSession(t *testing.T, db *gorm.DB) (meta reporting_do.Session, total in
 	if err := db.First(&meta).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Table(reporting_repo.PublishedUsage).Select("COALESCE(SUM(total_tokens),0)").Scan(&total).Error; err != nil {
+	if err := reporting_repo.PublishedUsage(db).Select("COALESCE(SUM(u.total_tokens),0)").Scan(&total).Error; err != nil {
 		t.Fatal(err)
 	}
 	return
@@ -92,7 +92,9 @@ func TestReportingDuplicateReceiptCopiesGrowthAndRevision(t *testing.T) {
 	centerfixture.SendSnapshot(t, s, clients[1], snap)
 	meta, total = readSession(t, db)
 	var cost int64
-	_ = db.Model(&reporting_do.Usage{}).Select("COALESCE(SUM(cost_micro_usd),0)").Scan(&cost).Error
+	if err := reporting_repo.PublishedUsage(db).Select("COALESCE(SUM(u.cost_micro_usd),0)").Scan(&cost).Error; err != nil {
+		t.Fatal(err)
+	}
 	if total != 125 || cost != 12 {
 		t.Fatal("price revision duplicated facts or lost evidence")
 	}
@@ -153,9 +155,11 @@ func TestReportingRollbackIdentityChecksDeletionAndConcurrentCopies(t *testing.T
 	if _, err := s.Accept(t.Context(), clients[0], broken); !errors.Is(err, utils.ErrBadParamInput) {
 		t.Fatal("unproven raw account accepted")
 	}
-	for _, model := range []any{&reporting_do.Batch{}, &reporting_do.Session{}, &reporting_do.SessionSource{}, &reporting_do.Usage{}} {
+	for _, model := range []any{&reporting_do.Batch{}, &reporting_do.Session{}, &reporting_do.SessionSource{}, &reporting_do.UsageVersion{}, &reporting_do.SessionPublication{}} {
 		var count int64
-		_ = db.Model(model).Count(&count).Error
+		if err := db.Model(model).Count(&count).Error; err != nil {
+			t.Fatal(err)
+		}
 		if count != 0 {
 			t.Fatal("failed batch partly committed")
 		}

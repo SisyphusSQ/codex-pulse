@@ -67,8 +67,8 @@ func mysqlMigrationLock(ctx context.Context, db *gorm.DB, migrate func() error) 
 		return errors.New("schema migration lock was not acquired")
 	}
 	defer func() {
-		// 即使迁移取消也必须释放连接级锁；清理有独立的短截止时间。
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+		// SeekDB 在提交大事务后释放命名锁可能超过 3 秒。迁移取消后仍显式释放。
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 		defer cancel()
 		var released sql.NullInt64
 		releaseErr := db.WithContext(cleanup).Raw("SELECT RELEASE_LOCK(?)", name).Scan(&released).Error

@@ -112,3 +112,45 @@ func TestPublicationCancellationRestartAndImmutableFinalReceipt(t *testing.T) {
 		t.Fatal("complete correction failed", total)
 	}
 }
+
+func TestMixedBatchReplacesLargeVersionAndLeavesItForCollection(t *testing.T) {
+	s, db, clients := reportingFixture(t)
+	snapshot := centerfixture.Snapshot()
+	for i := range 1000 {
+		snapshot.Contributions = append(snapshot.Contributions, centerfixture.Contribution(1, int64(2000+i)))
+	}
+	batch := reportingv1.Batch{Version: 1, ID: uuid.New().String(), Sessions: []reportingv1.SessionSnapshot{snapshot}}
+	if _, err := s.Accept(t.Context(), clients[0], batch); !errors.Is(err, ErrPublicationPending) {
+		t.Fatal("large snapshot was not queued", err)
+	}
+	if processed, err := s.ProcessPublication(t.Context()); !processed || err != nil {
+		t.Fatal("large snapshot was not published", err)
+	}
+	key := reportingv1.Key(snapshot.Provider, snapshot.SessionID)
+	var previous reporting_do.SessionPublication
+	if err := db.Where("session_key = ?", key).Take(&previous).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot.Revision++
+	snapshot.CollectedAtMS = 4000
+	snapshot.Contributions = snapshot.Contributions[:1]
+	mixed := reportingv1.Batch{Version: 1, ID: uuid.New().String(), Sessions: []reportingv1.SessionSnapshot{snapshot},
+		Accounts: []reportingv1.Account{{Provider: "codex", ID: "synthetic", CollectedAtMS: snapshot.CollectedAtMS}}}
+	if _, err := s.Accept(t.Context(), clients[0], mixed); err != nil {
+		t.Fatal("mixed batch did not commit", err)
+	}
+	if meta, total := readSession(t, db); meta.CanonicalRevision != snapshot.Revision || total != 100 {
+		t.Fatal("mixed batch did not replace the active usage", meta.CanonicalRevision, total)
+	}
+	var retired int64
+	if err := db.Model(&reporting_do.UsageVersion{}).Where("generation = ?", previous.Generation).Count(&retired).Error; err != nil || retired != 1001 {
+		t.Fatal("mixed batch should leave the large version for background collection", retired, err)
+	}
+	if err := s.repository.CollectVersions(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if count := db.Model(&reporting_do.UsageVersion{}).Where("generation = ?", previous.Generation).Count(&retired); count.Error != nil || retired != 0 {
+		t.Fatal("retired version was not collected", retired, count.Error)
+	}
+}

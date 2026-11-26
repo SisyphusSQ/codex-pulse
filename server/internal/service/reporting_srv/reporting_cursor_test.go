@@ -46,7 +46,9 @@ func TestReportingCursorCyclesRemainHistoryWithoutAddingLocalCopies(t *testing.T
 		t.Fatal("copied billing histories duplicated or conflicted")
 	}
 	var rows int64
-	_ = db.Model(&reporting_do.Usage{}).Count(&rows).Error
+	if err := db.Model(&reporting_do.UsageVersion{}).Count(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
 	if rows != 2 {
 		t.Fatal("billing events were not deduplicated")
 	}

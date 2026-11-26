@@ -38,7 +38,12 @@ func TestStatisticsSourceStreamDecodeKeepsStrictValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			engine := centerfixture.Engine(t)
 			db := engine.DB(t.Context())
-			for _, row := range []any{&access_do.Client{ID: "collector", Name: "synthetic", Purpose: access_dto.PurposeCollector, SecretHash: "synthetic"}, &reporting_do.Session{ID: "session", Provider: "codex"}, &reporting_do.SessionSource{ID: "source", SessionKey: "session", ClientID: "collector", Payload: tc.payload}} {
+			for _, row := range []any{
+				&access_do.Client{ID: "collector", Name: "synthetic", Purpose: access_dto.PurposeCollector, SecretHash: "synthetic"},
+				&reporting_do.Session{ID: "session", Provider: "codex"},
+				&reporting_do.SessionSource{ID: "source", SessionKey: "session", ClientID: "collector", Payload: tc.payload},
+				&reporting_do.MachineUsageSource{SessionKey: "session", ClientID: "collector", SourceID: "source", FirstObservedAtMS: new(int64(1000)), LastObservedAtMS: new(int64(3999))},
+			} {
 				if err := db.Create(row).Error; err != nil {
 					t.Fatal(err)
 				}

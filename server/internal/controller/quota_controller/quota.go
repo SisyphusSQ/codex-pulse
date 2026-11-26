@@ -15,6 +15,18 @@ func (s *Quota) Register(e *echo.Echo) {
 	e.GET("/api/v1/quotas", s.Current)
 	e.GET("/api/v1/quotas/accounts", s.Accounts)
 	e.GET("/api/v1/quotas/pace", s.Pace)
+	e.GET("/api/v1/quotas/model-usage", s.AccountModelUsage)
+}
+func (s *Quota) AccountModelUsage(c *echo.Context) error {
+	q, err := quota_srv.ParseQuery(c.Request().URL.Query())
+	if err != nil {
+		return err
+	}
+	out, err := s.service.AccountModelUsage(c.Request().Context(), apphttp.Principal(c), q)
+	if err != nil {
+		return err
+	}
+	return vo.CommSuccResp(c, out)
 }
 func (s *Quota) Current(c *echo.Context) error {
 	q, err := quota_srv.ParseQuery(c.Request().URL.Query())

@@ -52,7 +52,7 @@ func TestReportingReconcileCursorPreviewApplyIdempotenceAndRollback(t *testing.T
 	injected := errors.New("usage write failed")
 	callback := "reconcile-injected-failure"
 	if err := db.Callback().Create().Before("gorm:create").Register(callback, func(tx *gorm.DB) {
-		if tx.Statement.Table == "pulse_usage" {
+		if tx.Statement.Table == "pulse_usage_versions" {
 			tx.AddError(injected)
 		}
 	}); err != nil {

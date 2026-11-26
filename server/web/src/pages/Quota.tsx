@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Button, Card, Progress, Segmented, Select, Tag, Typography } from 'antd';
+import {useQueryClient} from '@tanstack/react-query';
 import {useFeedbackQuery as useQuery} from '../components/QueryNotifications';
-import { getPace, getQuotas, getQuotaAccounts, type QuotaAccount, type QuotaCredits, type QuotaFilter, type QuotaResponse, type QuotaWindow } from '../api/quotas';
+import { accountModelUsageQueryKey, getPace, getQuotas, getQuotaAccounts, type QuotaAccount, type QuotaCredits, type QuotaFilter, type QuotaResponse, type QuotaWindow } from '../api/quotas';
 import { getDevices, type Device } from '../api/statistics';
 import { Navigate,useSearchParams } from 'react-router-dom';
 import {EvidenceIcon} from '../components/EvidenceIcon';
@@ -9,6 +10,7 @@ import {SubscriptionPanel} from '../components/SubscriptionPanel';
 import {ObservationFilters} from '../components/ObservationFilters';
 import {AccountIdentity, CreditsCard, duration, PacePanel, percent} from '../components/QuotaViews';
 import {PaidCreditsCard} from '../components/PaidCreditsCard';
+import {AccountModelUsage} from '../components/AccountModelUsage';
 import { EmptyState, ErrorState, LoadingState } from '../components/QueryState';
 import { dateTime, providerLabel, quotaLimitLabel, quotaPoolRank, quotaWindowShortLabel, sourceKindLabel, tokens } from '../format';
 
@@ -97,6 +99,7 @@ function AgyPoolWindowSlot({poolLabel,slotLabel,window:w,selectedKey,onSelect,de
 }
 
 export function QuotaAccounts(){
+ const queryClient=useQueryClient();
  const [params]=useSearchParams();
  const [filter,setFilter]=useState<QuotaFilter>(()=>({provider:params.get('provider')??'',client_id:params.get('client_id')??'',account_key:params.get('account_key')??''}));
  const [selectedAccount,setSelectedAccount]=useState('');
@@ -110,6 +113,7 @@ export function QuotaAccounts(){
  const groups=data?accountGroups(data):[];
  const group=groups.find(a=>a.key===selectedAccount)??groups.find(a=>a.windows.length||a.credits.length||data?.paid_credits?.some(c=>c.account_key===a.accountKey))??groups[0];
  const selected=group?.windows.find(w=>w.key===selectedKey)??group?.windows[0];
+ const weeklyWindow=group?.windows.find(w=>w.provider==='codex'&&w.window_minutes===10080);
  const pace=useQuery({queryKey:['pace',filter,selected?.key],queryFn:({signal})=>getPace(filter,signal,selected?.key),enabled:Boolean(selected),...polling});
  const selectedPace=pace.data?.windows.find(w=>w.key===selected?.key);
  const busy=query.isFetching||pace.isFetching;
@@ -117,7 +121,7 @@ export function QuotaAccounts(){
  const pools=isAgy&&group?agyPools(group.windows):[];
  const activePool=isAgy?pools.find(p=>p.windows.some(w=>w.key===selected?.key))??pools[0]:undefined;
  function change(value:QuotaFilter){setFilter(value);setSelectedAccount('');setSelectedKey('');}
- function refresh(){void query.refetch();if(selected)void pace.refetch();void catalog.refetch();void devices.refetch();}
+ function refresh(){void query.refetch();if(selected)void pace.refetch();void catalog.refetch();void devices.refetch();void queryClient.invalidateQueries({queryKey:accountModelUsageQueryKey});}
  function switchAgyPool(limitId:string){
   const nextPool=pools.find(p=>p.limitId===limitId);
   if(!nextPool)return;
@@ -146,6 +150,7 @@ export function QuotaAccounts(){
      {pool.extras.map(extra=><AgyPoolWindowSlot key={extra.key} poolLabel={pool.label} slotLabel={quotaWindowShortLabel(extra.window_kind,extra.window_minutes)} window={extra} selectedKey={selected?.key} onSelect={setSelectedKey} devices={devices.data??[]} />)}
     </div>
    </Card>)}</div>
+   {weeklyWindow&&group.accountKey&&<AccountModelUsage accountKey={group.accountKey} window={weeklyWindow} clientID={filter.client_id} />}
    {!group.windows.length&&<Typography.Paragraph type="secondary">当前账号暂无已收到的配额池观测。</Typography.Paragraph>}
   </>:<>
    <div className="quota-window-overview">{quotaSlots(group).map(({minutes,window:w})=>w?<Card key={w.key} size="small" className={w.key===selected?.key?'quota-window-summary selected-window':'quota-window-summary'}>
@@ -156,6 +161,7 @@ export function QuotaAccounts(){
     {w.provider==='codex'&&w.window_minutes===10080&&<div className="metric-note">本周期已记录 Token：<Typography.Text strong>{w.recorded_tokens==null?'—':tokens(w.recorded_tokens)}</Typography.Text></div>}
     <div className="metric-note">最后更新 {dateTime(w.current.observed_at_ms)}{w.current.conflict?' · 来源冲突':''}{w.current.freshness==='suspicious'?' · 发现可疑观测，保留有效值':''}{group.accountKey===null?` · ${devices.data?.find(d=>d.id===w.current.selected_client_id)?.name??'来源未知'}`:''}</div>
    </Card>:<Card key={`missing:${minutes}`} size="small" className="quota-window-summary"><strong>{minutes===300?'5 小时':'7 天'}</strong><div className="quota-summary-value">未取得</div><div className="metric-note">等待该窗口的有效采集观测</div></Card>)}</div>
+   {weeklyWindow&&group.accountKey&&<AccountModelUsage accountKey={group.accountKey} window={weeklyWindow} clientID={filter.client_id} />}
    {!group.windows.length&&<Typography.Paragraph type="secondary">当前账号暂无已收到的额度窗口。</Typography.Paragraph>}
    {!group.credits.length&&<Typography.Paragraph type="secondary">当前账号暂无已收到的 Reset Credits，库存保持未知。</Typography.Paragraph>}
    {group.credits.map(c=><CreditsCard key={c.key} showAccount={group.accountKey===null} credits={c} account={group.account} devices={devices.data??[]} />)}
@@ -185,6 +191,7 @@ export function legacyUsageTarget(params:URLSearchParams) {
  return `/usage/models${next.size?`?${next.toString()}`:''}`;
 }
 export default function Quota(){
+ const queryClient=useQueryClient();
  const [params]=useSearchParams();
  if(params.get('view')==='usage')return <Navigate to={legacyUsageTarget(params)} replace />;
  return <section className="accounts-page"><QuotaAccounts /></section>;

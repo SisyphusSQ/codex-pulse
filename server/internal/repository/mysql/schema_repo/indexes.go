@@ -10,7 +10,7 @@ import (
 )
 
 // queryIndexes 只解析仓库受控的独立 CREATE INDEX；SQL 仍是列序的唯一事实源。
-func (s *Schema) queryIndexes(ctx context.Context, create bool) error {
+func (s *Schema) queryIndexes(ctx context.Context, fromVersion int64) error {
 	db := s.engine.DB(ctx)
 	statements, _, _, err := schema.Definition(db.Dialector.Name())
 	if err != nil {
@@ -26,6 +26,7 @@ func (s *Schema) queryIndexes(ctx context.Context, create bool) error {
 			return fmt.Errorf("invalid managed index definition")
 		}
 		name, table := words[2], words[4]
+		create := fromVersion < 8 || fromVersion < 10 && table == "pulse_machine_usage_sources"
 		if create && !db.Migrator().HasIndex(table, name) {
 			if err := db.Exec(ddl).Error; err != nil {
 				return fmt.Errorf("create query index %s: %w", name, err)

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"gorm.io/driver/mysql"
@@ -22,6 +23,7 @@ func TestAutomaticMigrationInitializesUpgradesAndPreservesData(t *testing.T) {
 	if err := s.Migrate(t.Context()); err != nil {
 		t.Fatal("empty database", err)
 	}
+	createLegacyUsageFixture(t, s)
 	db := engine.DB(t.Context())
 	if err := db.Exec("INSERT INTO pulse_batches(client_id,batch_id,digest,received_at_ms) VALUES(?,?,?,?)", "device", "retained", "digest", 1).Error; err != nil {
 		t.Fatal(err)
@@ -81,6 +83,7 @@ func TestAutomaticV3UpgradeAddsProjectionWithoutChangingFacts(t *testing.T) {
 	if err := s.Migrate(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	createLegacyUsageFixture(t, s)
 	db := engine.DB(t.Context())
 	for _, ddl := range []string{"DROP TABLE pulse_session_capsules", "DROP TABLE pulse_retired_observations", "INSERT INTO pulse_batches(client_id,batch_id,digest,received_at_ms) VALUES('synthetic','keep','digest',1)"} {
 		if err := db.Exec(ddl).Error; err != nil {
@@ -129,7 +132,7 @@ func TestAutomaticUpgradeRollsBackFailedSQLiteDDL(t *testing.T) {
 }
 
 func TestMySQLMigrationLockLifecycle(t *testing.T) {
-	for _, scenario := range []string{"success", "busy", "migration_failure", "canceled", "release_failure"} {
+	for _, scenario := range []string{"slow_release", "busy", "migration_failure", "canceled", "release_failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			db, mock, err := sqlmock.New()
 			if err != nil {
@@ -156,6 +159,9 @@ func TestMySQLMigrationLockLifecycle(t *testing.T) {
 					release.WillReturnError(errors.New("release failed"))
 				} else {
 					release.WillReturnRows(sqlmock.NewRows([]string{"released"}).AddRow(1))
+					if scenario == "slow_release" {
+						release.WillDelayFor(4 * time.Second)
+					}
 				}
 			}
 			called := false
@@ -173,10 +179,10 @@ func TestMySQLMigrationLockLifecycle(t *testing.T) {
 					return nil
 				})
 			})
-			if scenario == "success" && err != nil {
+			if scenario == "slow_release" && err != nil {
 				t.Fatal(err)
 			}
-			if scenario != "success" && err == nil {
+			if scenario != "slow_release" && err == nil {
 				t.Fatal("failure was hidden")
 			}
 			if called != (scenario != "busy") {

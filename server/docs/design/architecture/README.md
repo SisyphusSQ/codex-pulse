@@ -30,6 +30,6 @@ cron 通过 Fx 的 `cron_jobs` value group 注入 `cron.Job`，包含 Name、Sch
 | subscription | subscription_controller / subscription_srv | mysql/subscription_repo / mysql/subscription_do | 独立中心手动订阅设置与修订控制 |
 | schema | 无 HTTP / CLI 入口 | mysql/schema_repo / mysql/schema_do | 启动自动初始化/升级、版本检查与迁移标记 |
 
-DTO/VO 同样使用 `<domain>_dto` / `<domain>_vo`。根 module.go 保留 Fx 装配；VO 的 Response、校验与通用 MutationView 留公共根。严格 JSON 解码复用 internal/http.DecodeJSON；statistics 的来源重建复用 reporting 的显式 DecideSnapshot 入口。测试夹具在 testsupport/center，仅依赖模型与存储，不反向依赖各业务 service。
+DTO/VO 同样使用 `<domain>_dto` / `<domain>_vo`。根 module.go 保留 Fx 装配；VO 的 Response、校验与通用 MutationView 留公共根。严格 HTTP JSON 解码复用 internal/http.DecodeJSON；接收、迁移和统计共用 internal/sessionmerge 的来源仲裁。测试夹具在 testsupport/center，仅依赖模型与存储，不反向依赖各业务 service。
 
 以上组织手工依据 Go Starter v2.0.1 同步，保留最初 v2.0.0 生成溯源、HTTP/JSON/表名、权限和事务边界。MySQL 为目标存储，SQLite 仍为当前隔离开发环境。

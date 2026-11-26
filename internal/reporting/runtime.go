@@ -521,11 +521,8 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 
 func (r *Runtime) exportFacts(ctx context.Context, cfg credentialSettings, provider string, now int64) (bool, bool, error) {
 	partition, err := r.source.FactsPartition(ctx, provider)
-	if errors.Is(err, store.ErrReportingProviderDisabled) {
-		return false, false, nil
-	}
 	if errors.Is(err, store.ErrReportingSource) {
-		return false, true, nil
+		return false, !errors.Is(err, store.ErrReportingProviderDisabled), nil
 	}
 	if err != nil {
 		return false, false, err
@@ -538,11 +535,8 @@ func (r *Runtime) exportFacts(ctx context.Context, cfg credentialSettings, provi
 		return false, false, nil
 	}
 	page, err := r.source.Facts(ctx, provider, cursor.After, cfg.HistoryStartAtMS)
-	if errors.Is(err, store.ErrReportingProviderDisabled) {
-		return false, false, nil
-	}
 	if errors.Is(err, store.ErrReportingSource) {
-		return false, true, nil
+		return false, !errors.Is(err, store.ErrReportingProviderDisabled), nil
 	}
 	if err != nil {
 		return false, false, err
@@ -571,11 +565,8 @@ func (r *Runtime) exportFacts(ctx context.Context, cfg credentialSettings, provi
 }
 func (r *Runtime) exportSessions(ctx context.Context, cfg credentialSettings, provider string, now int64) (again, missing bool, err error) {
 	homeID, err := r.source.Partition(ctx, provider)
-	if errors.Is(err, store.ErrReportingProviderDisabled) {
-		return false, false, nil
-	}
 	if errors.Is(err, store.ErrReportingSource) {
-		return false, true, nil
+		return false, !errors.Is(err, store.ErrReportingProviderDisabled), nil
 	}
 	if err != nil {
 		return false, false, err
@@ -588,11 +579,8 @@ func (r *Runtime) exportSessions(ctx context.Context, cfg credentialSettings, pr
 		return false, false, nil
 	}
 	page, err := r.source.Page(ctx, provider, cursor.After, cfg.HistoryStartAtMS)
-	if errors.Is(err, store.ErrReportingProviderDisabled) {
-		return false, false, nil
-	}
 	if errors.Is(err, store.ErrReportingSource) {
-		return false, true, nil
+		return false, !errors.Is(err, store.ErrReportingProviderDisabled), nil
 	}
 	if err != nil {
 		return false, false, err

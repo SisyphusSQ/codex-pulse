@@ -2,7 +2,6 @@ package statistics_repo
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
 	"gorm.io/gorm"
@@ -106,50 +105,31 @@ func (r *Statistics) streamUsage(ctx context.Context, q statistics_dto.Statistic
 	columns := "u.session_key,u.observed_at_ms,u.model,u.input_tokens,u.cached_tokens,u.cache_write_tokens,u.output_tokens,u.reasoning_tokens,u.total_tokens,u.cost_micro_usd,u.reported_charge_micro_usd,u.pricing_version,u.pricing_mode,u.input_price,u.cached_price,u.cache_write_price,u.output_price,u.cost_status"
 	if heatmap {
 		columns = "/*+ USE_HASH(u) */ " + columns
+	} else if q.EndAtMS > q.StartAtMS && q.EndAtMS-q.StartAtMS <= (7*24*time.Hour).Milliseconds() && q.SessionKey == "" && q.ProjectID == "" && q.ClientID == "" && q.Search == "" && q.MatchedSessionKeys == nil {
+		// SeekDB 窄日期从现有时间索引取数。
+		columns = "/*+ INDEX(u idx_usage_versions_time) */ " + columns
 	}
-	for _, physical := range []string{"pulse_usage AS u", "pulse_usage_versions AS u"} {
-		base := r.engine.DB(ctx).Table(physical)
-		projection := columns
-		if physical == "pulse_usage AS u" {
-			base = base.Where("NOT EXISTS (SELECT 1 FROM pulse_session_publications p WHERE p.session_key=u.session_key)")
-		} else {
-			base = base.Joins("JOIN pulse_session_publications p ON p.session_key=u.session_key AND p.generation=u.generation")
-			// SeekDB 窄日期从现有时间索引取数；年度与按会话/项目/搜索的选择路径保持原样。
-			if !heatmap && q.EndAtMS > q.StartAtMS && q.EndAtMS-q.StartAtMS <= (7*24*time.Hour).Milliseconds() && q.SessionKey == "" && q.ProjectID == "" && q.ClientID == "" && q.Search == "" && q.MatchedSessionKeys == nil {
-				projection = "/*+ INDEX(u idx_usage_versions_time) */ " + columns
-			}
-		}
-		db := r.usageFilter(ctx, q, base.Select(projection).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS))
-		rows, err := db.Rows()
-		if err != nil {
-			return err
-		}
+	base := reporting_repo.PublishedUsage(r.engine.DB(ctx)).
+		Select(columns).Where("u.observed_at_ms >= ? AND u.observed_at_ms < ?", q.StartAtMS, q.EndAtMS)
+	rows, err := r.usageFilter(ctx, q, base).Rows()
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
 
-		for rows.Next() {
-			if err := ctx.Err(); err != nil {
-				rows.Close()
-				return err
-			}
-			var row reporting_do.Usage
-			if err := rows.Scan(&row.SessionKey, &row.ObservedAtMS, &row.Model, &row.InputTokens, &row.CachedTokens, &row.CacheWriteTokens, &row.OutputTokens, &row.ReasoningTokens, &row.TotalTokens, &row.CostMicroUSD, &row.ReportedChargeMicroUSD, &row.PricingVersion, &row.PricingMode, &row.InputPrice, &row.CachedPrice, &row.CacheWritePrice, &row.OutputPrice, &row.CostStatus); err != nil {
-				rows.Close()
-				return err
-			}
-			if err := visit(row); err != nil {
-				rows.Close()
-				return err
-			}
-		}
-		err = rows.Err()
-		closeErr := rows.Close()
-		if err != nil {
+	for rows.Next() {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if closeErr != nil {
-			return closeErr
+		var row reporting_do.Usage
+		if err := rows.Scan(&row.SessionKey, &row.ObservedAtMS, &row.Model, &row.InputTokens, &row.CachedTokens, &row.CacheWriteTokens, &row.OutputTokens, &row.ReasoningTokens, &row.TotalTokens, &row.CostMicroUSD, &row.ReportedChargeMicroUSD, &row.PricingVersion, &row.PricingMode, &row.InputPrice, &row.CachedPrice, &row.CacheWritePrice, &row.OutputPrice, &row.CostStatus); err != nil {
+			return err
+		}
+		if err := visit(row); err != nil {
+			return err
 		}
 	}
-	return nil
+	return rows.Err()
 }
 func (r *Statistics) StreamInvocations(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Invocation) error) error {
 	db := r.engine.DB(ctx).Table("pulse_invocations AS i").Select("i.session_key,i.invocation_id,i.observed_at_ms,i.kind,i.tool_name,i.outcome,i.duration_ms").Where("i.observed_at_ms >= ? AND i.observed_at_ms < ?", q.StartAtMS, q.EndAtMS).Where("i.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
@@ -175,76 +155,23 @@ func (r *Statistics) StreamInvocations(ctx context.Context, q statistics_dto.Sta
 
 // StreamSources 在同一有序流中读取内联来源及已发布分片；分片校验不再查询数据库。
 func (r *Statistics) StreamSources(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.SessionSource) error) error {
-	columns := "src.id,src.session_key,src.client_id,src.home_id,src.source_kind,src.revision,src.collected_at_ms,src.digest,src.payload,part.part_index,part.body"
 	db := r.engine.DB(ctx).Table("pulse_session_sources AS src")
+	hint := ""
 	if q.ClientID == "" && q.SessionKey == "" && q.ProjectID == "" {
 		// 宽范围保持来源索引顺序，仅排序单个来源的分片，避免全局排序大正文。
-		columns = "/*+ LEADING(src s owner part) USE_NL(s owner part) INDEX(src idx_session_sources_session) */ " + columns
+		hint = "/*+ LEADING(src s owner part) USE_NL(s owner part) INDEX(src idx_session_sources_session) */ "
 		db = r.sessionFilter(q, db.Joins("JOIN pulse_sessions AS s ON s.id=src.session_key"))
 	} else {
 		db = db.Where("src.session_key IN (?)", r.sessionQuery(ctx, q).Select("s.id"))
 	}
-	db = db.Select(columns).
-		Joins("LEFT JOIN pulse_payload_owners owner ON owner.id=CONCAT('source:',src.id)").
-		Joins("LEFT JOIN pulse_payload_parts part ON part.payload_key=owner.payload_key")
 	if q.ClientID != "" {
 		db = db.Where("src.client_id = ?", q.ClientID)
 	}
-	rows, err := db.Order("src.session_key,src.id,part.part_index").Rows()
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	var current reporting_do.SessionSource
-	var parts []reporting_do.PayloadPart
-	count := 0
-	flush := func() error {
-		if current.ID == "" {
-			return nil
-		}
-		payload, err := reporting_repo.ResolvePayloadParts(current.Payload, parts)
-		if err != nil {
-			return err
-		}
-		current.Payload = payload
-		return visit(current)
-	}
-	for rows.Next() {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		var row reporting_do.SessionSource
-		var index sql.NullInt64
-		var body []byte
-		if err := rows.Scan(&row.ID, &row.SessionKey, &row.ClientID, &row.HomeID, &row.SourceKind, &row.Revision, &row.CollectedAtMS, &row.Digest, &row.Payload, &index, &body); err != nil {
-			return err
-		}
-		if row.ID != current.ID {
-			if err := flush(); err != nil {
-				return err
-			}
-			count++
-			if count > statistics_dto.MaximumStatisticsSources {
-				return utils.ErrRequestBudget
-			}
-			current = row
-			parts = nil
-		}
-		if index.Valid {
-			if len(parts) >= 257 {
-				return utils.ErrRequestBudget
-			}
-			parts = append(parts, reporting_do.PayloadPart{PartIndex: int(index.Int64), Body: body})
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	return flush()
+	return reporting_repo.StreamSourcePayloads(ctx, db, hint, statistics_dto.MaximumStatisticsSources, visit)
 }
 
 func (r *Statistics) StreamUntimed(ctx context.Context, q statistics_dto.StatisticsQuery, visit func(reporting_do.Usage) error) error {
-	db := r.usageFilter(ctx, q, r.engine.DB(ctx).Table(reporting_repo.PublishedUsage).Select("u.session_key,u.model").Where("u.observed_at_ms IS NULL"))
+	db := r.usageFilter(ctx, q, reporting_repo.PublishedUsage(r.engine.DB(ctx)).Select("u.session_key,u.model").Where("u.observed_at_ms IS NULL"))
 	rows, err := db.Rows()
 	if err != nil {
 		return err

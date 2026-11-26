@@ -2,6 +2,7 @@ package reporting
 
 import (
 	"context"
+	"errors"
 	"strconv"
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
@@ -183,6 +184,9 @@ func (e *Exporter) facts(ctx context.Context, provider, after string, start int6
 		out.Groups = append(out.Groups, FactsGroup{Key: reportingv1.Key("credits", provider, c.ID), Batch: batch})
 	}
 	later, err := e.FactsPartition(ctx, provider)
+	if errors.Is(err, store.ErrReportingProviderDisabled) {
+		return ExportFactsPage{}, err
+	}
 	if err != nil || later != before {
 		return ExportFactsPage{}, store.ErrReportingSource
 	}

@@ -12,7 +12,7 @@ import (
 	reporting_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/reporting_dto"
 	statistics_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/statistics_dto"
 	statistics_vo "github.com/SisyphusSQ/codex-pulse/server/internal/models/vo/statistics_vo"
-	"github.com/SisyphusSQ/codex-pulse/server/internal/service/reporting_srv"
+	"github.com/SisyphusSQ/codex-pulse/server/internal/sessionmerge"
 	"github.com/SisyphusSQ/codex-pulse/server/utils"
 )
 
@@ -101,7 +101,7 @@ func (s *Statistics) attachLegacyThroughput(ctx context.Context, q statistics_dt
 			}
 		}
 		if q.ClientID != "" {
-			decision := reporting_srv.DecideSnapshot(sources[item.ID], nil)
+			decision := sessionmerge.DecideSnapshot(sources[item.ID], nil)
 			chosen, owner = decision.Source.Snapshot, decision.Source.ClientID
 		}
 		if item.Provider == "agy" {

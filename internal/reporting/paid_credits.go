@@ -2,6 +2,7 @@ package reporting
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
@@ -39,6 +40,9 @@ func (e *Exporter) PaidCreditFacts(ctx context.Context, start int64) ([]FactsGro
 		groups = append(groups, FactsGroup{Key: reportingv1.Key("paid-credit", c.ID), Batch: reportingv1.Batch{PaidCredits: []reportingv1.PaidCredit{c}, Bindings: []reportingv1.AccountBinding{bindingForIdentity(e.state, identity)}}})
 	}
 	later, err := e.FactsPartition(ctx, "codex")
+	if errors.Is(err, store.ErrReportingProviderDisabled) {
+		return nil, err
+	}
 	if err != nil || later != before {
 		return nil, ErrUnavailable
 	}

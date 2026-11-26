@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,7 +16,10 @@ import (
 	"time"
 
 	reportingv1 "github.com/SisyphusSQ/codex-pulse/api/codexpulse/reporting/v1"
+	"github.com/SisyphusSQ/codex-pulse/internal/preferences"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
+	storelight "github.com/SisyphusSQ/codex-pulse/internal/store/lightindex"
+	storesqlite "github.com/SisyphusSQ/codex-pulse/internal/store/sqlite"
 )
 
 type fakeSource struct {
@@ -565,6 +569,78 @@ func TestCatchupKeepsTransportAndProtocolBackoff(t *testing.T) {
 		if delay != 5*time.Minute || retry != 5*time.Minute {
 			t.Fatal("actual failure lost backoff", err, delay, retry)
 		}
+	}
+}
+
+func TestReportingStatusExcludesDisabledProviders(t *testing.T) {
+	ctx := t.Context()
+	state, statePath := testState(t)
+	db, err := storesqlite.Open(ctx, storesqlite.Config{Path: filepath.Join(filepath.Dir(statePath), "facts.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close(context.Background()) })
+	repository := store.NewRepository(db)
+	if err := repository.EnsureApplicationSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	home := storelight.LightHomeIdentity{Path: t.TempDir(), DeviceID: "test-device", Inode: 1}
+	light := storelight.NewRepository(db)
+	if err := light.ReplaceLightMetadata(ctx, storelight.LightMetadataSnapshot{Home: home, Generation: 1, ReadyAtMS: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := light.FinishLightScanPass(ctx, home, 2000); err != nil {
+		t.Fatal(err)
+	}
+	disabled := preferences.ProviderPreference{Intent: preferences.ProviderIntentDisabled}
+	prefs := &testPreferences{snapshot: preferences.Snapshot{
+		CodexHome: &preferences.CodexHomePreferences{Source: preferences.ConfirmedSource{Path: home.Path, DeviceID: home.DeviceID, Inode: home.Inode}},
+		Providers: preferences.ProviderPreferences{Cursor: disabled, Grok: disabled},
+	}}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == http.MethodGet {
+			_, _ = io.WriteString(w, `{"code":200,"data":{"paid_credits":true}}`)
+			return
+		}
+		var batch reportingv1.Batch
+		if err := json.NewDecoder(req.Body).Decode(&batch); err != nil {
+			t.Error(err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": reportingv1.Receipt{Version: 1, BatchID: batch.ID, ReceivedAtMS: 3000}})
+	}))
+	defer server.Close()
+	exporter := NewExporter(repository, prefs, state)
+	runtime := &Runtime{state: state, source: exporter, ctx: ctx, version: "test"}
+	cfg := credentialSettings{ID: 1, Endpoint: server.URL, ClientID: "client", Credential: strings.Repeat("c", 43), AllowHTTP: true, Enabled: true, IntervalSeconds: 60}
+	if err := state.saveSettings(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, overall, dshStatus string
+		codex, dsh               preferences.ProviderIntent
+	}{
+		{"all disabled", "ready", "disabled", preferences.ProviderIntentDisabled, preferences.ProviderIntentDisabled},
+		{"healthy Codex only", "ready", "disabled", preferences.ProviderIntentAuto, preferences.ProviderIntentDisabled},
+		{"re-enabled DSH without a snapshot", "partial", "source_unavailable", preferences.ProviderIntentAuto, preferences.ProviderIntentEnabled},
+		{"disabled DSH again", "ready", "disabled", preferences.ProviderIntentAuto, preferences.ProviderIntentDisabled},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			prefs.snapshot.Providers.Codex.Intent = tc.codex
+			prefs.snapshot.Providers.DSH.Intent = tc.dsh
+			if _, err := runtime.cycle(ctx, cfg); err != nil {
+				t.Fatal(err)
+			}
+			status, err := runtime.Status(ctx)
+			if err != nil || status.State != tc.overall || status.PendingBatches != 0 {
+				t.Fatalf("reporting state = %q, pending = %d, err = %v", status.State, status.PendingBatches, err)
+			}
+			dsh, err := exporter.Status(ctx, "dsh", 0)
+			if err != nil || dsh.Status != tc.dshStatus {
+				t.Fatalf("DSH state = %q, err = %v", dsh.Status, err)
+			}
+		})
 	}
 }
 

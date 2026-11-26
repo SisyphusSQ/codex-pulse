@@ -29,6 +29,14 @@ export interface QuotaCredits {
 export interface PaidCreditPoint { observedAtMs:number; balance?:string; unlimited:boolean }
 export interface PaidCredit { account_key:string; credit:{limitId:string;state:string;balance?:string;hasCredits?:boolean;unlimited?:boolean;observedAtMs:number;checkedAtMs:number;freshness:string;consumptionState:string;history:PaidCreditPoint[]} }
 export interface QuotaResponse { paid_credits?:PaidCredit[]; evaluated_at_ms:number; rule_version:string; accounts:QuotaAccount[]; windows:QuotaWindow[]; credits:QuotaCredits[]; coverage:string }
+export interface AccountModelRow {
+ kind:'model'|'unknown_model'|'unmatched';
+ model:string|null; name:string|null; total_tokens:string;
+ input_tokens:string|null; cached_tokens:string|null; output_tokens:string|null; reasoning_tokens:string|null;
+}
+export interface AccountModelUsageResponse {
+ evaluated_at_ms:number; window_start_at_ms:number|null; resets_at_ms:number|null; recorded_tokens:string|null; models:AccountModelRow[];
+}
 export interface PacePoint { observed_at_ms:number; elapsed_percent:number; used_percent:number; remaining_percent:number; linked_history:boolean }
 export interface PaceCycle { id:string; window_start_at_ms:number; resets_at_ms:number; complete:boolean; points:PacePoint[] }
 export interface HistoryBandPoint { elapsed_percent:number; median_remaining:number; minimum_remaining:number; maximum_remaining:number; cycle_count:number }
@@ -56,4 +64,12 @@ export async function getPace(filter:QuotaFilter,signal?:AbortSignal,windowKey?:
 export async function getQuotaAccounts(filter:QuotaFilter,signal?:AbortSignal):Promise<QuotaResponse>{
  const value=await api.get<QuotaResponse>('/api/v1/quotas/accounts',params(filter),signal);
  if(!value||!Array.isArray(value.accounts))throw new ApiError(502);return value;
+}
+
+export const accountModelUsageQueryKey=['quota-model-usage'] as const;
+
+export async function getAccountModelUsage(accountKey:string,windowKey:string,clientID:string,signal?:AbortSignal):Promise<AccountModelUsageResponse>{
+ const value=await api.get<AccountModelUsageResponse>('/api/v1/quotas/model-usage',{account_key:accountKey,window_key:windowKey,client_id:clientID},signal);
+ if(!value||!Array.isArray(value.models))throw new ApiError(502);
+ return value;
 }
