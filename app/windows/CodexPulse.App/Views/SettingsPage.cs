@@ -72,7 +72,8 @@ internal sealed class SettingsPage:FeaturePage
         rendered=draft;form.Children.Clear();invalid.Clear();editable.Clear();
         EditableField? Field(string key)=>response.EditableFields.FirstOrDefault(field=>field.Key==key);
         var providers=new StackPanel{Spacing=10};providers.Children.Add(Text(L.Text("客户端采集开关","Client collection switches"),"SubtitleTextBlockStyle"));
-        foreach(var state in response.Snapshot.Providers)
+        var orderedProviders=response.Snapshot.Providers.OrderBy(state=>{var idx=Array.IndexOf(Workspace.ProviderOrder,state.Provider);return idx>=0?idx:int.MaxValue;}).ThenBy(state=>state.Provider,StringComparer.Ordinal);
+        foreach(var state in orderedProviders)
         {
             var providerDraft=draft.Providers.FirstOrDefault(item=>item.Provider==state.Provider);if(providerDraft is null)continue;
             var choice=new ComboBox{HorizontalAlignment=HorizontalAlignment.Stretch,IsEnabled=Field("providers."+state.Provider+".intent")?.Editable==true};
@@ -90,6 +91,7 @@ internal sealed class SettingsPage:FeaturePage
         Toggle(online,"online.cursorOnlineEnabled",L.Text("Cursor 在线用量","Cursor online usage"),draft.Online.CursorOnlineEnabled,value=>draft.Online.CursorOnlineEnabled=value);
         Toggle(online,"online.grokQuotaEnabled",L.Text("Grok 在线额度","Grok online quota"),draft.Online.GrokQuotaEnabled,value=>draft.Online.GrokQuotaEnabled=value);
         Toggle(online,"online.grokAutoRefreshEnabled",L.Text("Grok 自动刷新","Grok automatic refresh"),draft.Online.GrokAutoRefreshEnabled,value=>draft.Online.GrokAutoRefreshEnabled=value);
+        Toggle(online,"online.agyOnlineEnabled",L.Text("Antigravity 本机在线额度与账号","Antigravity local online quota & account"),draft.Online.AgyOnlineEnabled,value=>draft.Online.AgyOnlineEnabled=value);
         online.Children.Add(Text(L.Text("关闭后停止对应新请求，已有结构化历史保持保留。","Disabling stops new requests for that source; existing structured history is retained.")));form.Children.Add(PresentationControls.Disclosure(L.Text("在线来源设置","Online source settings"),online));
         var intervals=new StackPanel{Spacing=12};
         Number(intervals,"refresh.quotaIntervalSeconds",L.Text("额度刷新周期（秒）","Quota interval (seconds)"),draft.Refresh.QuotaIntervalSeconds,value=>draft.Refresh.QuotaIntervalSeconds=value);

@@ -17,7 +17,7 @@ internal static class Charts
     private static readonly Windows.UI.Color[] colors = [ColorHelper.FromArgb(255,42,119,213),ColorHelper.FromArgb(255,24,154,136),ColorHelper.FromArgb(255,171,112,208),ColorHelper.FromArgb(255,213,143,45),ColorHelper.FromArgb(255,212,96,126),ColorHelper.FromArgb(255,98,139,166)];
     private static Brush Color(int index) => new SolidColorBrush(colors[index%colors.Length]);
     // Provider colors stay stable when a date range adds or removes a client.
-    private static Brush Color(string key,int fallback) => Color(key switch {"codex"=>0,"cursor"=>3,"grok"=>2,"dsh"=>1,_=>fallback});
+    private static Brush Color(string key,int fallback) => Color(key switch {"codex"=>0,"cursor"=>3,"grok"=>2,"dsh"=>1,"agy"=>4,_=>fallback});
     private static void Tip(DependencyObject element, string text) { ToolTipService.SetToolTip(element,text); ToolTipService.SetPlacement(element,Microsoft.UI.Xaml.Controls.Primitives.PlacementMode.Mouse); AutomationProperties.SetName(element,text); }
     public static FrameworkElement Bars(IReadOnlyList<ChartDatum> points, Localization l, string unit, bool breakdownExpected=false, bool continuous=false, bool showData=true, bool compact=false, bool showLegend=false)
     {

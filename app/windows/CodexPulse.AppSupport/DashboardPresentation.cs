@@ -35,7 +35,8 @@ public static class DashboardPresentation
                     ? window.WindowMinutes == 10080 || window.LimitId == "grok.included_credits" && window.WindowMinutes is >= 8640 and <= 11520
                     : window.LimitId is "cursor.models" or "cursor.other_models" or "grok.included_credits"))
                 .Where(window => window.LimitId != "cursor.grok_bot")
-                .OrderBy(window => window.LimitId is "codex" or "cursor.models" ? 0 : window.LimitId == "grok.included_credits" ? 1 : 2);
+                .OrderBy(window => window.LimitId is "codex" or "cursor.models" ? 0 : window.LimitId == "grok.included_credits" ? 1 : QuotaPresentation.IsAgyPool(window.LimitId) ? 2 + QuotaPresentation.AgyPoolOrderRank(window.LimitId) : 100)
+                .ThenBy(window => window.LimitId, StringComparer.Ordinal);
             foreach (var window in windows)
             {
                 var start = (BigInteger)window.ResetsAtMs - (BigInteger)window.WindowMinutes * 60000;

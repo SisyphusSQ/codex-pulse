@@ -160,8 +160,10 @@ internal sealed class ProjectsPage:FeaturePage
         foreach(var session in response.Sessions)
         {
             var range=response.Range?.Clone();
+            var role=AnalysisQueries.SessionRoleTag(session.TitleReason,L);
+            var subtitle=(role is not null?role+" · ":"")+DashboardPresentation.Name(session.Model,L.Text("未归类模型","Unattributed model"));
             var link=PresentationControls.RankingLink(++sessionIndex,string.IsNullOrWhiteSpace(session.DisplayTitle)?L.Text("未命名会话","Untitled session"):session.DisplayTitle,
-                DashboardPresentation.Name(session.Model,L.Text("未归类模型","Unattributed model")),L.Tokens(session.Totals?.TotalTokens)+" Token",L.Money(session.Totals?.EstimatedUsdMicros),
+                subtitle,L.Tokens(session.Totals?.TotalTokens)+" Token",L.Money(session.Totals?.EstimatedUsdMicros),
                 ()=>{if(range is not null)Host.OpenSession(session.SessionId,range);},titleLines:2);
             link.IsEnabled=range is not null;sessionRows.Children.Add(link);
         }

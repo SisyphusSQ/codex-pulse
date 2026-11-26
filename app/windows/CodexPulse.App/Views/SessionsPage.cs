@@ -100,10 +100,14 @@ internal sealed class SessionsPage:FeaturePage
         if(Equals(renderedList,response))return;renderedList=response;
         var scope=navigation.ExactRange is {} exact?L.Text("下钻精确范围 ","Drilldown exact range ")+L.Timestamp(exact.StartAtMs,exact.TimeZone)+" — "+L.Timestamp(exact.EndAtMs,exact.TimeZone)+" · "+exact.TimeZone:context.Start.ToString("yyyy-MM-dd")+" — "+context.EndExclusive.ToString("yyyy-MM-dd")+L.Text("（结束日不含）"," (end exclusive)")+" · "+context.TimeZone;
         chrome.Notice.Text=scope+"\n"+L.Text("按最近活动时间筛选；Token、成本、缓存命中率和 TPS 都是会话生命周期指标。","Filtered by last activity; tokens, cost, cache rate, and TPS describe the session lifetime.");
-        chrome.Rows(response.Items.Select(item=>new AnalysisRow {Identity=item.SessionId,Source=item,Title=item.DisplayTitle,
-            Subtitle=DashboardPresentation.Name(item.Project,L.Text("未归类项目","Unclassified project"))+" · "+DashboardPresentation.Name(item.Model,L.Text("未归类模型","Unattributed model")),
-            Metrics=L.Tokens(item.Totals?.TotalTokens)+" Token · "+L.Money(item.Totals?.EstimatedUsdMicros),
-            Evidence=(item.Activity=="active"?L.Text("进行中","Active"):L.Text("空闲","Idle"))+" · "+L.Timestamp(item.LastActivityAtMs?.HasValue==true?item.LastActivityAtMs.Value:null)+(context.Provider=="codex"?" · "+L.Text("缓存 ","Cache ")+AnalysisQueries.CacheRate(item.CacheHitRate,L)+" · "+AnalysisQueries.Tps(item.Throughput,L):"")}),navigation.Selected,L.Text("当前范围与筛选条件下暂无会话。可调整日期范围或筛选条件。","No sessions match this range and these filters. Adjust the date range or filters."));
+        chrome.Rows(response.Items.Select(item=>
+        {
+            var role=AnalysisQueries.SessionRoleTag(item.TitleReason,L);
+            return new AnalysisRow {Identity=item.SessionId,Source=item,Title=item.DisplayTitle,
+                Subtitle=(role is not null?role+" · ":"")+DashboardPresentation.Name(item.Project,L.Text("未归类项目","Unclassified project"))+" · "+DashboardPresentation.Name(item.Model,L.Text("未归类模型","Unattributed model")),
+                Metrics=L.Tokens(item.Totals?.TotalTokens)+" Token · "+L.Money(item.Totals?.EstimatedUsdMicros),
+                Evidence=(item.Activity=="active"?L.Text("进行中","Active"):L.Text("空闲","Idle"))+" · "+L.Timestamp(item.LastActivityAtMs?.HasValue==true?item.LastActivityAtMs.Value:null)+(Workspace.SupportsThroughput(context.Provider)?" · "+L.Text("缓存 ","Cache ")+AnalysisQueries.CacheRate(item.CacheHitRate,L)+" · "+AnalysisQueries.Tps(item.Throughput,L):"")};
+        }),navigation.Selected,L.Text("当前范围与筛选条件下暂无会话。可调整日期范围或筛选条件。","No sessions match this range and these filters. Adjust the date range or filters."));
         AnalysisChrome.Options(project,response.Items.Where(item=>item.Project?.HasId==true).Select(item=>(item.Project.Id,DashboardPresentation.Name(item.Project,"—"))),navigation.Filters.Project,L.Text("全部项目","All projects"),L.Text("已选项目","Selected project"));
         AnalysisChrome.Options(model,response.Items.Where(item=>item.Model?.HasId==true).Select(item=>(item.Model.Id,DashboardPresentation.Name(item.Model,"—"))),navigation.Filters.Model,L.Text("全部模型","All models"),L.Text("已选模型","Selected model"));
     }
@@ -118,6 +122,12 @@ internal sealed class SessionsPage:FeaturePage
         }
         if(Equals(renderedDetail,response))return;renderedDetail=response;var panel=chrome.DetailBody;panel.Children.Clear();var item=response.Item;
         panel.Children.Add(Text(item.DisplayTitle,"SubtitleTextBlockStyle"));
+        var detailRole=AnalysisQueries.SessionRoleTag(item.TitleReason,L);
+        if(detailRole is not null)
+        {
+            var badge=new Border{BorderBrush=Charts.NeutralBrush,BorderThickness=new Thickness(1),CornerRadius=new CornerRadius(4),Padding=new Thickness(8,2,8,2),HorizontalAlignment=HorizontalAlignment.Left,Child=PresentationControls.Caption(detailRole)};
+            panel.Children.Add(badge);
+        }
         panel.Children.Add(PresentationControls.Caption(DashboardPresentation.Name(item.Project,L.Text("未归类项目","Unclassified project"))+" · "+DashboardPresentation.Name(item.Model,L.Text("未归类模型","Unattributed model"))));
         var totals=new StackPanel {Spacing=16};
         totals.Children.Add(PresentationControls.MetricStrip(("Token",L.Tokens(item.Totals?.TotalTokens)),(L.Text("API 等价估算成本","API-equivalent estimate"),L.Money(item.Totals?.EstimatedUsdMicros))));
@@ -130,13 +140,15 @@ internal sealed class SessionsPage:FeaturePage
         evidence.Children.Add(Text(L.Text("定价依据：","Pricing basis: ")+(response.HasPricingSource?response.PricingSource:"—")+" · "+string.Join(", ",response.PricingVersions)+"\n"+L.Text("估算不是订阅账单；未定价轮数 ","This estimate is not a subscription bill. Unpriced turns ")+L.Number(item.Totals?.UnpricedTurnCount)));
         if(response.UnpricedReasons.Count>0)evidence.Children.Add(Text(string.Join(" · ",response.UnpricedReasons.Select(reason=>reason.Reason+" "+L.Number(reason.Count)))));
         totals.Children.Add(PresentationControls.DataButton(L.Text("统计口径与定价依据","Scope and pricing details"),evidence));
-        if(context.Provider=="codex")
+        if(Workspace.SupportsThroughput(context.Provider))
         {
             var performance=new StackPanel{Spacing=12};performance.Children.Add(PresentationControls.Heading(L.Text("输出效率","Output efficiency")));
             performance.Children.Add(PresentationControls.MetricStrip((L.Text("活跃期间平均输出","Average active output"),AnalysisQueries.Tps(item.Throughput,L)),(L.Text("缓存命中率","Cache hit rate"),AnalysisQueries.CacheRate(item.CacheHitRate,L))));
             var performanceDetails=new StackPanel{Spacing=12};
             performanceDetails.Children.Add(PresentationControls.Caption(L.Text("缓存命中率按已索引的会话累计缓存输入 / 输入计算；缓存已包含在输入中。","Cache hit rate uses indexed lifetime cached input / input. Cached tokens are already included in input.")));
-            performanceDetails.Children.Add(PresentationControls.Caption(L.Text("平均输出为输出 Token / 活跃区间并集；含思考、工具和轮内等待，不含轮间空闲。","Average output is output tokens / union of active intervals. Includes reasoning, tools, and in-turn waits; excludes idle time between turns.")));
+            performanceDetails.Children.Add(PresentationControls.Caption(context.Provider=="agy"
+                ?L.Text("平均输出按步骤级输出 Token / 活跃生成时长计算（过滤短于 0.5 秒的步骤）。","Average output uses step-level output tokens / active generation duration (steps shorter than 0.5 s are excluded).")
+                :L.Text("平均输出为输出 Token / 活跃区间并集；含思考、工具和轮内等待，不含轮间空闲。","Average output is output tokens / union of active intervals. Includes reasoning, tools, and in-turn waits; excludes idle time between turns.")));
             if(item.Throughput is {} throughput)
             {
                 performance.Children.Add(PresentationControls.KeyValue(L.Text("参与统计的输出","Included output"),L.Tokens(throughput.OutputTokens)+" Token"));

@@ -578,7 +578,8 @@ public sealed partial class MainWindow : Window
         datePickerLanguage = language;
     }
 
-    public static string ProviderName(string provider) => provider switch { "codex" => "Codex", "cursor" => "Cursor", "grok" => "Grok", "dsh" => "DSH", _ => provider };
+    public static string ProviderName(string provider) => Workspace.ProviderDisplayName(provider);
+    public static string ProviderCompactName(string provider) => Workspace.ProviderCompactName(provider);
     private void AddNavigation(Feature feature, Symbol symbol)
     {
         var item = new NavigationViewItem { Content = Localization.FeatureTitle(feature), Tag = feature, Icon = new SymbolIcon(symbol) };

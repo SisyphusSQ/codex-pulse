@@ -60,7 +60,7 @@ internal sealed class SourcesJobsPage:FeaturePage
         };
         sections.SelectedItem=selected?.Kind=="job"?jobTab:sourceTab;
     }
-    public override bool DependsOn(string domain)=>domain is "index" or "health" or "settings" or "account" or "quota" or "quota_codex" or "quota_cursor" or "quota_grok";
+    public override bool DependsOn(string domain)=>domain is "index" or "health" or "settings" or "account" or "quota" or "quota_codex" or "quota_cursor" or "quota_grok" or "quota_agy";
     public override async Task LoadAsync(bool force=false)
     {
         var context=Host.Workspace.Context;
@@ -74,17 +74,25 @@ internal sealed class SourcesJobsPage:FeaturePage
         State(sections.SelectedItem==jobTab?jobs.Slot.State.Kind:sources.Slot.State.Kind);
         if(selected is {} selection)await Detail(selection.Kind,selection.Identity,false);
     }
-    private string SourceName(SourceItem item)=>(item.HasProvider?MainWindow.ProviderName(item.Provider)+" · ":"")+(item.HasSourceType?item.SourceType switch{"app_server_rate_limits"=>L.Text("Codex 在线额度","Codex online quota"),"app_server_reset_credits"=>L.Text("Codex 重置库存","Codex reset credits"),_=>item.SourceType}:item.Kind switch{"local_file"=>L.Text("本机文件","Local file"),"online"=>L.Text("在线来源","Online source"),_=>L.Text("客户端来源","Client source")});
+    private string SourceName(SourceItem item)=>RuntimeCopy.SourceLabel(item,L);
     private void RenderSources(StackPanel panel,SourceListResponse response)
     {
         sourceView.Visibility=response.Items.Count==0 && selected?.Kind!="source"?Visibility.Collapsed:Visibility.Visible;
         panel.Children.Add(PresentationControls.MetricStrip((L.Text("全部来源","All sources"),L.Number(response.Summary?.Total)),(L.Text("需关注","Attention"),L.Number(response.Summary?.Attention)),(L.Text("匹配条数","Matched"),L.Number(response.MatchedCount))));
         if(response.UnavailableKinds.Count>0)panel.Children.Add(Text(L.Text("部分来源类别暂不可用：","Some source kinds are unavailable: ")+string.Join(", ",response.UnavailableKinds)));
-        foreach(var item in response.Items)
+        var agySources=response.Items.Where(RuntimeCopy.IsAgySource).ToArray();
+        var otherSources=response.Items.Where(item=>!RuntimeCopy.IsAgySource(item)).ToArray();
+        void AddSourceRow(SourceItem item)
         {
             var description=item.Kind=="local_file"?L.Text("已解析 ","Parsed ")+RuntimeCopy.Bytes(item.ParsedBytes,L)+" / "+RuntimeCopy.Bytes(item.SizeBytes,L):L.Text("上次成功 ","Last success ")+Time(item.LastSuccessAtMs);
             if(item.HasCoverageState)description+=" · "+L.Text("覆盖 ","Coverage ")+item.CoverageState;
             var button=ItemRow(SourceName(item),RuntimeCopy.State(item.State,L),description);button.Click+=async(_,_)=>await Detail("source",item.SourceKey);panel.Children.Add(button);
+        }
+        foreach(var item in otherSources)AddSourceRow(item);
+        if(agySources.Length>0)
+        {
+            panel.Children.Add(PresentationControls.Heading(Workspace.ProviderDisplayName("agy")));
+            foreach(var item in agySources)AddSourceRow(item);
         }
         if(response.Items.Count==0)panel.Children.Add(PresentationControls.Caption(L.Text("当前条件下没有数据来源。","No data sources match these filters.")));
         if(sourcePager.CanPrevious || response.Meta?.Page?.HasMore==true)Pager(panel,sourcePager,response.Meta?.Page,()=>LoadAsync(true));

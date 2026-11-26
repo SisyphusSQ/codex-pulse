@@ -62,7 +62,7 @@ internal sealed class OverviewPage : FeaturePage
         activityCard.Children.Clear();activityCard.Children.Add(PresentationControls.SectionHeader(L.Text("活动分布","Activity distribution"),metric));activityCard.Children.Add(activity);
         sessions=new(host,L.Text("高消耗会话 · 前 10","High-usage sessions · Top 10"),RenderSessions,"overview-sessions");
         Body.Children.Add(PresentationControls.Split(PresentationControls.Card(activityCard),PresentationControls.Card(sessions.View)));
-        if(provider is "codex" or "dsh")
+        if(Workspace.SupportsInvocationUsage(provider))
         {
             invocations=new(host,L.Text("调用画像","Invocation profile"),RenderInvocations,"overview-invocations");Body.Children.Add(PresentationControls.Card(invocations.View));
         }
@@ -206,7 +206,9 @@ internal sealed class OverviewPage : FeaturePage
         foreach(var item in response.Items)
         {
             var captured=range?.Clone();
-            rows.Children.Add(PresentationControls.RankingLink(++rank,item.DisplayTitle,DashboardPresentation.Name(item.Project,L.Text("未归类项目","Unclassified project")),
+            var role=AnalysisQueries.SessionRoleTag(item.TitleReason,L);
+            var subtitle=DashboardPresentation.Name(item.Project,L.Text("未归类项目","Unclassified project"))+(role is not null?" · "+role:"");
+            rows.Children.Add(PresentationControls.RankingLink(++rank,item.DisplayTitle,subtitle,
                 L.Tokens(item.Totals?.TotalTokens)+" Token",L.Money(item.Totals?.EstimatedUsdMicros),()=>{if(captured is not null)Host.OpenSession(item.SessionId,captured);}));
         }
         panel.Children.Add(rows);
