@@ -71,3 +71,17 @@ Antigravity 是独立的第五个 Agent Provider（代码、协议、数据库�
   - 兼容 Google AI Ultra 共享池、Google AI Pro 独立 Argon/Carbon 分组或嵌套周桶、`clientModelConfigs.quotaInfo` 差异推断，以及 Proto3 零值省略规则（仅当 `remainingFraction` 省略且 `resetTime > now` 时判为 `100%` 已用；已过期则不判耗尽）。
   - 映射为 `agy.gemini`、`agy.argon`、`agy.carbon`、`agy.claude_gpt`（未知池 `agy.pool.<slug>`）× `primary`（300m / 5h）与 `secondary`（10080m / weekly），写入 `agy_quota_snapshots` 与有界 `agy_quota_observations`（每窗最多 256 条），接入 `QuotaCurrent`、`QuotaPace`、`RequestQuotaRefresh(source=quota)`、`providerrefresh`（`online_quota`）与 `runtimeinfo`（`agy.ls_rpc`）。
   - 离线、LS 不可达或关闭 `agy_online_enabled` 时：停止全部 LS RPC 请求，对未过期窗口保留 last-known-good 并标 `stale`/`partial` 及 `data_as_of_ms`；跨过 `resets_at_ms` 后标为 `expired_unknown`（返回 unknown）。
+
+## E04–E05 原生客户端（macOS SwiftUI / AppKit 与 Windows WinUI 3）
+
+- **统一五路排序与能力边界**：`codex → cursor → grok → dsh → agy`（显示名 `Antigravity`，极窄状态栏紧凑名 `AGY`）；隐藏 AGY 调用统计入口并保证零 `InvocationUsage` RPC，不接入 Codex 专属 Reset Credits / Paid Credits / Account Quotas 视图。
+- **菜单栏 / 托盘与多配额池展开**：
+  - 菜单栏/托盘摘要展示**最紧缺未过期配额池**（同剩余%优先 `5h`，再按 `Gemini → Argon → Carbon → Claude & GPT → agy.pool.*` 确定性选取）；无有效额度时顶行 `--`、底行回退 `今日 <Token>`。
+  - Popover / 托盘面板展示账号胶囊（含邮箱隐私脱敏与标准化套餐标签）、全部返回配额池（每池 5h + 周双窗、重置倒计时、stale 提示）、每日模型趋势与“近 7 天”Top 5 项目。
+- **全页面与平台边界**：主窗口 `DashboardSummary`、`Overview`、`Quota`（按 `limit_id` 分组多池卡片 + 节奏多池切换 + 直接“刷新额度”按钮）、`Sessions`（缓存命中率、步骤级 TPS、轻量角色徽章 `subagent`/`swarm_worker`/`side_question`）、`Projects`、`Pricing`、`Sources`（`Antigravity` 来源分组）与 `Settings`（三态 + `agy_online_enabled` 开关）全量支持；Windows Go Helper 补充 `platform_windows_test.go` 校验无 reparse 句柄钉住与 PowerShell 进程/端口 JSON 解析。
+
+## E06–E07 多机汇总中心（Reporting v1、Go Server 与 Center Web）
+
+- **Reporting v1 与本地导出**：`api/codexpulse/reporting/v1` 放行 `provider="agy"`、`source_kind="agy_local"`、`quota.source="agy_ls_rpc"`、`DeviceStatus` 5 路上限及 `step_metadata` TPS 胶囊；本地导出支持 AGY 会话/贡献（含 `agy-api-2026-11-25` 版本化分阶段费用）、缓存/吞吐量胶囊、非敏感账号摘要（64 位 `account_scope`，无邮箱）与多配额池观测增量/全量补传，显式禁用遵循 `TOO-715` 语义不误报异常。
+- **中心 Go Server 与零 DDL 迁移**：已核验 `server/docs/sqls/schema/` 下 MySQL / SQLite DDL 无 `provider` CHECK/ENUM 限制，零 DDL 迁移；`reporting_srv`、`quota_srv`、`statistics_srv`、`catalog_srv` 全量支持 AGY 多设备去重、多池配额不跨设备相加查询、统计/缓存/TPS 聚合与同口径版本化价目表。
+- **中心 Web（`server/web/`）**：全页面支持五路筛选与 `Antigravity` 展示、零原始键泄漏、多配额池分组卡片与按池节奏切换、AGY 费用“模型 API 公价估算”标注、以及版本化分段参考价目表。
