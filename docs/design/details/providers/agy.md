@@ -48,9 +48,13 @@ Antigravity 是独立的第五个 Agent Provider（代码、协议、数据库�
   - `agy_quota_observations`：按 `(account_scope, limit_id, window_kind, observed_at_ms)` 有界保存真实配额观测点，供 `QuotaPace` 计算节奏。
 - 索引：`idx_agy_sessions_activity`、`idx_agy_sessions_project`、`idx_agy_usage_time`、`idx_agy_quota_observations_window`。
 
-## E01 阶段查询路由行为
+## E02 本地只读轨迹采集、版本化定价与统计查询
 
-在 `AGY-E02` / `AGY-E03` 绑定真实采集与配额后端前：
-
-- `agentrouter.Service`、`agentrouter.QuotaRouter`、`pricingcatalog.Service` 均对 `agentprovider.AGY` 设立显式分支：显式关闭返回 `provider_disabled`（不可重试），未绑定后端返回 `unavailable`（可重试），绝不误报参数校验错误。
-- `AccountSnapshot` 在 E01 阶段对 `agy` 返回空快照（同 `dsh`），待 E03 接入本机 LS RPC 账号读取。
+- `internal/pricing/agy_catalog.go` 冻结 Antigravity 公开 API 参考定价表（`AGYPriceVersion = "agy-api-2026-11-25"`），支持 `MODEL_PLACEHOLDER_M*` / `MODEL_GOOGLE_*` / `MODEL_CLAUDE_*` / `MODEL_OPENAI_*` 归一化与时间分段费率（`[from, until)` 左闭右开，如 Carbon/Argon 2026-12-01 与 Flash 3.6–3.8 2027-01-01 切换），整数微美元单次 HALF-UP 舍入；未知模型严格保持 `unpriced`（`missing_price_component`），不猜价。
+- `internal/agyprovider/` 实现只读 + WAL 感知的本地轨迹采集与统计闭环：
+  - 扫描 `CODEX_PULSE_AGY_HOME` → `ANTIGRAVITY_GEMINI_DIR` → `$HOME/.gemini` 下 4 个产品子目录（`antigravity`、`antigravity-ide`、`antigravity-cli`、`antigravity-idea`）；通过 `mode=ro` + `query_only(1)` + `busy_timeout(3000)` 只读事务与 Windows 句柄钉住读取 `conversation_summaries.db` 与 `conversations/<uuid>.db`。
+  - 严格隐私白名单：绝不读取 `preview`、`conversations_fts` 或 `steps.step_payload`；仅从 `raw_summary` / `steps.metadata` / `gen_metadata` 白名单解码时间戳、模型、Token 与 `originCascadeId`，在解析边界丢弃正文、思考过程、工具参数/结果及本机绝对路径。
+  - 克隆步骤去重（过滤 `originCascadeId != cascadeId` 与 `gen_metadata.cascade_id != cascadeId`）；子代理 / Swarm Worker / Side-Question 保留独立会话，仅在同库可解析父会话时继承父项目（`inherited_parent`），否则归入 `未归属项目`。
+  - Token 口径按 Uncached Input 语义映射：`input = uncached + cache_read`、`cached_input = cache_read`、`output = outputTokens`、`reasoning = thinkingOutputTokens`（输出子集，不重复计费）、`total = uncached + cache_read + output`；步骤级 TPS 使用纳秒级 `createdAt → finishedGeneratingAt`（非 `CLEARED` 步回退 `completedAt`），严格过滤 `< 0.5s` 短步。
+  - `annotations/<uuid>.pbtxt` 仅解析顶层 `title`；`.db` 缺失或无用量时安全回退有界 `brain/<uuid>/.system_generated/logs/transcript.jsonl`（24 MB 上限，丢弃正文）；仅存在加密 `.pb` 时标记 `partial`，不伪造 Token。
+  - 全部统计查询（`UsageCost`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail`）与 `pricingcatalog`、`dashboardsummary`、`providerrefresh`、`app` 装配完成；`QuotaCurrent`/`QuotaPace`/`RefreshQuota` 在 `AGY-E03` 接入本机 LS RPC 前保持安全空占位。

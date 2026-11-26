@@ -176,3 +176,29 @@ func (a *DSHAdapter) RefreshProvider(ctx context.Context, _ string) ProviderResu
 	performed, err := a.service.RefreshIfDue(ctx)
 	return SummarizeProvider(agentprovider.DSH, []ComponentResult{WithComponent(ComponentDSHLocal, ClassifyLocalError(err, performed), a.now().UnixMilli())})
 }
+
+type AGYService interface {
+	RefreshIfDue(context.Context) (bool, error)
+}
+
+type AGYAdapter struct {
+	service AGYService
+	now     func() time.Time
+}
+
+func NewAGYAdapter(service AGYService, now func() time.Time) *AGYAdapter {
+	if now == nil {
+		now = time.Now
+	}
+	return &AGYAdapter{service: service, now: now}
+}
+
+func (a *AGYAdapter) RefreshProvider(ctx context.Context, _ string) ProviderResult {
+	if a == nil || a.service == nil {
+		return UnavailableProvider(agentprovider.AGY, ComponentAGYLocal)
+	}
+	performed, err := a.service.RefreshIfDue(ctx)
+	return SummarizeProvider(agentprovider.AGY, []ComponentResult{
+		WithComponent(ComponentAGYLocal, ClassifyLocalError(err, performed), a.now().UnixMilli()),
+	})
+}

@@ -60,7 +60,7 @@ func (service *Service) Current(ctx context.Context, scope agentprovider.Scope) 
 	case agentprovider.DSH:
 		return currentDSHResponse(evaluatedAtMS)
 	case agentprovider.AGY:
-		return CurrentResponse{}, unavailableCatalog()
+		return currentAGYResponse(evaluatedAtMS)
 	case agentprovider.Codex:
 	default:
 		return CurrentResponse{}, basequery.NewValidationFailure("provider", agentprovider.ErrInvalidProvider)
@@ -346,6 +346,61 @@ func currentDSHResponse(evaluatedAtMS int64) (CurrentResponse, error) {
 		ProviderContext: pricingProviderContext(agentprovider.DSH, "dsh_provider_api_pricing", int64(len(items))),
 		Meta:            meta, EvaluatedAtMS: evaluated, PricingVersion: pricing.DSHPriceVersion + "+" + openAI.PricingVersion,
 		Source: "dsh_provider_api_pricing", Currency: CurrencyUSD, Basis: "dsh_provider_api_reference",
+		UnitTokens: unitTokens, EffectiveFromMS: effective, VerifiedAtMS: verified,
+		Items: items,
+	}, nil
+}
+
+func currentAGYResponse(evaluatedAtMS int64) (CurrentResponse, error) {
+	rates := pricing.AGYReferenceRatesAt(evaluatedAtMS)
+	items := make([]ModelReferencePrice, 0, len(rates))
+	for _, rate := range rates {
+		input, err := referenceRate(&rate.InputMicros)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		cached, err := referenceRate(&rate.CachedMicros)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		output, err := referenceRate(&rate.OutputMicros)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		cacheWrite, err := referenceRate(nil)
+		if err != nil {
+			return CurrentResponse{}, err
+		}
+		items = append(items, ModelReferencePrice{
+			ModelID: rate.ModelID, InputMicros: input, CachedInputMicros: cached,
+			OutputMicros: output, CacheWriteMicros: cacheWrite,
+		})
+	}
+	sort.Slice(items, func(left, right int) bool { return items[left].ModelID < items[right].ModelID })
+	meta, err := basequery.NewResponseMeta(basequery.ResponseComplete, nil, nil)
+	if err != nil {
+		return CurrentResponse{}, err
+	}
+	evaluated, err := basequery.KnownNumeric(evaluatedAtMS, basequery.NumericMilliseconds)
+	if err != nil {
+		return CurrentResponse{}, unavailableCatalog()
+	}
+	unitTokens, err := basequery.KnownNumeric(UnitTokens, basequery.NumericTokens)
+	if err != nil {
+		return CurrentResponse{}, unavailableCatalog()
+	}
+	effective, err := basequery.KnownNumeric(0, basequery.NumericMilliseconds)
+	if err != nil {
+		return CurrentResponse{}, unavailableCatalog()
+	}
+	verified, err := basequery.KnownNumeric(pricing.AGYPricingVerifiedAtMS, basequery.NumericMilliseconds)
+	if err != nil {
+		return CurrentResponse{}, unavailableCatalog()
+	}
+	return CurrentResponse{
+		ProviderContext: pricingProviderContext(agentprovider.AGY, SourceAGYDocs, int64(len(items))),
+		Meta:            meta, EvaluatedAtMS: evaluated, PricingVersion: pricing.AGYPriceVersion,
+		Source: SourceAGYDocs, Currency: CurrencyUSD, Basis: BasisAGY,
 		UnitTokens: unitTokens, EffectiveFromMS: effective, VerifiedAtMS: verified,
 		Items: items,
 	}, nil
