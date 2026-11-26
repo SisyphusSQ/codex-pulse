@@ -12,6 +12,7 @@ const (
 	QuotaSourceCursorDashboard        QuotaSource = "cursor_dashboard"
 	QuotaSourceCursorDashboardGrokBot QuotaSource = "cursor.dashboard.grok_bot"
 	QuotaSourceGrokBilling            QuotaSource = "grok_billing"
+	QuotaSourceAGYLS                  QuotaSource = "agy_ls_rpc"
 )
 
 type QuotaWindowKind string

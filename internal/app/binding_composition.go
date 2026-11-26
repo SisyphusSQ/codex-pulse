@@ -153,6 +153,27 @@ func composeCoreGraph(
 		if err == nil {
 			agyService, err = agyprovider.NewQueryService(agyCollector, repository)
 		}
+		if err == nil {
+			agyLSClient := agyprovider.NewLSClient(agyprovider.NewLSDiscoverer(agyConfig.BaseRoot), nil)
+			agyQuotaCollector, qErr := agyprovider.NewQuotaCollector(
+				agyLSClient,
+				repository,
+				agyprovider.QuotaCollectorConfig{
+					MinimumRefresh: 2 * time.Minute,
+					Now:            time.Now,
+					Enabled: func() bool {
+						if admitProviderControl(controller, agentprovider.AGY) != nil {
+							return false
+						}
+						snapshot, loadErr := preferenceStore.LoadPreferences(context.Background())
+						return loadErr == nil && snapshot.Online.AGYOnlineEnabled
+					},
+				},
+			)
+			if qErr == nil {
+				agyService.BindQuota(agyQuotaCollector, repository)
+			}
+		}
 	}
 	if err != nil {
 		return nil, errors.Join(core.ErrService, err)
@@ -161,6 +182,7 @@ func composeCoreGraph(
 		agyService.BindBeginner(controller)
 	}
 	agyService.SetRefreshNotifier(func() { _ = invalidation.Notify(context.Background(), core.InvalidationIndex) })
+	agyService.SetQuotaRefreshNotifier(func() { _ = invalidation.Notify(context.Background(), core.InvalidationQuota) })
 	providerRouter, err := agentrouter.New(
 		usageService, invocationService, cursorService, cursorService, grokService, grokService,
 	)

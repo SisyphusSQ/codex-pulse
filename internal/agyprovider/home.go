@@ -12,7 +12,7 @@ const (
 	SourceSummaries    = "agy.summaries"
 	SourceTrajectories = "agy.trajectories"
 	SourceTranscripts  = "agy.transcripts"
-	SourceLSQuota      = "agy.ls_quota"
+	SourceLSRPC        = "agy.ls_rpc"
 )
 
 var (

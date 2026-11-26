@@ -116,7 +116,7 @@ func (repository *Repository) ReplaceAGYSnapshot(ctx context.Context, snapshot A
 				}
 			}
 		}
-		if err := database.Where("provider = ?", "agy").Delete(&cursorSourceModel{}).Error; err != nil {
+		if err := database.Where("provider = ? AND source_key <> ?", "agy", "agy.ls_rpc").Delete(&cursorSourceModel{}).Error; err != nil {
 			return err
 		}
 		if err := database.Save(&cursorSnapshotModel{
@@ -274,6 +274,39 @@ func (repository *Repository) AGYSnapshot(ctx context.Context) (AGYSnapshot, err
 		return nil
 	})
 	return result, err
+}
+
+// UpsertAGYSourceStatus 更新单个 AGY 数据源（如 agy.ls_rpc）的健康状态，不干扰本地轨迹来源行。
+func (repository *Repository) UpsertAGYSourceStatus(ctx context.Context, source CursorSourceStatus) error {
+	if repository == nil || repository.database == nil || ctx == nil {
+		return ErrInvalidRepository
+	}
+	if source.Provider != "agy" || !safeCursorKey(source.SourceKey) || !safeCursorLabel(source.SourceType) ||
+		source.RowCount < 0 || source.LastAttemptAtMS < 0 || source.UpdatedAtMS < 0 ||
+		(source.SchemaVersion != nil && *source.SchemaVersion < 0) ||
+		(source.LastSuccessAtMS != nil && *source.LastSuccessAtMS < 0) ||
+		(source.CheckpointValue != nil && !safeCursorID(*source.CheckpointValue)) ||
+		!validCursorSourceState(source.State) || !validCursorCheckpoint(source.CheckpointKind) ||
+		!validCursorFailure(source.FailureCode) || !validCursorCoverage(source.CoverageState) {
+		return invalidRecord("agy source status is invalid")
+	}
+	return repository.database.Write(ctx, func(ctx context.Context, transaction *gorm.DB) error {
+		row := cursorSourceModel{
+			Provider: source.Provider, SourceKey: source.SourceKey, SourceType: source.SourceType,
+			State: source.State, CoverageState: source.CoverageState, SchemaVersion: source.SchemaVersion,
+			CheckpointKind: source.CheckpointKind, CheckpointValue: source.CheckpointValue,
+			RowCount: source.RowCount, LastAttemptAtMS: source.LastAttemptAtMS,
+			LastSuccessAtMS: source.LastSuccessAtMS, FailureCode: source.FailureCode, UpdatedAtMS: source.UpdatedAtMS,
+		}
+		return transaction.WithContext(ctx).Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "provider"}, {Name: "source_key"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"source_type", "state", "coverage_state", "schema_version",
+				"checkpoint_kind", "checkpoint_value", "row_count",
+				"last_attempt_at_ms", "last_success_at_ms", "failure_code", "updated_at_ms",
+			}),
+		}).Create(&row).Error
+	})
 }
 
 // ReplaceAGYQuotaSnapshots 替换指定账号摘要的全部配额池窗口快照。

@@ -57,4 +57,17 @@ Antigravity 是独立的第五个 Agent Provider（代码、协议、数据库�
   - 克隆步骤去重（过滤 `originCascadeId != cascadeId` 与 `gen_metadata.cascade_id != cascadeId`）；子代理 / Swarm Worker / Side-Question 保留独立会话，仅在同库可解析父会话时继承父项目（`inherited_parent`），否则归入 `未归属项目`。
   - Token 口径按 Uncached Input 语义映射：`input = uncached + cache_read`、`cached_input = cache_read`、`output = outputTokens`、`reasoning = thinkingOutputTokens`（输出子集，不重复计费）、`total = uncached + cache_read + output`；步骤级 TPS 使用纳秒级 `createdAt → finishedGeneratingAt`（非 `CLEARED` 步回退 `completedAt`），严格过滤 `< 0.5s` 短步。
   - `annotations/<uuid>.pbtxt` 仅解析顶层 `title`；`.db` 缺失或无用量时安全回退有界 `brain/<uuid>/.system_generated/logs/transcript.jsonl`（24 MB 上限，丢弃正文）；仅存在加密 `.pb` 时标记 `partial`，不伪造 Token。
-  - 全部统计查询（`UsageCost`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail`）与 `pricingcatalog`、`dashboardsummary`、`providerrefresh`、`app` 装配完成；`QuotaCurrent`/`QuotaPace`/`RefreshQuota` 在 `AGY-E03` 接入本机 LS RPC 前保持安全空占位。
+  - 全部统计查询（`UsageCost`、`ListSessions`、`SessionDetail`、`ListProjects`、`ProjectDetail`）与 `pricingcatalog`、`dashboardsummary`、`providerrefresh`、`app` 装配完成。
+
+## E03 本机 LS RPC 发现、账号夹心与多配额池
+
+- **严格回环发现（`internal/agyprovider/ls_discovery*.go`）**：
+  - 优先扫描 `~/.gemini/<product>/daemon/hub_*.json`（校验 `pid` 存活，按 `mtime` 降序提取 `httpPort` / `httpsPort` 与 `csrfToken`，忽略损坏文件）；未命中时回退跨平台进程枚举（macOS/Unix `ps` + `lsof`，Windows PowerShell `Win32_Process` + `Get-NetTCPConnection`）。
+  - 严格限定回环地址（`127.0.0.1` / `localhost` / `::1`），禁止 HTTP 重定向；白名单仅允许 `GetUserStatus` 与 `RetrieveUserQuotaSummary`，拒绝 `GetAllCascadeTrajectories` / `GetCascadeTrajectory`。
+- **账号夹心与账号胶囊（`ls_client.go` / `account.go`）**：
+  - 依次执行 `GetUserStatus → RetrieveUserQuotaSummary({forceRefresh: true}) → GetUserStatus`，若前后账号不一致则立即丢弃脏观测，防止切号串数据。
+  - `AccountSnapshot(provider=agy)` 返回 `type="agy"`、`email`（仅内存即时展示，不写盘）与标准化 `plan_type`（`Google AI Ultra 20×`、`Google AI Ultra 5×`、`Google AI Pro`、`Google AI Free`）；`agy_quota_snapshots.account_scope` 仅存 64 位 SHA-256 摘要，CSRF token 与原始响应体永不落库或写日志。
+- **多配额池归一化与离线语义（`quota_pools.go` / `quota_collector.go` / `quota_query.go`）**：
+  - 兼容 Google AI Ultra 共享池、Google AI Pro 独立 Argon/Carbon 分组或嵌套周桶、`clientModelConfigs.quotaInfo` 差异推断，以及 Proto3 零值省略规则（仅当 `remainingFraction` 省略且 `resetTime > now` 时判为 `100%` 已用；已过期则不判耗尽）。
+  - 映射为 `agy.gemini`、`agy.argon`、`agy.carbon`、`agy.claude_gpt`（未知池 `agy.pool.<slug>`）× `primary`（300m / 5h）与 `secondary`（10080m / weekly），写入 `agy_quota_snapshots` 与有界 `agy_quota_observations`（每窗最多 256 条），接入 `QuotaCurrent`、`QuotaPace`、`RequestQuotaRefresh(source=quota)`、`providerrefresh`（`online_quota`）与 `runtimeinfo`（`agy.ls_rpc`）。
+  - 离线、LS 不可达或关闭 `agy_online_enabled` 时：停止全部 LS RPC 请求，对未过期窗口保留 last-known-good 并标 `stale`/`partial` 及 `data_as_of_ms`；跨过 `resets_at_ms` 后标为 `expired_unknown`（返回 unknown）。

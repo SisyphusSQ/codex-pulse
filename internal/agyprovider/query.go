@@ -29,6 +29,8 @@ type QueryService struct {
 	disabled        bool
 	collector       *Collector
 	reader          SnapshotReader
+	quotaCollector  *QuotaCollector
+	quotaStore      QuotaStore
 	sessions        basequery.Specification
 	projects        basequery.Specification
 	snapshotMu      sync.RWMutex
@@ -38,6 +40,7 @@ type QueryService struct {
 	refreshMu       sync.Mutex
 	localRefreshing bool
 	onRefresh       func()
+	onQuotaRefresh  func()
 	beginner        providercontrol.Beginner
 }
 
@@ -122,6 +125,57 @@ func (service *QueryService) SetRefreshNotifier(notifier func()) {
 	service.refreshMu.Lock()
 	service.onRefresh = notifier
 	service.refreshMu.Unlock()
+}
+
+func (service *QueryService) SetQuotaRefreshNotifier(notifier func()) {
+	if service == nil {
+		return
+	}
+	service.refreshMu.Lock()
+	service.onQuotaRefresh = notifier
+	service.refreshMu.Unlock()
+}
+
+func (service *QueryService) BindQuota(collector *QuotaCollector, storeRepo QuotaStore) {
+	if service == nil {
+		return
+	}
+	service.quotaCollector = collector
+	service.quotaStore = storeRepo
+}
+
+func (service *QueryService) notifyQuotaRefresh() {
+	service.refreshMu.Lock()
+	notifier := service.onQuotaRefresh
+	service.refreshMu.Unlock()
+	if notifier != nil {
+		notifier()
+	}
+}
+
+func (service *QueryService) RefreshForGlobal(ctx context.Context, interactive bool) GlobalRefreshReport {
+	var report GlobalRefreshReport
+	if service == nil || service.disabled {
+		report.Local.Err = basequery.NewUnavailableFailure(nil)
+		report.Quota = OnlineRefreshClass{Err: basequery.NewUnavailableFailure(nil)}
+		return report
+	}
+	performed, localErr := service.RefreshIfDue(ctx)
+	report.Local.Attempted = performed
+	report.Local.Err = localErr
+	if service.quotaCollector == nil {
+		report.Quota = OnlineRefreshClass{Err: basequery.NewUnavailableFailure(nil)}
+		return report
+	}
+	_ = service.withOperation(ctx, 0, func(opCtx context.Context) error {
+		report.Quota = service.quotaCollector.RefreshIfDue(opCtx, interactive)
+		if report.Quota.Attempted && report.Quota.Err == nil {
+			service.invalidateSnapshot()
+			service.notifyQuotaRefresh()
+		}
+		return report.Quota.Err
+	})
+	return report
 }
 
 func (service *QueryService) withOperation(
@@ -643,7 +697,7 @@ func sourceCapability(source string) string {
 		return "sessions"
 	case SourceTrajectories, SourceTranscripts:
 		return "tokens"
-	case SourceLSQuota:
+	case SourceLSRPC:
 		return "quota"
 	default:
 		return "unknown"
