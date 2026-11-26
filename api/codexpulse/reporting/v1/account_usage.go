@@ -16,31 +16,73 @@ type AccountTokenUsage struct {
 
 // AccountTokenFact 复用全局 ContributionID，账号与设备不参与事实身份。
 type AccountTokenFact struct {
-	SessionID       string `json:"session_id"`
-	ID              string `json:"id"`
-	ObservedAtMS    int64  `json:"observed_at_ms"`
-	InputTokens     int64  `json:"input_tokens,string"`
-	CachedTokens    int64  `json:"cached_tokens,string"`
-	OutputTokens    int64  `json:"output_tokens,string"`
-	ReasoningTokens int64  `json:"reasoning_tokens,string"`
-	TotalTokens     int64  `json:"total_tokens,string"`
-	Ordinal         int64  `json:"ordinal"`
+	SessionID        string `json:"session_id"`
+	ID               string `json:"id"`
+	ObservedAtMS     int64  `json:"observed_at_ms"`
+	InputTokens      int64  `json:"input_tokens,string"`
+	CachedTokens     int64  `json:"cached_tokens,string"`
+	CacheWriteTokens *int64 `json:"cache_write_tokens,omitempty,string"`
+	OutputTokens     int64  `json:"output_tokens,string"`
+	ReasoningTokens  *int64 `json:"reasoning_tokens,string"`
+	TotalTokens      int64  `json:"total_tokens,string"`
+	Ordinal          int64  `json:"ordinal"`
 }
 
 func (f AccountTokenFact) Contribution() Contribution {
-	return Contribution{ID: f.ID, ObservedAtMS: &f.ObservedAtMS, InputTokens: &f.InputTokens, CachedTokens: &f.CachedTokens, OutputTokens: &f.OutputTokens, ReasoningTokens: &f.ReasoningTokens, TotalTokens: &f.TotalTokens, CostStatus: "unpriced"}
+	return Contribution{
+		ID:               f.ID,
+		ObservedAtMS:     &f.ObservedAtMS,
+		InputTokens:      &f.InputTokens,
+		CachedTokens:     &f.CachedTokens,
+		CacheWriteTokens: f.CacheWriteTokens,
+		OutputTokens:     &f.OutputTokens,
+		ReasoningTokens:  f.ReasoningTokens,
+		TotalTokens:      &f.TotalTokens,
+		CostStatus:       "unpriced",
+	}
 }
 
 func (u AccountTokenUsage) Valid() bool {
-	if u.Provider != "codex" || !identifier(u.AccountID, 255) || !identifier(u.LocalScope, 128) || u.LocalScope == "default" || !timestamp(u.WindowStartAtMS) || !timestamp(u.ResetsAtMS) || !timestamp(u.CollectedAtMS) || u.ResetsAtMS-u.WindowStartAtMS != 10080*60000 || u.CollectedAtMS < u.WindowStartAtMS || len(u.Facts) > 1000 {
+	if !provider(u.Provider) || !identifier(u.AccountID, 255) || !identifier(u.LocalScope, 128) || u.LocalScope == "default" || !timestamp(u.WindowStartAtMS) || !timestamp(u.ResetsAtMS) || !timestamp(u.CollectedAtMS) || u.ResetsAtMS <= u.WindowStartAtMS || u.CollectedAtMS < u.WindowStartAtMS || len(u.Facts) > 1000 {
+		return false
+	}
+	span := u.ResetsAtMS - u.WindowStartAtMS
+	if span%60000 != 0 || span/60000 > 5256000 {
+		return false
+	}
+	if u.Provider == "codex" && span != 10080*60000 {
 		return false
 	}
 	seen := map[string]bool{}
 	for _, f := range u.Facts {
-		if !identifier(f.SessionID, 255) || !timestamp(f.ObservedAtMS) || f.ObservedAtMS < u.WindowStartAtMS || f.ObservedAtMS >= u.ResetsAtMS || f.ObservedAtMS > u.CollectedAtMS || f.Ordinal < 0 || f.Ordinal > MaxSnapshotFacts || f.InputTokens < 0 || f.CachedTokens < 0 || f.OutputTokens < 0 || f.ReasoningTokens < 0 || f.TotalTokens < 0 || f.InputTokens > math.MaxInt64-f.OutputTokens || f.InputTokens+f.OutputTokens > math.MaxInt64-f.ReasoningTokens || f.TotalTokens != f.InputTokens+f.OutputTokens+f.ReasoningTokens || f.ID != ContributionID(u.Provider, f.SessionID, f.Contribution(), f.Ordinal) || seen[f.ID] {
+		if !identifier(f.SessionID, 255) || !timestamp(f.ObservedAtMS) || f.ObservedAtMS < u.WindowStartAtMS || f.ObservedAtMS >= u.ResetsAtMS || f.ObservedAtMS > u.CollectedAtMS || f.Ordinal < 0 || f.Ordinal > MaxSnapshotFacts || f.InputTokens < 0 || f.CachedTokens < 0 || f.OutputTokens < 0 || f.TotalTokens < 0 || !counter(f.CacheWriteTokens) || !counter(f.ReasoningTokens) {
+			return false
+		}
+		if !validAccountTokenTotal(u.Provider, f) || f.ID != ContributionID(u.Provider, f.SessionID, f.Contribution(), f.Ordinal) || seen[f.ID] {
 			return false
 		}
 		seen[f.ID] = true
 	}
 	return true
+}
+
+func validAccountTokenTotal(p string, f AccountTokenFact) bool {
+	switch p {
+	case "codex":
+		if f.CacheWriteTokens != nil || f.ReasoningTokens == nil {
+			return false
+		}
+		reasoning := *f.ReasoningTokens
+		return f.InputTokens <= math.MaxInt64-f.OutputTokens &&
+			f.InputTokens+f.OutputTokens <= math.MaxInt64-reasoning &&
+			f.TotalTokens == f.InputTokens+f.OutputTokens+reasoning
+	case "agy":
+		if f.CacheWriteTokens != nil {
+			return false
+		}
+		return f.InputTokens <= math.MaxInt64-f.OutputTokens &&
+			f.TotalTokens == f.InputTokens+f.OutputTokens
+	default:
+		return true
+	}
 }

@@ -35,3 +35,64 @@ func (r *Repository) ReportingAccountRanges(ctx context.Context, start, now int6
 	})
 	return
 }
+
+// ReportingAGYAccountRanges builds disjoint confirmed AGY account intervals from
+// consecutive same-account quota observations. Any switch gap or same-timestamp
+// multi-account ambiguity is left unattributed.
+func (r *Repository) ReportingAGYAccountRanges(ctx context.Context, start, now int64) (ranges []ReportingAccountRange, err error) {
+	if r == nil || r.database == nil {
+		return nil, ErrInvalidRepository
+	}
+	err = r.database.ViewSnapshot(ctx, func(_ context.Context, db *gorm.DB) error {
+		var rows []struct {
+			AccountScope string
+			ObservedAtMS int64
+		}
+		if err := db.Raw(`
+			SELECT DISTINCT account_scope, observed_at_ms
+			FROM agy_quota_observations
+			WHERE observed_at_ms BETWEEN ? AND ?
+			ORDER BY observed_at_ms, account_scope
+		`, start, now).Scan(&rows).Error; err != nil {
+			return err
+		}
+		var current *ReportingAccountRange
+		var generation int64
+		flush := func() {
+			if current != nil {
+				ranges = append(ranges, *current)
+				current = nil
+			}
+		}
+		for i := 0; i < len(rows); {
+			at := rows[i].ObservedAtMS
+			j := i + 1
+			for j < len(rows) && rows[j].ObservedAtMS == at {
+				j++
+			}
+			// Multiple accounts at the exact same timestamp cannot prove attribution.
+			if j-i > 1 || !validHexDigest(rows[i].AccountScope) {
+				flush()
+				i = j
+				continue
+			}
+			scope := rows[i].AccountScope
+			if current != nil && current.AccountScope == scope {
+				current.ThroughMS = at
+			} else {
+				flush()
+				generation++
+				current = &ReportingAccountRange{
+					AccountScope:      scope,
+					BindingGeneration: generation,
+					FromMS:            at,
+					ThroughMS:         at,
+				}
+			}
+			i = j
+		}
+		flush()
+		return nil
+	})
+	return
+}

@@ -30,11 +30,11 @@
 
 ## 当前周期模型用量
 
-`GET /api/v1/quotas/model-usage` 要求管理员会话、`account_key` 和对应的 Codex 7 天 `window_key`，可带 `client_id`。账号、设备筛选和窗口起止沿用摘要；找不到对应窗口返回 404。展开明细时查询，受同一账号周期 200,000 条事实预算约束。
+`GET /api/v1/quotas/model-usage` 要求管理员会话、`account_key` 和对应的活跃窗口 `window_key`，可带 `provider` 与 `client_id`。Codex 保持仅支持 `limit_id=codex` 的 7 天窗口；AGY 及其他具备已确认账号绑定的 Provider 支持其当前有效额度窗口（含 5h 与周窗口）。账号、设备筛选和窗口起止沿用摘要；找不到对应窗口返回 404。展开明细时查询，受同一账号周期 200,000 条事实预算约束。
 
-同一只读快照返回 `evaluated_at_ms`、实际周期 `window_start_at_ms` / `resets_at_ms`、`recorded_tokens` 与 `models`。无有效周期或尚未上报账号用量时，总量为 NULL、明细为空。已有周期记录且没有事实时，总量为 `"0"`、明细为空。
+同一只读快照返回 `evaluated_at_ms`、实际周期 `window_start_at_ms` / `resets_at_ms`、`recorded_tokens` 与 `models`。无有效周期或尚未上报账号用量时，总量为 NULL、明细为空。已有周期记录且没有事实时，总量为 `"0"`、明细为空；周期能力按 `(provider, account_key, window_duration)` 严格隔离，避免 5h 与周窗口互相误触发。
 
-账号事实决定总量，已发布的会话贡献按相同事实 ID 补充模型和计数。明细按已知模型、`unknown_model`、`unmatched` 排列，已知模型按总量降序。每行含 `kind`、可空 `model` 和 `name`、`total_tokens` 及可空的 `input_tokens` / `cached_tokens` / `output_tokens` / `reasoning_tokens`。Token 使用精确十进制字符串。缺失分项返回 NULL，所有行总量与 `recorded_tokens` 对账。
+账号事实决定总量，已发布的会话贡献按相同事实 ID 与 Provider 补充模型和计数。明细按已知模型、`unknown_model`、`unmatched` 排列，已知模型按总量降序；AGY 模型使用规范展示名映射。每行含 `kind`、可空 `model` 和 `name`、`total_tokens` 及可空的 `input_tokens` / `cached_tokens` / `output_tokens` / `reasoning_tokens`。Token 使用精确十进制字符串。缺失分项返回 NULL，所有行总量与 `recorded_tokens` 对账。
 
 ## Web 展示约定
 

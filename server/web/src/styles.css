@@ -324,6 +324,7 @@ button.activity-cell:hover,button.activity-cell:focus-visible { outline: 2px sol
 .agy-pool-badges { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .agy-pool-badges .ant-tag { margin-inline-end: 0; font-size: 11px; }
 .agy-pool-window .quota-summary-value { font-size: 20px; font-weight: 650; margin: 6px 0; }
+.quota-token-value { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .agy-pace-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 16px 0 8px; }
 .agy-pace-heading h5.ant-typography { margin: 0; }
 .agy-pace-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

@@ -23,3 +23,11 @@ export const DevicesAgy:Story={name:'09 设备上报状态 · 含 AGY',args:{ini
 export const PricingAgy:Story={name:'10 价目表 · AGY 分阶段参考目录与未收录模型',args:{initialPath:'/pricing?provider=agy'}};
 export const PricingPlansAgy:Story={name:'11 价目表 · Antigravity 订阅套餐',args:{initialPath:'/pricing?provider=agy&tab=plans'}};
 export const MobileMultiPoolQuota:Story={name:'12 窄屏多配额池',args:{initialPath:'/quota?provider=agy'},globals:{viewport:{value:'mobile',isRotated:false}}};
+export const MultiPoolModelUsage:Story={
+ name:'13 多配额池 · 本周期模型用量展开',
+ args:{ticket:'TOO-742',previewTitle:'AGY 账号模型用量',initialPath:'/quota?provider=agy',scenario:'current'},
+ play:async({canvas,userEvent})=>{
+  await userEvent.click(await canvas.findByRole('button',{name:'本周期模型用量'}));
+  await canvas.findByText('Gemini 3.1 Pro (High)');
+ },
+};

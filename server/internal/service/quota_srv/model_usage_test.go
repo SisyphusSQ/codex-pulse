@@ -42,7 +42,7 @@ func TestAccountModelUsageReconcilesAccountFactsAcrossModelsAndDevices(t *testin
 	snapshot.CollectedAtMS = quotaNow
 	first := accountUsage("a", snapshot.SessionID, quotaNow-300, reset, 100)
 	fact := &first.Facts[0]
-	fact.InputTokens, fact.CachedTokens, fact.OutputTokens, fact.ReasoningTokens = 80, 70, 12, 8
+	fact.InputTokens, fact.CachedTokens, fact.OutputTokens, fact.ReasoningTokens = 80, 70, 12, new(int64(8))
 	fact.ID = reportingv1.ContributionID("codex", snapshot.SessionID, fact.Contribution(), 0)
 	second := accountUsage("a", snapshot.SessionID, quotaNow-280, reset, 60)
 	unknown := accountUsage("a", snapshot.SessionID, quotaNow-260, reset, 20)
@@ -108,5 +108,161 @@ func TestAccountModelUsageReconcilesAccountFactsAcrossModelsAndDevices(t *testin
 	out, err = s.AccountModelUsage(t.Context(), admin, q)
 	if err != nil || out.RecordedTokens != nil || len(out.Models) != 0 {
 		t.Fatalf("expired usage: %+v %v", out, err)
+	}
+}
+
+func TestAGYAccountModelUsageSupportsMultipleWindowsDisplayNamesAndDeviceScope(t *testing.T) {
+	s, reporting, admin, clients := quotaFixture(t)
+	scopeA := reportingv1.Key("agy-account", "user-a")
+	scopeB := reportingv1.Key("agy-account", "user-b")
+	localA := reportingv1.Key("agy-scope", clients[0].ID, scopeA)
+	localA1 := reportingv1.Key("agy-scope", clients[1].ID, scopeA)
+	localB := reportingv1.Key("agy-scope", clients[0].ID, scopeB)
+	// Deliberately share the same resets_at_ms between a 5h window and a weekly window
+	// to verify period IDs and duration matching stay strictly isolated.
+	reset := quotaNow + 2*3600000
+	start5h := reset - 300*60000
+	startWeekly := reset - 10080*60000
+
+	for idx, info := range []struct {
+		clientIdx  int
+		localScope string
+	}{{0, localA}, {1, localA1}} {
+		sendQuota(t, reporting, clients[info.clientIdx], reportingv1.Batch{
+			Accounts: []reportingv1.Account{{Provider: "agy", ID: scopeA, Plan: new("Google AI Ultra 20×"), CollectedAtMS: quotaNow - 1000}},
+			Bindings: []reportingv1.AccountBinding{{Provider: "agy", LocalScope: info.localScope, AccountID: scopeA, ConfirmedAtMS: quotaNow - 1000}},
+			Quotas: []reportingv1.QuotaObservation{
+				{
+					Provider: "agy", ID: reportingv1.Key("agy-q", string(rune('0'+idx)), "5h"), AccountID: new(scopeA), LocalScope: info.localScope,
+					LimitID: "agy.gemini", WindowKind: "primary", WindowMinutes: new(int64(300)),
+					WindowStartAtMS: new(start5h), ResetsAtMS: new(reset), ObservedAtMS: quotaNow - 1000,
+					UsedPercent: new(float64(20)), Validity: "accepted", Source: "agy_ls_rpc", HistoryOrigin: "confirmed",
+				},
+				{
+					Provider: "agy", ID: reportingv1.Key("agy-q", string(rune('0'+idx)), "weekly"), AccountID: new(scopeA), LocalScope: info.localScope,
+					LimitID: "agy.gemini", WindowKind: "secondary", WindowMinutes: new(int64(10080)),
+					WindowStartAtMS: new(startWeekly), ResetsAtMS: new(reset), ObservedAtMS: quotaNow - 1000,
+					UsedPercent: new(float64(10)), Validity: "accepted", Source: "agy_ls_rpc", HistoryOrigin: "confirmed",
+				},
+			},
+		})
+	}
+	sendQuota(t, reporting, clients[0], reportingv1.Batch{
+		Accounts: []reportingv1.Account{{Provider: "agy", ID: scopeB, Plan: new("Google AI Pro"), CollectedAtMS: quotaNow - 1000}},
+		Bindings: []reportingv1.AccountBinding{{Provider: "agy", LocalScope: localB, AccountID: scopeB, ConfirmedAtMS: quotaNow - 1000}},
+	})
+
+	accountKeyA := reportingv1.Key("agy", scopeA)
+	accountKeyB := reportingv1.Key("agy", scopeB)
+	summary := readQuota(t, s, admin, quota_dto.Query{Provider: "agy", AccountKey: accountKeyA, View: "summary"})
+	if len(summary.Windows) != 2 {
+		t.Fatalf("expected 2 AGY windows, got %d", len(summary.Windows))
+	}
+	var key5h, keyWeekly string
+	for _, w := range summary.Windows {
+		if w.RecordedTokens != nil {
+			t.Fatalf("unreported AGY window invented zero: %+v", w)
+		}
+		if *w.WindowMinutes == 300 {
+			key5h = w.Key
+		} else {
+			keyWeekly = w.Key
+		}
+	}
+
+	// Build AGY facts: one inside weekly-only (older than 5h), two inside both 5h & weekly (one with nil reasoning),
+	// and one unmatched fact not yet in session snapshot.
+	makeAGYFact := func(session string, at, in, cached, out int64, reasoning *int64) reportingv1.AccountTokenFact {
+		f := reportingv1.AccountTokenFact{
+			SessionID: session, ObservedAtMS: at,
+			InputTokens: in, CachedTokens: cached, OutputTokens: out, ReasoningTokens: reasoning, TotalTokens: in + out,
+		}
+		f.ID = reportingv1.ContributionID("agy", session, f.Contribution(), 0)
+		return f
+	}
+	oldWeeklyFact := makeAGYFact("agy-sess-1", start5h-3600000, 1000, 400, 200, new(int64(50)))
+	recentCarbon := makeAGYFact("agy-sess-1", quotaNow-5000, 1500, 500, 100, new(int64(40)))
+	recentClaudeNoReason := makeAGYFact("agy-sess-1", quotaNow-4000, 300, 100, 50, nil)
+	recentUnmatched := makeAGYFact("agy-sess-1", quotaNow-3000, 90, 0, 10, nil)
+
+	snap := reportingv1.SessionSnapshot{
+		Provider: "agy", HomeID: "agy-home", SessionID: "agy-sess-1", Revision: 1,
+		CollectedAtMS: quotaNow, Title: "AGY 模型明细会话", ProjectID: "p1", ProjectName: "proj",
+		CreatedAtMS: new(start5h - 4000000), LastActiveAtMS: new(quotaNow - 3000),
+		Complete: true, SourceKind: "agy_local", SessionKind: "session",
+		Contributions: []reportingv1.Contribution{
+			oldWeeklyFact.Contribution(),
+			recentCarbon.Contribution(),
+			recentClaudeNoReason.Contribution(),
+		},
+	}
+	snap.Contributions[0].Model = new("gemini-4-carbon-high")
+	snap.Contributions[1].Model = new("gemini-4-carbon-high")
+	snap.Contributions[2].Model = new("claude-opus-5-5-high")
+	centerfixture.SendSnapshot(t, reporting, clients[0], snap)
+
+	// Send weekly period & facts on client 0, and duplicate recentCarbon on client 1.
+	sendQuota(t, reporting, clients[0], reportingv1.Batch{AccountUsage: []reportingv1.AccountTokenUsage{{
+		Provider: "agy", AccountID: scopeA, LocalScope: localA,
+		WindowStartAtMS: startWeekly, ResetsAtMS: reset, CollectedAtMS: quotaNow - 2000,
+		Facts: []reportingv1.AccountTokenFact{oldWeeklyFact, recentCarbon, recentClaudeNoReason, recentUnmatched},
+	}}})
+	sendQuota(t, reporting, clients[1], reportingv1.Batch{AccountUsage: []reportingv1.AccountTokenUsage{{
+		Provider: "agy", AccountID: scopeA, LocalScope: localA1,
+		WindowStartAtMS: startWeekly, ResetsAtMS: reset, CollectedAtMS: quotaNow - 2000,
+		Facts: []reportingv1.AccountTokenFact{recentCarbon},
+	}}})
+
+	// Before 5h period is reported, 5h window must stay unknown while weekly is already available.
+	summary = readQuota(t, s, admin, quota_dto.Query{Provider: "agy", AccountKey: accountKeyA, View: "summary"})
+	for _, w := range summary.Windows {
+		if *w.WindowMinutes == 300 && w.RecordedTokens != nil {
+			t.Fatalf("weekly period falsely activated 5h window: %+v", w)
+		}
+		if *w.WindowMinutes == 10080 && (w.RecordedTokens == nil || *w.RecordedTokens != "3250") {
+			t.Fatalf("weekly recorded tokens = %v, want 3250", w.RecordedTokens)
+		}
+	}
+
+	// Now report empty 5h period marker (same resets_at_ms, different window_start_at_ms!).
+	sendQuota(t, reporting, clients[0], reportingv1.Batch{AccountUsage: []reportingv1.AccountTokenUsage{{
+		Provider: "agy", AccountID: scopeA, LocalScope: localA,
+		WindowStartAtMS: start5h, ResetsAtMS: reset, CollectedAtMS: quotaNow - 1500,
+		Facts: []reportingv1.AccountTokenFact{},
+	}}})
+
+	// Query weekly model usage (omit provider filter to also test provider auto-resolution from window).
+	weeklyDetail, err := s.AccountModelUsage(t.Context(), admin, quota_dto.Query{AccountKey: accountKeyA, WindowKey: keyWeekly})
+	if err != nil || weeklyDetail.RecordedTokens == nil || *weeklyDetail.RecordedTokens != "3250" || len(weeklyDetail.Models) != 3 {
+		t.Fatalf("AGY weekly detail: %+v err=%v", weeklyDetail, err)
+	}
+	if carbon := weeklyDetail.Models[0]; carbon.Model == nil || *carbon.Model != "gemini-4-carbon-high" ||
+		carbon.Name == nil || *carbon.Name != "Gemini 4 Carbon (High)" ||
+		carbon.TotalTokens != "2800" || *carbon.InputTokens != "2500" || *carbon.CachedTokens != "900" ||
+		*carbon.OutputTokens != "300" || *carbon.ReasoningTokens != "90" {
+		t.Fatalf("AGY Carbon row mismatch: %+v", carbon)
+	}
+	if claude := weeklyDetail.Models[1]; claude.Model == nil || *claude.Model != "claude-opus-5-5-high" ||
+		claude.Name == nil || *claude.Name != "Claude Opus 5.5 (High)" ||
+		claude.TotalTokens != "350" || claude.ReasoningTokens != nil {
+		t.Fatalf("AGY Claude nullable reasoning mismatch: %+v", claude)
+	}
+	if unmatched := weeklyDetail.Models[2]; unmatched.Kind != "unmatched" || unmatched.TotalTokens != "100" || unmatched.InputTokens != nil {
+		t.Fatalf("AGY unmatched row mismatch: %+v", unmatched)
+	}
+
+	// Query 5h model usage: excludes oldWeeklyFact, reconciles to 1600 + 350 + 100 = 2050.
+	fiveHDetail, err := s.AccountModelUsage(t.Context(), admin, quota_dto.Query{Provider: "agy", AccountKey: accountKeyA, WindowKey: key5h})
+	if err != nil || fiveHDetail.RecordedTokens == nil || *fiveHDetail.RecordedTokens != "2050" || len(fiveHDetail.Models) != 3 {
+		t.Fatalf("AGY 5h detail: %+v err=%v", fiveHDetail, err)
+	}
+	// Device 1 scope only sees recentCarbon (1600).
+	dev1Detail, err := s.AccountModelUsage(t.Context(), admin, quota_dto.Query{Provider: "agy", AccountKey: accountKeyA, WindowKey: keyWeekly, ClientID: clients[1].ID})
+	if err != nil || dev1Detail.RecordedTokens == nil || *dev1Detail.RecordedTokens != "1600" || len(dev1Detail.Models) != 1 {
+		t.Fatalf("AGY device 1 detail: %+v err=%v", dev1Detail, err)
+	}
+	// Another AGY account cannot query Account A's window.
+	if _, err := s.AccountModelUsage(t.Context(), admin, quota_dto.Query{Provider: "agy", AccountKey: accountKeyB, WindowKey: keyWeekly}); !errors.Is(err, utils.ErrNotFound) {
+		t.Fatalf("cross-account AGY query not rejected: %v", err)
 	}
 }

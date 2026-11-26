@@ -94,6 +94,7 @@ function AgyPoolWindowSlot({poolLabel,slotLabel,window:w,selectedKey,onSelect,de
   {expired&&w.current.remaining_percent!==null&&<div className="metric-note">已过 reset · 上次剩余 {percent(w.current.remaining_percent)}</div>}
   {!expired&&unknown&&<div className="metric-note">尚无有效观测</div>}
   <div className="metric-note">{countdownMs!=null?`距重置 ${duration(countdownMs)} · `:''}reset {dateTime(w.current.resets_at_ms)}</div>
+  {w.recorded_tokens!=null&&<div className="metric-note">本周期已记录 Token：<Typography.Text strong className="quota-token-value">{tokens(w.recorded_tokens)}</Typography.Text></div>}
   <div className="metric-note">最后观测 {dateTime(w.current.observed_at_ms)}{clientName?` · 采集设备 ${clientName}`:''}{distinctClients>1?` · 多机证据 ${distinctClients} 台`:''}</div>
  </div>;
 }
@@ -150,6 +151,7 @@ export function QuotaAccounts(){
      {pool.extras.map(extra=><AgyPoolWindowSlot key={extra.key} poolLabel={pool.label} slotLabel={quotaWindowShortLabel(extra.window_kind,extra.window_minutes)} window={extra} selectedKey={selected?.key} onSelect={setSelectedKey} devices={devices.data??[]} />)}
     </div>
    </Card>)}</div>
+   {selected&&group.accountKey&&<AccountModelUsage accountKey={group.accountKey} window={selected} clientID={filter.client_id} />}
    {!group.windows.length&&<Typography.Paragraph type="secondary">当前账号暂无已收到的配额池观测。</Typography.Paragraph>}
   </>:<>
    <div className="quota-window-overview">{quotaSlots(group).map(({minutes,window:w})=>w?<Card key={w.key} size="small" className={w.key===selected?.key?'quota-window-summary selected-window':'quota-window-summary'}>
@@ -157,7 +159,7 @@ export function QuotaAccounts(){
     <div className="quota-summary-value">{w.current.remaining_percent!==null?`剩余 ${percent(w.current.remaining_percent)}`:'尚无有效观测'}</div>
     {w.current.remaining_percent!==null?<Progress aria-label="最后观测剩余额度" percent={w.current.remaining_percent} showInfo={false} size="small" />:null}
     <div className="metric-note">已用 <span>{percent(w.current.used_percent)}</span> · reset {dateTime(w.current.resets_at_ms)}</div>
-    {w.provider==='codex'&&w.window_minutes===10080&&<div className="metric-note">本周期已记录 Token：<Typography.Text strong>{w.recorded_tokens==null?'—':tokens(w.recorded_tokens)}</Typography.Text></div>}
+    {w.provider==='codex'&&w.window_minutes===10080&&<div className="metric-note">本周期已记录 Token：<Typography.Text strong className="quota-token-value">{w.recorded_tokens==null?'—':tokens(w.recorded_tokens)}</Typography.Text></div>}
     <div className="metric-note">最后更新 {dateTime(w.current.observed_at_ms)}{w.current.conflict?' · 来源冲突':''}{w.current.freshness==='suspicious'?' · 发现可疑观测，保留有效值':''}{group.accountKey===null?` · ${devices.data?.find(d=>d.id===w.current.selected_client_id)?.name??'来源未知'}`:''}</div>
    </Card>:<Card key={`missing:${minutes}`} size="small" className="quota-window-summary"><strong>{minutes===300?'5 小时':'7 天'}</strong><div className="quota-summary-value">未取得</div><div className="metric-note">等待该窗口的有效采集观测</div></Card>)}</div>
    {weeklyWindow&&group.accountKey&&<AccountModelUsage accountKey={group.accountKey} window={weeklyWindow} clientID={filter.client_id} />}

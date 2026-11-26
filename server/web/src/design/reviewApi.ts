@@ -1,13 +1,28 @@
 import type {StatsFilter} from '../api/statistics';
 import type {SubscriptionUpdate} from '../api/subscriptions';
-import type {AccountModelUsageResponse} from '../api/quotas';
+import type {AccountModelUsageResponse,QuotaWindow} from '../api/quotas';
 import {initialFilter} from '../components/StatsFilters';
-import {reviewCatalog,reviewClients,reviewDevices,reviewNow,reviewPace,reviewProjects,reviewQuota,reviewSessions,reviewSubscription,reviewSummary,reviewSourceUsage,reviewUsage,type ReviewScenario} from './reviewFixtures';
+import {isActiveModelUsageWindow,reviewCatalog,reviewClients,reviewDevices,reviewModelUsage,reviewNow,reviewPace,reviewProjects,reviewQuota,reviewSessions,reviewSubscription,reviewSummary,reviewSourceUsage,reviewUsage,type ReviewScenario} from './reviewFixtures';
 
 export type ReviewModelUsage=Pick<AccountModelUsageResponse,'recorded_tokens'|'models'>;
+export type ReviewModelUsageInput=ReviewModelUsage|Record<string,ReviewModelUsage>;
+
+function isDirectModelUsage(value:ReviewModelUsageInput):value is ReviewModelUsage {
+ return 'recorded_tokens' in value&&'models' in value;
+}
+
+function resolveReviewModelUsage(scenario:ReviewScenario,window:QuotaWindow,override?:ReviewModelUsageInput):ReviewModelUsage {
+ if(!isActiveModelUsageWindow(window))return {recorded_tokens:null,models:[]};
+ if(override){
+  if(isDirectModelUsage(override))return override;
+  const matched=override[window.key];
+  if(matched)return matched;
+ }
+ return reviewModelUsage(scenario,window);
+}
 
 // 仅由 Storybook 加载。所有 /api 请求拦在当前 iframe；未配置路由返回 501，不透传中心。
-export function installReviewApi(scenario:ReviewScenario,modelUsage?:ReviewModelUsage) {
+export function installReviewApi(scenario:ReviewScenario,modelUsage?:ReviewModelUsageInput) {
  const previous=window.fetch;
  const clients=structuredClone(reviewClients);
  let signedIn=scenario!=='anonymous';
@@ -41,7 +56,7 @@ export function installReviewApi(scenario:ReviewScenario,modelUsage?:ReviewModel
   if(method==='POST'&&path==='/api/v1/logout'){signedIn=false;return response({applied:true});}
   if(method==='GET'){
    if(scenario==='error'&&path!=='/api/v1/version')return response(null,503);
-   if(path==='/api/v1/version')return response({version:'设计预览',commit:'合成样本',built_at:'',reporting_protocol:1,throughput_capsule:1,schema:9});
+   if(path==='/api/v1/version')return response({version:'设计预览',commit:'合成样本',built_at:'',reporting_protocol:1,throughput_capsule:1,schema:10});
    if(path==='/api/v1/catalog')return response(reviewCatalog);
    if(['/api/v1/statistics/summary','/api/v1/statistics/annual','/api/v1/statistics/totals','/api/v1/statistics/activity','/api/v1/statistics/top-sessions','/api/v1/statistics/providers','/api/v1/statistics/models'].includes(path))return response(summary());
    if(path==='/api/v1/statistics/source-usage')return response(scenario==='empty'?{...reviewSourceUsage(filter),items:[]}:reviewSourceUsage(filter));
@@ -50,20 +65,25 @@ export function installReviewApi(scenario:ReviewScenario,modelUsage?:ReviewModel
    if(path==='/api/v1/clients')return response({clients:scenario==='empty'?[]:clients});
    if(path==='/api/v1/quotas/model-usage'){
     const q=reviewQuota(scenario);
-    const window=q.windows.find(w=>w.key===url.searchParams.get('window_key')&&w.account_key===url.searchParams.get('account_key'));
+    const provider=url.searchParams.get('provider');
+    const window=q.windows.find(w=>w.key===url.searchParams.get('window_key')&&w.account_key===url.searchParams.get('account_key')&&(!provider||w.provider===provider));
     if(!window)return response(null,404);
+    const usage=resolveReviewModelUsage(scenario,window,modelUsage);
     return response({
      evaluated_at_ms:q.evaluated_at_ms,
      window_start_at_ms:window.current.window_start_at_ms,
      resets_at_ms:window.current.resets_at_ms,
-     ...(modelUsage??{recorded_tokens:null,models:[]}),
+     ...usage,
     });
    }
    if(path==='/api/v1/quotas'||path==='/api/v1/quotas/pace'||path==='/api/v1/quotas/accounts'){
     const data=path.endsWith('/pace')?reviewPace(scenario):reviewQuota(scenario);
     if('credits' in data&&modelUsage){
-     const weekly=data.windows.find(w=>w.provider==='codex'&&w.window_minutes===10080);
-     if(weekly)weekly.recorded_tokens=modelUsage.recorded_tokens;
+     for(const w of data.windows){
+      if(isActiveModelUsageWindow(w,data.evaluated_at_ms)){
+       w.recorded_tokens=resolveReviewModelUsage(scenario,w,modelUsage).recorded_tokens;
+      }
+     }
     }
     const match=(a:{provider:string;account_key:string|null})=>(!filter.provider||a.provider===filter.provider)&&(!url.searchParams.get('account_key')||a.account_key===url.searchParams.get('account_key'));
     const matchWindow=(w:{provider:string;account_key:string|null;key:string})=>match(w)&&(!url.searchParams.get('window_key')||w.key===url.searchParams.get('window_key'));

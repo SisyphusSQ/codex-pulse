@@ -41,7 +41,7 @@ func TestAccountTokenTotalPreservesPrecisionAndFactBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := new(big.Int).Mul(big.NewInt(math.MaxInt64), big.NewInt(accountTokenFactLimit)).String()
-	total, available, err := repository.AccountTokenTotal(t.Context(), quota_dto.Query{}, "account", 0, 1000, 500)
+	total, available, err := repository.AccountTokenTotal(t.Context(), quota_dto.Query{}, "codex", "account", 0, 1000, 500)
 	if err != nil || !available || total != want {
 		t.Fatalf("exact total at budget: %s %v %v, want %s", total, available, err, want)
 	}
@@ -52,14 +52,14 @@ func TestAccountTokenTotalPreservesPrecisionAndFactBudget(t *testing.T) {
 	if err := db.Create(&extra).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := repository.AccountTokenTotal(t.Context(), quota_dto.Query{}, "account", 0, 1000, 500); !errors.Is(err, utils.ErrRequestBudget) {
+	if _, _, err := repository.AccountTokenTotal(t.Context(), quota_dto.Query{}, "codex", "account", 0, 1000, 500); !errors.Is(err, utils.ErrRequestBudget) {
 		t.Fatalf("fact budget not enforced: %v", err)
 	}
 }
 
 func TestAccountTokensUnavailableRemainsUnknown(t *testing.T) {
 	engine := centerfixture.Engine(t)
-	total, available, err := NewQuota(engine).AccountTokenTotal(t.Context(), quota_dto.Query{}, "missing", 0, 1000, 500)
+	total, available, err := NewQuota(engine).AccountTokenTotal(t.Context(), quota_dto.Query{}, "codex", "missing", 0, 1000, 500)
 	if err != nil || available || total != "" {
 		t.Fatalf("unknown became zero: %q %v %v", total, available, err)
 	}

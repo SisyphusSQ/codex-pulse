@@ -277,8 +277,19 @@ func exportReportingAgent(db *gorm.DB, provider string, source ReportingSource, 
 		selectSQL += " UNION SELECT COALESCE(external_session_id,'unassigned-' || event_fingerprint) AS id FROM cursor_dashboard_usage_events"
 	}
 	var ids []string
-	if err := db.Raw("SELECT id FROM ("+selectSQL+") WHERE id > ? ORDER BY id LIMIT 16", after).Scan(&ids).Error; err != nil {
-		return err
+	if provider == "agy" && source.RecentAfterMS > 0 {
+		if err := db.Raw(`SELECT external_session_id AS id FROM agy_sessions
+			WHERE external_session_id > ? AND EXISTS (
+				SELECT 1 FROM agy_usage_events u
+				WHERE u.external_session_id = agy_sessions.external_session_id
+				AND u.occurred_at_ms >= ?
+			) ORDER BY external_session_id LIMIT 16`, after, source.RecentAfterMS).Scan(&ids).Error; err != nil {
+			return err
+		}
+	} else {
+		if err := db.Raw("SELECT id FROM ("+selectSQL+") WHERE id > ? ORDER BY id LIMIT 16", after).Scan(&ids).Error; err != nil {
+			return err
+		}
 	}
 	for _, id := range ids {
 		var meta struct {

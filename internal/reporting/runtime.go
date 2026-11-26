@@ -386,20 +386,29 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 		}
 	}
 	providers := []string{"codex", "cursor", "grok", "dsh", "agy"}
+	var caps syncCapabilities
+	var capsErr error
+	_, hasPaidCredits := r.source.(interface {
+		PaidCreditFacts(context.Context, int64) ([]FactsGroup, error)
+	})
+	agyUsage, hasAGYAccountUsage := r.source.(interface {
+		ExportAGYAccountUsage(context.Context, string, int64) (bool, error)
+	})
+	if hasPaidCredits || hasAGYAccountUsage {
+		caps, capsErr = client.syncCapabilities(ctx, cfg.Credential)
+		if capsErr != nil {
+			// 能力查询的连接和鉴权错误属于中心连接，不能写进 Provider 的协议状态。
+			returnErr = capsErr
+		}
+	}
 	if source, ok := r.source.(interface {
 		PaidCreditFacts(context.Context, int64) ([]FactsGroup, error)
-	}); ok {
-		supported, err := client.supportsPaidCredits(ctx, cfg.Credential)
-		if err == nil && supported {
-			groups, e := source.PaidCreditFacts(ctx, cfg.HistoryStartAtMS)
-			if e == nil {
-				_, e = r.state.EnqueueFactGroups(ctx, cfg.partition(), groups, -2)
-			}
-			record("codex", e)
-		} else if err != nil {
-			// 能力查询的连接和鉴权错误属于中心连接，不能写进 Provider 的协议状态。
-			returnErr = err
+	}); ok && capsErr == nil && caps.PaidCredits {
+		groups, e := source.PaidCreditFacts(ctx, cfg.HistoryStartAtMS)
+		if e == nil {
+			_, e = r.state.EnqueueFactGroups(ctx, cfg.partition(), groups, -2)
 		}
+		record("codex", e)
 	}
 	if current, ok := r.source.(interface {
 		CurrentFacts(context.Context, string, int64) (ExportFactsPage, error)
@@ -432,6 +441,13 @@ func (r *Runtime) cycle(ctx context.Context, cfg credentialSettings) (again bool
 		again = again || more
 		if !errors.Is(err, store.ErrReportingSource) {
 			record("codex", err)
+		}
+	}
+	if hasAGYAccountUsage && capsErr == nil && caps.MultiProviderAccountUsage {
+		more, err := agyUsage.ExportAGYAccountUsage(ctx, cfg.partition(), cfg.HistoryStartAtMS)
+		again = again || more
+		if !errors.Is(err, store.ErrReportingSource) {
+			record("agy", err)
 		}
 	}
 	for _, provider := range providers {

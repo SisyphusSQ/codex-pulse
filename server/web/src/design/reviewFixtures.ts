@@ -4,7 +4,7 @@ import type {Device,Summary,Totals,Day,StatsFilter} from '../api/statistics';
 import type {Usage} from '../api/usage';
 import type {Subscription} from '../api/subscriptions';
 import type {CacheHitRateStats,SessionRecord,ProjectRecord,ThroughputStats} from '../api/records';
-import type {PaceWindow,QuotaWindow} from '../api/quotas';
+import type {AccountModelRow,PaceWindow,QuotaWindow} from '../api/quotas';
 import {quotaFixture,paceFixture,quotaNow} from '../test/quotaFixture';
 import {summaryFixture} from '../test/statisticsFixture';
 import {dayjs} from '../format';
@@ -76,8 +76,84 @@ export function reviewSummary(filter:StatsFilter):Summary {
  return {...summaryFixture(),activity_granularity:hourly?'hour':'day',activity_timeline:activity,top_sessions:top,weekday_hours:Array.from({length:168},(_,i)=>{const hour=i%24,weekday=Math.floor(i/24);return {weekday,hour,session_count:weekday===start.day()&&hour>=9&&hour<=18?'2':null,tokens:weekday===start.day()&&hour>=9&&hour<=18?(BigInt(usage.totals.total_tokens??'0')*BigInt(weights[hour-9])/100n).toString():null,sessions:weekday===start.day()&&hour>=9&&hour<=18?2:0};}),range:usage.range,scope:usage.scope,totals:usage.totals,coverage:usage.coverage,providers:usage.providers,models:usage.models.map(m=>({key:`${m.provider}:${m.model}`,name:m.model,totals:m.totals})),trend:usage.trend,heatmap:annual,heatmap_totals:annualTotals,heatmap_range:{start_at_ms:Date.UTC(2025,10,27),end_at_ms:Date.UTC(2026,10,27),time_zone:filter.time_zone},heatmap_activity:{total_tokens:annualTotals.total_tokens,peak_daily_tokens:'2420000',active_days:'235',current_streak_days:'5',longest_streak_days:'5',observed_days:330,unknown_days:35},devices:[{key:'machine-one',name:'SQMC03',totals:usage.totals}],tools:[],skills:[]};
 }
 
+export interface ReviewModelUsageData {
+ recorded_tokens: string|null;
+ models: AccountModelRow[];
+}
+
+const codexWeeklyModelUsage:ReviewModelUsageData={
+ recorded_tokens:'1085400000',
+ models:[
+  {kind:'model',model:'gpt-6.2-astra',name:'GPT-6.2 Astra',total_tokens:'728200000',input_tokens:'720000000',cached_tokens:'674000000',output_tokens:'3400000',reasoning_tokens:'4800000'},
+  {kind:'model',model:'gpt-6.2-sol',name:'GPT-6.2 Sol',total_tokens:'275100000',input_tokens:'270000000',cached_tokens:'243000000',output_tokens:'2900000',reasoning_tokens:'2200000'},
+  {kind:'model',model:'gpt-6.1-terra',name:'GPT-6.1 Terra',total_tokens:'82100000',input_tokens:'80000000',cached_tokens:'72000000',output_tokens:'1300000',reasoning_tokens:'800000'},
+ ],
+};
+
+export const agyWindowModelUsage:Record<string,ReviewModelUsageData>={
+ 'agy:agy.gemini:primary':{
+  recorded_tokens:'19840000',
+  models:[
+   {kind:'model',model:'gemini-3.1-pro-high',name:'Gemini 3.1 Pro (High)',total_tokens:'12340000',input_tokens:'11200000',cached_tokens:'9640000',output_tokens:'1140000',reasoning_tokens:'420000'},
+   {kind:'model',model:'gemini-4-carbon',name:'Gemini 4 Carbon',total_tokens:'5540000',input_tokens:'4920000',cached_tokens:'4180000',output_tokens:'620000',reasoning_tokens:null},
+   {kind:'model',model:'claude-opus-4-6-thinking',name:'Claude Opus 4.6 (Thinking)',total_tokens:'1960000',input_tokens:'1680000',cached_tokens:'1310000',output_tokens:'280000',reasoning_tokens:'140000'},
+  ],
+ },
+ 'agy:agy.gemini:secondary':{
+  recorded_tokens:'146200000',
+  models:[
+   {kind:'model',model:'gemini-3.1-pro-high',name:'Gemini 3.1 Pro (High)',total_tokens:'85200000',input_tokens:'78400000',cached_tokens:'68200000',output_tokens:'6800000',reasoning_tokens:'2640000'},
+   {kind:'model',model:'gemini-4-carbon',name:'Gemini 4 Carbon',total_tokens:'39500000',input_tokens:'35600000',cached_tokens:'30800000',output_tokens:'3900000',reasoning_tokens:null},
+   {kind:'model',model:'claude-opus-4-6-thinking',name:'Claude Opus 4.6 (Thinking)',total_tokens:'21500000',input_tokens:'19200000',cached_tokens:'15400000',output_tokens:'2300000',reasoning_tokens:'1120000'},
+  ],
+ },
+ 'agy:agy.argon:primary':{
+  recorded_tokens:'8420000',
+  models:[
+   {kind:'model',model:'gemini-3.1-pro-high',name:'Gemini 3.1 Pro (High)',total_tokens:'5620000',input_tokens:'5100000',cached_tokens:'4320000',output_tokens:'520000',reasoning_tokens:'180000'},
+   {kind:'model',model:'gemini-3.7-flash',name:'Gemini 3.7 Flash',total_tokens:'2800000',input_tokens:'2480000',cached_tokens:'1960000',output_tokens:'320000',reasoning_tokens:null},
+  ],
+ },
+ 'agy:agy.carbon:primary':{
+  recorded_tokens:'24600000',
+  models:[
+   {kind:'model',model:'gemini-4-carbon',name:'Gemini 4 Carbon',total_tokens:'17200000',input_tokens:'15400000',cached_tokens:'13320000',output_tokens:'1800000',reasoning_tokens:'680000'},
+   {kind:'model',model:'gemini-3.1-pro-high',name:'Gemini 3.1 Pro (High)',total_tokens:'7400000',input_tokens:'6720000',cached_tokens:'5840000',output_tokens:'680000',reasoning_tokens:'240000'},
+  ],
+ },
+ 'agy:agy.carbon:secondary':{
+  recorded_tokens:'132800000',
+  models:[
+   {kind:'model',model:'gemini-4-carbon',name:'Gemini 4 Carbon',total_tokens:'82000000',input_tokens:'74200000',cached_tokens:'64100000',output_tokens:'7800000',reasoning_tokens:'2900000'},
+   {kind:'model',model:'gemini-3.1-pro-high',name:'Gemini 3.1 Pro (High)',total_tokens:'50800000',input_tokens:'46900000',cached_tokens:'40100000',output_tokens:'3900000',reasoning_tokens:'1450000'},
+  ],
+ },
+ 'agy:agy.claude_gpt:primary':{
+  recorded_tokens:'31200000',
+  models:[
+   {kind:'model',model:'claude-opus-4-6-thinking',name:'Claude Opus 4.6 (Thinking)',total_tokens:'22200000',input_tokens:'19800000',cached_tokens:'15900000',output_tokens:'2400000',reasoning_tokens:'1180000'},
+   {kind:'model',model:'gpt-6.1-sol',name:'GPT-6.1 Sol',total_tokens:'9000000',input_tokens:'8120000',cached_tokens:'6850000',output_tokens:'880000',reasoning_tokens:'310000'},
+  ],
+ },
+};
+
+export function isActiveModelUsageWindow(window:QuotaWindow,evaluatedAtMs=reviewNow):boolean {
+ if(window.identity_state!=='confirmed'||!window.account_key)return false;
+ if(window.current.conflict||window.current.freshness==='expired_unknown'||window.current.freshness==='unknown')return false;
+ if(window.current.window_start_at_ms===null||window.current.resets_at_ms===null||window.current.resets_at_ms<=evaluatedAtMs)return false;
+ if(window.provider==='codex')return window.limit_id==='codex'&&window.window_minutes===10080;
+ return true;
+}
+
+export function reviewModelUsage(scenario:ReviewScenario,window:QuotaWindow):ReviewModelUsageData {
+ if(scenario==='empty'||scenario==='unknown'||scenario==='conflict'||!isActiveModelUsageWindow(window))return {recorded_tokens:null,models:[]};
+ if(window.provider==='codex')return structuredClone(codexWeeklyModelUsage);
+ const entry=agyWindowModelUsage[window.key];
+ return entry?structuredClone(entry):{recorded_tokens:null,models:[]};
+}
+
 function buildAgyWindows(scenario:ReviewScenario):QuotaWindow[] {
- const make=(limitId:string,windowKind:'primary'|'secondary',windowMinutes:number,usedPercent:number,defaultFreshness:'fresh'|'stale'|'expired_unknown',multiDevice=false):QuotaWindow=>{
+ const make=(limitId:string,windowKind:'primary'|'secondary',windowMinutes:number,usedPercent:number,defaultFreshness:'fresh'|'stale'|'expired_unknown',multiDevice=false,resetRatio=0.35):QuotaWindow=>{
   const key=`agy:${limitId}:${windowKind}`;
   const durationMs=windowMinutes*60_000;
   let freshness:string=defaultFreshness;
@@ -86,7 +162,7 @@ function buildAgyWindows(scenario:ReviewScenario):QuotaWindow[] {
   let used:number|null=usedPercent;
   let remaining:number|null=100-usedPercent;
   let observedAt:number|null=reviewNow-(defaultFreshness==='stale'?7_200_000:120_000);
-  let resetsAt:number|null=defaultFreshness==='expired_unknown'?reviewNow-1_800_000:reviewNow+Math.round(durationMs*0.35);
+  let resetsAt:number|null=defaultFreshness==='expired_unknown'?reviewNow-1_800_000:reviewNow+Math.round(durationMs*resetRatio);
   let resetRemaining:number|null=resetsAt!==null&&resetsAt>reviewNow?resetsAt-reviewNow:null;
   if(scenario==='expired'){
    freshness=windowKind==='primary'?'stale':'expired_unknown';
@@ -113,20 +189,22 @@ function buildAgyWindows(scenario:ReviewScenario):QuotaWindow[] {
    {id:`obs-${key}-1`,client_id:'machine-one',client_name:'SQMC03',observed_at_ms:observedAt??reviewNow,received_at_ms:(observedAt??reviewNow)+4_000,used_percent:used,resets_at_ms:resetsAt,window_start_at_ms:resetsAt===null?null:resetsAt-durationMs,source:'agy_ls_rpc',validity:'accepted',history_origin:'confirmed',disposition:'selected',reason:null,cycle_id:`cycle-${key}`,canonical_reset_at_ms:resetsAt},
    ...(multiDevice?[{id:`obs-${key}-2`,client_id:'machine-2',client_name:'SQMC04',observed_at_ms:(observedAt??reviewNow)-60_000,received_at_ms:(observedAt??reviewNow)-55_000,used_percent:used,resets_at_ms:resetsAt,window_start_at_ms:resetsAt===null?null:resetsAt-durationMs,source:'agy_ls_rpc',validity:'accepted',history_origin:'confirmed',disposition:'corroborated',reason:null,cycle_id:`cycle-${key}`,canonical_reset_at_ms:resetsAt}]:[]),
   ];
-  return {
+  const window:QuotaWindow={
    key,provider:'agy',account_key:'account-agy',identity_state:'confirmed',limit_id:limitId,window_kind:windowKind,window_minutes:windowMinutes,
    current:{used_percent:used,remaining_percent:remaining,window_start_at_ms:resetsAt===null?null:resetsAt-durationMs,resets_at_ms:resetsAt,reset_remaining_ms:resetRemaining,snapshot_reset_remaining_ms:resetRemaining,observed_at_ms:observedAt,freshness,conflict,reason,selected_observation_id:obs[0]?.id??null,selected_client_id:obs[0]?.client_id??null,source:'agy_ls_rpc'},
    cycles:[],observations:obs,coverage:'observed_only',
   };
+  window.recorded_tokens=reviewModelUsage(scenario,window).recorded_tokens;
+  return window;
  };
  return [
-  make('agy.gemini','primary',300,28,'fresh',true),
-  make('agy.gemini','secondary',10080,16,'fresh',true),
-  make('agy.argon','primary',300,9,'fresh',false),
-  make('agy.carbon','primary',300,62,'fresh',true),
-  make('agy.carbon','secondary',10080,39,'stale',false),
-  make('agy.claude_gpt','primary',300,82,'fresh',true),
-  make('agy.claude_gpt','secondary',10080,76,'expired_unknown',false),
+  make('agy.gemini','primary',300,28,'fresh',true,0.35),
+  make('agy.gemini','secondary',10080,16,'fresh',true,0.42),
+  make('agy.argon','primary',300,9,'fresh',false,0.68),
+  make('agy.carbon','primary',300,62,'fresh',true,0.24),
+  make('agy.carbon','secondary',10080,39,'stale',false,0.31),
+  make('agy.claude_gpt','primary',300,82,'fresh',true,0.16),
+  make('agy.claude_gpt','secondary',10080,76,'expired_unknown',false,0.35),
  ];
 }
 
@@ -154,6 +232,7 @@ export function reviewQuota(scenario:ReviewScenario) {
  if(scenario==='conflict'){w.current.conflict=true;w.current.reason='source_conflict';}
  if(scenario==='unknown'){w.current.used_percent=null;w.current.remaining_percent=null;w.current.observed_at_ms=null;w.current.reason='unavailable';w.observations=[];}
  w.observations=w.observations.map(p=>({...p,used_percent:70,observed_at_ms:w.current.observed_at_ms??quotaNow,resets_at_ms:w.current.resets_at_ms}));
+ w.recorded_tokens=reviewModelUsage(scenario,w).recorded_tokens;
  q.windows.push(...buildAgyWindows(scenario));
  q.credits[0]={...q.credits[0],observed_inventory:'3',snapshot_available_inventory:'2',snapshot_next_expires_at_ms:quotaNow+86400000};
  if(scenario==='unknown')q.credits[0]={...q.credits[0],observed_inventory:null,snapshot_available_inventory:null,snapshot_next_expires_at_ms:null,expiry_schedule:[],details_status:'unavailable'};

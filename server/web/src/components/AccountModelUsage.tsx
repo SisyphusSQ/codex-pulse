@@ -1,6 +1,6 @@
 import { Collapse, Table, Typography, type TableColumnsType } from 'antd';
 import { accountModelUsageQueryKey, getAccountModelUsage, type AccountModelRow, type QuotaWindow } from '../api/quotas';
-import { dateTime, integer, tokens } from '../format';
+import { dateTime, integer, quotaLimitLabel, quotaWindowShortLabel, tokens } from '../format';
 import { useFeedbackQuery } from './QueryNotifications';
 import { ErrorState, LoadingState } from './QueryState';
 import './accountModelUsage.css';
@@ -32,8 +32,8 @@ const columns: TableColumnsType<AccountModelRow> = [
 
 function ModelUsageDetails({accountKey, window, clientID}: AccountModelUsageProps) {
   const query = useFeedbackQuery({
-    queryKey: [...accountModelUsageQueryKey, accountKey, window.key, clientID, window.current.window_start_at_ms, window.current.resets_at_ms],
-    queryFn: ({signal}) => getAccountModelUsage(accountKey, window.key, clientID, signal),
+    queryKey: [...accountModelUsageQueryKey, window.provider, accountKey, window.key, clientID, window.current.window_start_at_ms, window.current.resets_at_ms],
+    queryFn: ({signal}) => getAccountModelUsage(accountKey, window.key, clientID, signal, window.provider),
     refetchInterval: 60_000,
     refetchIntervalInBackground: false,
   });
@@ -42,8 +42,10 @@ function ModelUsageDetails({accountKey, window, clientID}: AccountModelUsageProp
   const usage = query.data;
   if (!usage || usage.recorded_tokens === null) return <div className="quiet-empty" role="status">本周期模型用量未知</div>;
   if (!usage.models.length) return <div className="quiet-empty" role="status">本周期暂无已记录用量</div>;
+  const periodPrefix = window.provider === 'agy' ? `${quotaLimitLabel(window.limit_id)} · ${quotaWindowShortLabel(window.window_kind, window.window_minutes)} · ` : '';
+  const caption = window.provider === 'agy' ? '缓存输入已包含在输入 Token 中，推理 Token 已包含在输出 Token 中。' : '缓存输入已包含在输入 Token 中。';
   return <>
-    <div className="metric-note model-usage-period">{dateTime(usage.window_start_at_ms)} 至 {dateTime(usage.resets_at_ms)}</div>
+    <div className="metric-note model-usage-period">{periodPrefix}{dateTime(usage.window_start_at_ms)} 至 {dateTime(usage.resets_at_ms)}</div>
     <div className="metric-note model-usage-scroll-hint">横向滑动查看 Token 分项</div>
     <Table<AccountModelRow>
       size="small"
@@ -58,7 +60,7 @@ function ModelUsageDetails({accountKey, window, clientID}: AccountModelUsageProp
         <Table.Summary.Cell index={2} colSpan={4} />
       </Table.Summary.Row>}
     />
-    <div className="metric-note model-usage-caption">缓存输入已包含在输入 Token 中。</div>
+    <div className="metric-note model-usage-caption">{caption}</div>
   </>;
 }
 

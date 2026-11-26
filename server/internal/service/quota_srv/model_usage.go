@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/SisyphusSQ/codex-pulse/internal/attribution"
+	"github.com/SisyphusSQ/codex-pulse/internal/pricing"
 	"github.com/SisyphusSQ/codex-pulse/internal/store"
 	access_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/access_dto"
 	quota_dto "github.com/SisyphusSQ/codex-pulse/server/internal/models/dto/quota_dto"
@@ -20,10 +21,9 @@ func (s *Quota) AccountModelUsage(ctx context.Context, principal access_dto.Prin
 	if err = access_srv.RequireAdmin(principal); err != nil {
 		return
 	}
-	if q.AccountKey == "" || q.WindowKey == "" || (q.Provider != "" && q.Provider != "codex") {
+	if q.AccountKey == "" || q.WindowKey == "" {
 		return out, utils.ErrBadParamInput
 	}
-	q.Provider = "codex"
 	now := s.now().UnixMilli()
 	out = quota_vo.AccountModelUsage{EvaluatedAtMS: now, Models: []quota_vo.AccountModelRow{}}
 	err = s.repository.Snapshot(ctx, func(ctx context.Context) error {
@@ -32,7 +32,10 @@ func (s *Quota) AccountModelUsage(ctx context.Context, principal access_dto.Prin
 			return err
 		}
 		for _, scope := range scopes {
-			if scopeKey(scope) != q.WindowKey || scope.WindowMinutes == nil || *scope.WindowMinutes != 10080 {
+			if scopeKey(scope) != q.WindowKey || scope.WindowMinutes == nil || *scope.WindowMinutes <= 0 {
+				continue
+			}
+			if scope.Provider == "codex" && (scope.LimitID != "codex" || *scope.WindowMinutes != 10080) {
 				continue
 			}
 			headers, err := s.repository.Headers(ctx, q, scope, now, store.DefaultQuotaArbitrationRule().MaxClockSkewMS)
@@ -50,7 +53,7 @@ func (s *Quota) AccountModelUsage(ctx context.Context, principal access_dto.Prin
 			if !activeAccountTokenWindow(&window, now) {
 				return nil
 			}
-			return s.collectAccountModels(ctx, q, &out)
+			return s.collectAccountModels(ctx, q, scope.Provider, &out)
 		}
 		return utils.ErrNotFound
 	})
@@ -65,26 +68,41 @@ type accountModelSum struct {
 	missing [4]bool
 }
 
-func (s *Quota) collectAccountModels(ctx context.Context, q quota_dto.Query, out *quota_vo.AccountModelUsage) error {
+func resolveAccountModelIdentity(provider, raw string) (string, string) {
+	if provider == "agy" {
+		canonical, displayName := pricing.ResolveAGYModelID(raw, "")
+		if canonical == "" {
+			return "", ""
+		}
+		if displayName == "" {
+			displayName = canonical
+		}
+		return canonical, displayName
+	}
+	decision := attribution.NormalizeModel(raw)
+	return decision.Key, decision.DisplayName
+}
+
+func (s *Quota) collectAccountModels(ctx context.Context, q quota_dto.Query, provider string, out *quota_vo.AccountModelUsage) error {
 	groups := map[string]*accountModelSum{}
 	var total big.Int
-	available, err := s.repository.StreamAccountModelFacts(ctx, q, q.AccountKey, *out.WindowStartAtMS, *out.ResetsAtMS, out.EvaluatedAtMS, func(fact quota_dto.AccountModelFact) {
+	available, err := s.repository.StreamAccountModelFacts(ctx, q, provider, q.AccountKey, *out.WindowStartAtMS, *out.ResetsAtMS, out.EvaluatedAtMS, func(fact quota_dto.AccountModelFact) {
 		key, kind := ":unmatched", "unmatched"
-		var model attribution.ModelDecision
+		var modelKey, modelName string
 		if fact.Matched {
 			key, kind = ":unknown_model", "unknown_model"
 			if fact.Model != nil {
-				model = attribution.NormalizeModel(*fact.Model)
-				if model.Key != "" {
-					key, kind = model.Key, "model"
+				modelKey, modelName = resolveAccountModelIdentity(provider, *fact.Model)
+				if modelKey != "" {
+					key, kind = modelKey, "model"
 				}
 			}
 		}
 		group := groups[key]
 		if group == nil {
 			group = &accountModelSum{row: quota_vo.AccountModelRow{Kind: kind}}
-			if model.Key != "" {
-				group.row.Model, group.row.Name = new(model.Key), new(model.DisplayName)
+			if modelKey != "" {
+				group.row.Model, group.row.Name = new(modelKey), new(modelName)
 			}
 			groups[key] = group
 		}

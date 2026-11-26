@@ -24,6 +24,10 @@
 
 价目先在 Storybook 检查，再接入正式前端的同一 `ModelPriceCatalog` 组件。Codex 默认参考型号依据2026-10-03官方模型说明，Cursor/Grok保留现有文本模型参考；近30天实际使用和已观测未定价型号仍可查。普通API全目录、Batch/Flex及未使用的图片/音频/Embedding不铺在主表；Fast/长上下文、缓存写入、Credits和历史版本在模型内展开。仅改变查阅层，不更改公开费率或历史统计算法。
 
-## TOO-724 账号周期模型用量
+## TOO-724 / TOO-742 账号周期模型用量
 
-在 Storybook 的「账号周期模型用量」组查看现有账号页中的 [展开明细](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--complete)、[部分未知](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--partial) 和 [390px 窄屏](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--mobile)。预览复用 7 天额度卡下方的正式组件，模型及 Token 由 Storybook 的模拟 API 返回。
+在 Storybook 的「账号周期模型用量」组查看真实账号页中的：
+- Codex 7 天窗口：[展开明细](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--complete)、[部分未知](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--partial)、[390px 窄屏](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--mobile)
+- Antigravity (AGY) 多配额池窗口：[AGY 按模型展开](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--agy-complete)、[AGY 切换周窗口](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--agy-weekly-switch)、[AGY 部分明细未知](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--agy-partial)、[AGY 390px 窄屏](http://127.0.0.1:6007/?path=/story/too-724-account-model-usage--agy-mobile)
+
+预览直接复用正式 `QuotaAccounts` 与 `AccountModelUsage` 组件，模拟接口按窗口 `provider`、`window_key` 和活跃状态返回对应的 `recorded_tokens` 与按模型 Token 明细。

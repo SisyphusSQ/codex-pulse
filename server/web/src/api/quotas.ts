@@ -68,8 +68,8 @@ export async function getQuotaAccounts(filter:QuotaFilter,signal?:AbortSignal):P
 
 export const accountModelUsageQueryKey=['quota-model-usage'] as const;
 
-export async function getAccountModelUsage(accountKey:string,windowKey:string,clientID:string,signal?:AbortSignal):Promise<AccountModelUsageResponse>{
- const value=await api.get<AccountModelUsageResponse>('/api/v1/quotas/model-usage',{account_key:accountKey,window_key:windowKey,client_id:clientID},signal);
+export async function getAccountModelUsage(accountKey:string,windowKey:string,clientID:string,signal?:AbortSignal,provider?:string):Promise<AccountModelUsageResponse>{
+ const value=await api.get<AccountModelUsageResponse>('/api/v1/quotas/model-usage',{account_key:accountKey,window_key:windowKey,client_id:clientID,provider:provider||undefined},signal);
  if(!value||!Array.isArray(value.models))throw new ApiError(502);
  return value;
 }

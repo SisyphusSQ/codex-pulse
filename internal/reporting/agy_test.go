@@ -42,7 +42,7 @@ func TestAGYExporterQuotaAccountPrivacyDurableQueueAndFullSync(t *testing.T) {
 	ctx := t.Context()
 	r := openAGYReportingRepo(t)
 	state, statePath := testState(t)
-	prefs := &dshTestPreferences{snapshot: preferences.Snapshot{Providers: preferences.DefaultProviderPreferences()}}
+	prefs := &testPreferences{snapshot: preferences.Snapshot{Providers: preferences.DefaultProviderPreferences()}}
 
 	at := time.Date(2026, 11, 26, 10, 0, 0, 0, time.UTC).UnixMilli()
 	evStart, evEnd := at-2000, at
@@ -231,7 +231,7 @@ func TestAGYDisabledDoesNotCausePartialCenterSyncStatus(t *testing.T) {
 	providers.Grok.Intent = preferences.ProviderIntentDisabled
 	providers.DSH.Intent = preferences.ProviderIntentEnabled
 	providers.AGY.Intent = preferences.ProviderIntentDisabled
-	prefs := &dshTestPreferences{snapshot: preferences.Snapshot{Providers: providers}}
+	prefs := &testPreferences{snapshot: preferences.Snapshot{Providers: providers}}
 
 	at := time.Date(2026, 11, 26, 10, 0, 0, 0, time.UTC).UnixMilli()
 	if err := r.ReplaceDSHSnapshot(ctx, store.DSHSnapshot{
@@ -332,5 +332,208 @@ func TestAGYDisabledDoesNotCausePartialCenterSyncStatus(t *testing.T) {
 	}
 	if !sawAGYDisabled {
 		t.Fatal("expected AGY DeviceStatus{status=disabled, sync_state=ready} in center upload")
+	}
+}
+
+func TestAGYAccountUsageExportReconcilesContributionIDsAndRespectsSyncCapability(t *testing.T) {
+	ctx := t.Context()
+	r := openAGYReportingRepo(t)
+	state, _ := testState(t)
+	prefs := &testPreferences{snapshot: preferences.Snapshot{Providers: preferences.DefaultProviderPreferences()}}
+
+	now := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC).UnixMilli()
+	scopeA := reportingv1.Key("agy-account", "user-a")
+	scopeB := reportingv1.Key("agy-account", "user-b")
+	plan := "Google AI Ultra 20×"
+	reset5h := now + 2*3600000
+	resetWeekly := now + 4*86400000
+	// Account A confirmed on [now-60m, now-30m], Account B on [now-20m, now-10m].
+	// Gap (now-30m, now-20m) must remain unattributed.
+	tA1, tA2 := now-60*60000, now-30*60000
+	tB1, tB2 := now-20*60000, now-10*60000
+	evA1 := tA1 + 5*60000
+	evA2 := tA1 + 10*60000
+	evGap := tA2 + 5*60000
+	evB1 := tB1 + 5*60000
+
+	if err := r.ReplaceAGYSnapshot(ctx, store.AGYSnapshot{
+		Generation:    1,
+		CollectedAtMS: now,
+		Sources: []store.CursorSourceStatus{
+			{Provider: "agy", SourceKey: "agy.conversation_steps", SourceType: "sqlite", State: "available", CoverageState: "exact", CheckpointKind: "snapshot", LastAttemptAtMS: now, LastSuccessAtMS: &now, UpdatedAtMS: now},
+		},
+		Sessions: []store.AGYSession{{
+			ExternalSessionID: "agy-sess-acct", DisplayTitle: "AGY 账号用量测试", TitleSource: "agy_annotation",
+			SessionRole: "main", ProjectKey: reportingv1.Key("agy", "proj"), ProjectDisplayName: "proj", ProjectSource: "workspace",
+			CreatedAtMS: tA1, LastActivityAtMS: evB1, ModelKey: new("gemini-4-carbon-high"), RequestCount: 4, CoverageState: "exact", UpdatedAtMS: now,
+		}},
+		UsageEvents: []store.AGYUsageEvent{
+			{
+				EventID: reportingv1.Key("ev", "a1"), ExternalSessionID: "agy-sess-acct", StepIndex: 0, OccurredAtMS: evA1,
+				ModelKey: new("gemini-4-carbon-high"), UncachedInputTokens: 1000, CacheReadTokens: 500, OutputTokens: 100, ReasoningTokens: 40, TotalTokens: 1600,
+				CacheReadKnown: true, ReasoningKnown: true, TotalKnown: true, Provenance: "agy_step_metadata", UpdatedAtMS: now,
+			},
+			{
+				EventID: reportingv1.Key("ev", "a2"), ExternalSessionID: "agy-sess-acct", StepIndex: 1, OccurredAtMS: evA2,
+				ModelKey: new("claude-opus-5-5-high"), UncachedInputTokens: 200, CacheReadTokens: 100, OutputTokens: 50, TotalTokens: 350,
+				CacheReadKnown: true, ReasoningKnown: false, TotalKnown: true, Provenance: "agy_step_metadata", UpdatedAtMS: now,
+			},
+			{
+				EventID: reportingv1.Key("ev", "gap"), ExternalSessionID: "agy-sess-acct", StepIndex: 2, OccurredAtMS: evGap,
+				ModelKey: new("gemini-4-carbon-high"), UncachedInputTokens: 500, CacheReadTokens: 0, OutputTokens: 50, TotalTokens: 550,
+				CacheReadKnown: true, ReasoningKnown: false, TotalKnown: true, Provenance: "agy_step_metadata", UpdatedAtMS: now,
+			},
+			{
+				EventID: reportingv1.Key("ev", "b1"), ExternalSessionID: "agy-sess-acct", StepIndex: 3, OccurredAtMS: evB1,
+				ModelKey: new("gemini-3.8-flash-high"), UncachedInputTokens: 400, CacheReadTokens: 100, OutputTokens: 100, TotalTokens: 600,
+				CacheReadKnown: true, ReasoningKnown: false, TotalKnown: true, Provenance: "agy_step_metadata", UpdatedAtMS: now,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{scopeA, scopeB} {
+		if err := r.ReplaceAGYQuotaSnapshots(ctx, scope, []store.AGYQuotaSnapshot{
+			{AccountScope: scope, Generation: now, PlanType: &plan, LimitID: "agy.gemini", LimitName: "Gemini", WindowKind: "primary", WindowMinutes: 300, UsedPercent: new(int64(20)), ResetsAtMS: &reset5h, DataAsOfMS: now, UpdatedAtMS: now},
+			{AccountScope: scope, Generation: now, PlanType: &plan, LimitID: "agy.gemini", LimitName: "Gemini", WindowKind: "secondary", WindowMinutes: 10080, UsedPercent: new(int64(10)), ResetsAtMS: &resetWeekly, DataAsOfMS: now, UpdatedAtMS: now},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, obs := range []store.AGYQuotaObservation{
+		{AccountScope: scopeA, LimitID: "agy.gemini", WindowKind: "primary", ObservedAtMS: tA1, UsedPercent: 10, ResetsAtMS: &reset5h},
+		{AccountScope: scopeA, LimitID: "agy.gemini", WindowKind: "primary", ObservedAtMS: tA2, UsedPercent: 20, ResetsAtMS: &reset5h},
+		{AccountScope: scopeA, LimitID: "agy.gemini", WindowKind: "secondary", ObservedAtMS: tA2, UsedPercent: 10, ResetsAtMS: &resetWeekly},
+		{AccountScope: scopeB, LimitID: "agy.gemini", WindowKind: "primary", ObservedAtMS: tB1, UsedPercent: 5, ResetsAtMS: &reset5h},
+		{AccountScope: scopeB, LimitID: "agy.gemini", WindowKind: "primary", ObservedAtMS: tB2, UsedPercent: 15, ResetsAtMS: &reset5h},
+	} {
+		if err := r.AppendAGYQuotaObservation(ctx, obs, 256); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	exporter := NewExporter(r, prefs, state)
+	exporter.now = func() time.Time { return time.UnixMilli(now) }
+
+	// Export session snapshot first to capture authoritative ContributionIDs.
+	page, err := exporter.Page(ctx, "agy", "", 0)
+	if err != nil || len(page.Sessions) != 1 || len(page.Sessions[0].Contributions) != 4 {
+		t.Fatalf("AGY session export failed: %+v err=%v", page, err)
+	}
+	wantIDs := map[int64]string{}
+	for _, c := range page.Sessions[0].Contributions {
+		wantIDs[*c.ObservedAtMS] = c.ID
+	}
+
+	if _, err := exporter.ExportAGYAccountUsage(ctx, "center", 0); err != nil {
+		t.Fatalf("ExportAGYAccountUsage failed: %v", err)
+	}
+	gotByAccount := map[string]map[int64]reportingv1.AccountTokenFact{}
+	periodSpans := map[string]map[int64]bool{}
+	for {
+		item, err := state.next(ctx, "center")
+		if err != nil {
+			break
+		}
+		var batch reportingv1.Batch
+		if err := json.Unmarshal(item.Body, &batch); err != nil {
+			t.Fatal(err)
+		}
+		if err := batch.Validate(); err != nil {
+			t.Fatalf("invalid AGY account usage batch: %v", err)
+		}
+		for _, u := range batch.AccountUsage {
+			if periodSpans[u.AccountID] == nil {
+				periodSpans[u.AccountID] = map[int64]bool{}
+			}
+			periodSpans[u.AccountID][u.ResetsAtMS-u.WindowStartAtMS] = true
+			if gotByAccount[u.AccountID] == nil {
+				gotByAccount[u.AccountID] = map[int64]reportingv1.AccountTokenFact{}
+			}
+			for _, f := range u.Facts {
+				gotByAccount[u.AccountID][f.ObservedAtMS] = f
+			}
+		}
+		if err := state.Ack(ctx, item, reportingv1.Receipt{Version: 1, BatchID: item.BatchID, ReceivedAtMS: now}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !periodSpans[scopeA][300*60000] || !periodSpans[scopeA][10080*60000] || !periodSpans[scopeB][300*60000] {
+		t.Fatalf("missing AGY period spans: %+v", periodSpans)
+	}
+	if len(gotByAccount[scopeA]) != 2 || len(gotByAccount[scopeB]) != 1 {
+		t.Fatalf("unexpected AGY attributed facts (gap must be excluded): A=%+v B=%+v", gotByAccount[scopeA], gotByAccount[scopeB])
+	}
+	if gotByAccount[scopeA][evA1].ID != wantIDs[evA1] || gotByAccount[scopeA][evA2].ID != wantIDs[evA2] || gotByAccount[scopeB][evB1].ID != wantIDs[evB1] {
+		t.Fatal("AGY AccountTokenFact IDs did not match SessionSnapshot ContributionIDs")
+	}
+	if gotByAccount[scopeA][evA1].ReasoningTokens == nil || *gotByAccount[scopeA][evA1].ReasoningTokens != 40 || gotByAccount[scopeA][evA2].ReasoningTokens != nil {
+		t.Fatalf("AGY reasoning parity lost: a1=%+v a2=%+v", gotByAccount[scopeA][evA1], gotByAccount[scopeA][evA2])
+	}
+
+	// Verify runtime gates AGY account_usage on /api/v1/sync multi_provider_account_usage capability.
+	for _, supported := range []bool{false, true} {
+		rtState, _ := testState(t)
+		rtProviders := preferences.DefaultProviderPreferences()
+		rtProviders.Codex.Intent = preferences.ProviderIntentDisabled
+		rtProviders.Cursor.Intent = preferences.ProviderIntentDisabled
+		rtProviders.Grok.Intent = preferences.ProviderIntentDisabled
+		rtProviders.DSH.Intent = preferences.ProviderIntentDisabled
+		rtExporter := NewExporter(r, &testPreferences{snapshot: preferences.Snapshot{Providers: rtProviders}}, rtState)
+		rtExporter.now = func() time.Time { return time.UnixMilli(now) }
+		var mu sync.Mutex
+		var sawAGYAccountUsage bool
+		syncBody := `{"code":200,"data":{"protocol_version":1,"paid_credits":true}}`
+		if supported {
+			syncBody = `{"code":200,"data":{"protocol_version":1,"paid_credits":true,"multi_provider_account_usage":true}}`
+		}
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.Path == "/api/v1/sync" {
+				_, _ = w.Write([]byte(syncBody))
+				return
+			}
+			var b reportingv1.Batch
+			if err := json.NewDecoder(req.Body).Decode(&b); err != nil {
+				t.Error(err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if err := b.Validate(); err != nil {
+				t.Error("invalid batch:", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			mu.Lock()
+			for _, u := range b.AccountUsage {
+				if u.Provider == "agy" {
+					sawAGYAccountUsage = true
+				}
+			}
+			mu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": reportingv1.Receipt{Version: 1, BatchID: b.ID, ReceivedAtMS: now}})
+		}))
+		cfg := credentialSettings{ID: 1, Endpoint: srv.URL, ClientID: "client", Credential: strings.Repeat("d", 43), AllowHTTP: true, Enabled: true, IntervalSeconds: 60, State: "ready"}
+		if err := rtState.saveSettings(ctx, cfg); err != nil {
+			srv.Close()
+			t.Fatal(err)
+		}
+		rt := &Runtime{state: rtState, source: rtExporter, ctx: ctx, version: "test"}
+		for range 3 {
+			again, err := rt.cycle(ctx, cfg)
+			if err != nil {
+				srv.Close()
+				t.Fatalf("cycle (supported=%v) failed: %v", supported, err)
+			}
+			if !again {
+				break
+			}
+		}
+		srv.Close()
+		mu.Lock()
+		got := sawAGYAccountUsage
+		mu.Unlock()
+		if got != supported {
+			t.Fatalf("sync multi_provider_account_usage=%v: sawAGYAccountUsage=%v", supported, got)
+		}
 	}
 }
