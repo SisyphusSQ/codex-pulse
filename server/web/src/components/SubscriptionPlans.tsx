@@ -6,7 +6,7 @@ import {referenceAmount,sourceLink} from '../api/catalog';
 import {dayjs,providerNames} from '../format';
 
 type Audience='personal'|'business'|'other';
-const captions:Record<string,string>={codex:'ChatGPT 套餐包含 Codex，按使用强度选择档位。',cursor:'从个人开发到团队协作，按 Agent 使用量选择。',grok:'Grok 订阅、X 会员和 API 分别计费，实际额度在账号页查看。'};
+const captions:Record<string,string>={codex:'ChatGPT 套餐包含 Codex，按使用强度选择档位。',cursor:'从个人开发到团队协作，按 Agent 使用量选择。',grok:'Grok 订阅、X 会员和 API 分别计费，实际额度在账号页查看。',agy:'Google AI Ultra / Pro / Free 订阅与 Antigravity 多配额池观测分开展示，详见账号额度页。'};
 function audience(plan:PlanPrice):Audience {
  if(plan.currency!=='USD'||(plan.provider==='grok'&&plan.name==='SuperGrok Plus'))return 'other';
  return /^(Business|Enterprise|Edu|Teams)/i.test(plan.name)?'business':'personal';

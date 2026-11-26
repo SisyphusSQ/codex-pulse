@@ -5,7 +5,7 @@ import type { ThroughputStats, ThroughputTurns } from '../api/records';
 import { dateTime, integer, tokens } from '../format';
 
 export const throughputReasons:Record<string,string>={not_reported:'来源尚未上报 TPS',unsupported_provider:'此 Provider 暂无同口径 TPS',index_pending:'等待本机增量补采',index_incomplete:'本机索引尚未追平',incomplete_coverage:'仅包含可计算轮次',source_conflict:'不同来源的 TPS 证据存在冲突',no_closed_turns:'尚无可计算的已结束轮次',missing_facts:'缺少可靠的输出或时间事实',open_turn:'轮次尚未结束',inherited_history:'继承历史，无法确认独立 TPS',state_limit:'超出支持的轮次预算',numeric_overflow:'指标超出定点数值范围',history_filtered:'上报历史范围受限，无法给出生命周期 TPS'};
-const durationSources:Record<string,string>={duration_ms:'日志毫秒耗时',log_timestamp:'毫秒起止时间',source_seconds:'秒级起止时间',mixed:'混合时间证据'};
+const durationSources:Record<string,string>={duration_ms:'日志毫秒耗时',log_timestamp:'毫秒起止时间',source_seconds:'秒级起止时间',step_metadata:'步骤级元数据计时',mixed:'混合时间证据'};
 export function tps(value:string|null|undefined):string{if(value==null)return '--';const hundredths=(BigInt(value)+5n)/10n;return `${integer((hundredths/100n).toString())}.${(hundredths%100n).toString().padStart(2,'0')}`;}
 export function activeDuration(value:string|null|undefined):string{if(value==null)return '未知';const n=BigInt(value);return `${integer((n/1000n).toString())}.${(n%1000n).toString().padStart(3,'0')} 秒`;}
 export function ThroughputCell({value}:{value?:ThroughputStats|null}){return <Tooltip title={value?.reason?throughputReasons[value.reason]??'指标暂不可用':'整个会话活跃期间的平均输出速度'}><span className="numeric"><strong>{tps(value?.average_output_milli_tps)}{value?.average_output_milli_tps!=null?' TPS':''}</strong>{value?.status==='partial'&&<Tag color={value.conflict?'red':'gold'}>部分数据</Tag>}</span></Tooltip>;}

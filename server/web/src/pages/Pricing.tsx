@@ -8,7 +8,7 @@ import {initialFilter} from '../components/StatsFilters';
 import {getCatalog} from '../api/catalog';
 import {ModelPriceCatalog} from '../components/ModelPriceCatalog';
 import {SubscriptionPlans} from '../components/SubscriptionPlans';
-import {providerNames} from '../format';
+import {providerOptions} from '../format';
 import {ErrorState,LoadingState} from '../components/QueryState';
 
 export default function Pricing({subscriptionContent,initialTab='models'}:{subscriptionContent?:ReactNode;initialTab?:'models'|'plans'}={}){
@@ -20,7 +20,7 @@ export default function Pricing({subscriptionContent,initialTab='models'}:{subsc
  const [recentRange]=useState(initialFilter);
  const usage=useQuery({queryKey:['usage',recentRange],queryFn:({signal})=>getUsage(recentRange,signal)});
  const used=new Set(usage.data?.models.map(r=>`${r.provider}:${r.model}`)??[]);
- return <section>{(tab==='models'||!subscriptionContent)&&<div className="stats-toolbar-wrap"><div className="stats-toolbar">{tab==='models'?<Select className="provider-select" aria-label="价目平台" value={provider} onChange={setProvider} options={[{value:'',label:'全部平台'},...Object.entries(providerNames).map(([value,label])=>({value,label}))]}/>:<span/>}<Button icon={<ReloadOutlined />} aria-label="刷新价目" loading={query.isFetching||usage.isFetching} onClick={()=>{void query.refetch();void usage.refetch();}} /></div></div>}
+ return <section>{(tab==='models'||!subscriptionContent)&&<div className="stats-toolbar-wrap"><div className="stats-toolbar">{tab==='models'?<Select className="provider-select" aria-label="价目平台" value={provider} onChange={setProvider} options={providerOptions()}/>:<span/>}<Button icon={<ReloadOutlined />} aria-label="刷新价目" loading={query.isFetching||usage.isFetching} onClick={()=>{void query.refetch();void usage.refetch();}} /></div></div>}
  {query.isPending?<LoadingState />:query.error&&!data?<ErrorState error={query.error} retry={()=>void query.refetch()} />:data&&<>
 
  <Tabs activeKey={tab} onChange={key=>setTab(key==='plans'?'plans':'models')} items={[{key:'models',label:'模型价格',children:<ModelPriceCatalog models={data.models} used={used} provider={provider} initialSearch={params.get('model')??''} initialVersion={params.get('version')??''} usageError={usage.error} usageLoading={usage.isPending}/>},{key:'plans',label:'订阅与额度',children:subscriptionContent??<SubscriptionPlans plans={data.plans} initialProvider={provider||'codex'}/>}]} />

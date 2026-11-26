@@ -4,7 +4,7 @@ import { FilterOutlined, ReloadOutlined } from '@ant-design/icons';
 import {useFeedbackQuery as useQuery} from './QueryNotifications';
 import type { StatsFilter } from '../api/statistics';
 import { getDevices } from '../api/statistics';
-import { dayjs, providerNames } from '../format';
+import { dayjs, providerLabel, providerOptions } from '../format';
 
 export function initialFilter(days=30): StatsFilter {
   const today=dayjs().tz('Asia/Shanghai');
@@ -18,7 +18,7 @@ export function StatsFilters({ value, onChange, refresh, busy, extra }: { value:
   function range(n:number):StatsFilter { return {...value,start_date:today.subtract(n-1,'day').format('YYYY-MM-DD'),end_date_exclusive:today.add(1,'day').format('YYYY-MM-DD')}; }
   const sourceName=devices.data?.find(d=>d.id===value.client_id)?.name??value.client_id;
   return <div className="stats-toolbar-wrap"><div className="stats-toolbar">
-    <Space wrap size={8}><Select className="provider-select" aria-label="Provider" value={value.provider} onChange={provider=>onChange({...value,provider})} options={[{value:'',label:'全部平台'},{value:'codex',label:'Codex'},{value:'cursor',label:'Cursor'},{value:'grok',label:'Grok'}]} />{extra}</Space>
+    <Space wrap size={8}><Select className="provider-select" aria-label="Provider" value={value.provider} onChange={provider=>onChange({...value,provider})} options={providerOptions()} />{extra}</Space>
     <Space wrap size={8}>
       <Segmented aria-label="快捷统计范围" value={activeRange} options={[{value:1,label:'今天'},{value:7,label:'7天'},{value:30,label:'30天'},{value:90,label:'90天'}]} onChange={n=>onChange(range(Number(n)))} />
       <Popover trigger="click" open={dateOpen} onOpenChange={setDateOpen} title="自定义日期与报告时区" content={<div className="toolbar-popover"><Form layout="vertical"><Form.Item label="统计日期"><DatePicker.RangePicker classNames={{popup:{root:'stats-date-popup'}}} aria-label="统计日期" allowClear={false} value={[dayjs(value.start_date),dayjs(value.end_date_exclusive).subtract(1,'day')]} onChange={dates=>{if(dates?.[0]&&dates[1])onChange({...value,start_date:dates[0].format('YYYY-MM-DD'),end_date_exclusive:dates[1].add(1,'day').format('YYYY-MM-DD')});}} presets={[1,7,30,90,365].map(n=>({label:n===1?'今天':`最近 ${n} 天`,value:[today.subtract(n-1,'day'),today]}))} /></Form.Item><Form.Item label="报告时区"><Select aria-label="报告时区" value={value.time_zone} onChange={time_zone=>onChange({...value,time_zone})} options={['Asia/Shanghai','UTC','Asia/Tokyo','America/New_York','Europe/Berlin'].map(zone=>({value:zone,label:zone}))} /></Form.Item><Button type="primary" onClick={()=>setDateOpen(false)}>完成</Button></Form></div>}><Button type={activeRange==='custom'?'primary':'default'}>自定义</Button></Popover>
@@ -26,7 +26,7 @@ export function StatsFilters({ value, onChange, refresh, busy, extra }: { value:
       <Button icon={<ReloadOutlined />} aria-label="刷新" aria-busy={busy} onClick={()=>{void devices.refetch();refresh();}} loading={busy} />
     </Space>
   </div>
-    {(value.provider||value.client_id||value.model||value.search||activeRange==='custom')&&<div className="active-filters"><span>已筛选</span>{value.provider&&<Tag closable onClose={()=>onChange({...value,provider:''})}>{providerNames[value.provider]??value.provider}</Tag>}{value.client_id&&<Tag closable onClose={()=>onChange({...value,client_id:''})}>{sourceName}</Tag>}{value.model&&<Tag closable onClose={()=>onChange({...value,model:''})}>模型：{value.model}</Tag>}{value.search&&<Tag closable onClose={()=>onChange({...value,search:''})}>搜索：{value.search}</Tag>}{activeRange==='custom'&&<Tag closable onClose={()=>onChange(range(30))}>{value.start_date} — {dayjs(value.end_date_exclusive).subtract(1,'day').format('YYYY-MM-DD')}</Tag>}<Button type="link" size="small" onClick={()=>onChange({...range(30),provider:'',client_id:'',model:'',search:''})}>清除全部</Button></div>}
+    {(value.provider||value.client_id||value.model||value.search||activeRange==='custom')&&<div className="active-filters"><span>已筛选</span>{value.provider&&<Tag closable onClose={()=>onChange({...value,provider:''})}>{providerLabel(value.provider)}</Tag>}{value.client_id&&<Tag closable onClose={()=>onChange({...value,client_id:''})}>{sourceName}</Tag>}{value.model&&<Tag closable onClose={()=>onChange({...value,model:''})}>模型：{value.model}</Tag>}{value.search&&<Tag closable onClose={()=>onChange({...value,search:''})}>搜索：{value.search}</Tag>}{activeRange==='custom'&&<Tag closable onClose={()=>onChange(range(30))}>{value.start_date} — {dayjs(value.end_date_exclusive).subtract(1,'day').format('YYYY-MM-DD')}</Tag>}<Button type="link" size="small" onClick={()=>onChange({...range(30),provider:'',client_id:'',model:'',search:''})}>清除全部</Button></div>}
 
   </div>;
 }

@@ -37,3 +37,19 @@ it('labels DSH mixed provider pricing as API reference estimates',async()=>{
  render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={['/usage/models?provider=dsh']}><Usage /></MemoryRouter></QueryClientProvider>);
  expect(await screen.findByText('模型 API 公价估算')).toBeInTheDocument();expect(screen.queryByText('DeepSeek 峰谷价估算')).not.toBeInTheDocument();
 });
+
+it('supports Antigravity usage filter, labels API reference estimate clearly and displays cache hit rate',async()=>{
+ const value=data();
+ value.totals={...value.totals,reported_charge_micro_usd:null,reported_charge_status:'unknown',pricing_versions:['agy-api-2026-11-25:phase1']};
+ value.cache_hit_rate={basis_points:'7500',input_tokens:'1000',cached_input_tokens:'750',unit:'basis_points',basis:'range_cached_input',status:'complete',reason:'',source_client_id:null,conflict:false};
+ value.models=[{provider:'agy',model:'gemini-4-carbon',totals:value.totals,cache_hit_rate:value.cache_hit_rate}];
+ value.model_days=[{provider:'agy',model:'gemini-4-carbon',date:'2026-10-01',totals:value.totals}];
+ fetcher.mockImplementation(async url=>new Response(JSON.stringify({code:200,data:String(url).includes('/devices/status')?[]:value})));
+ render(<QueryClientProvider client={createQueryClient()}><MemoryRouter initialEntries={['/usage/models?provider=agy']}><Usage /></MemoryRouter></QueryClientProvider>);
+ expect(await screen.findByText('模型 API 公价估算')).toBeInTheDocument();
+ expect(screen.getByText(/模型 API 公价估算，非订阅实际扣费/)).toBeInTheDocument();
+ expect(screen.getByText('Antigravity 仅提供模型 API 公价估算，无平台扣费账单')).toBeInTheDocument();
+ expect(screen.getAllByText('75.0%').length).toBeGreaterThan(0);
+ expect(screen.getAllByText('Antigravity').length).toBeGreaterThan(0);
+ expect(fetcher.mock.calls.some(([u])=>new URL(String(u),'http://localhost').searchParams.get('provider')==='agy')).toBe(true);
+});

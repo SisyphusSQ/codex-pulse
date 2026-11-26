@@ -142,3 +142,127 @@ it.each([["0","0"],["12345678","1234.6万"],["1234567890","12.3亿"],[null,"—"
   expect(within(detail).getByText('0',{selector:'.metric-value'})).toBeInTheDocument();
   expect(within(detail).getByText('官方暂未提供实际消耗统计，余额变化不等于实际扣费。')).toBeInTheDocument();
  });
+
+ it('renders AGY 4-pool dual-window cards, stale/expired boundaries, multi-device evidence, pace pool switcher and hides Codex credits',async()=>{
+  const now=1795680000000;
+  const agyAccount={key:'agy-acct-1',provider:'agy',raw_id:'a1b2c3d4e5f60000'.repeat(4),email:null,plan:'Google AI Ultra 20×',collected_at_ms:now-60000};
+  const makeWindow=(limitId:string,windowKind:'primary'|'secondary',remaining:number|null,freshness:string,resetRemaining:number|null,obsCount=1)=>({
+   key:`win:${limitId}:${windowKind}`,
+   provider:'agy',
+   account_key:agyAccount.key,
+   identity_state:'confirmed',
+   limit_id:limitId,
+   window_kind:windowKind,
+   window_minutes:windowKind==='primary'?300:10080,
+   current:{
+    used_percent:remaining==null?null:100-remaining,
+    remaining_percent:remaining,
+    window_start_at_ms:now-7200000,
+    resets_at_ms:freshness==='expired_unknown'?now-120000:now+3600000,
+    reset_remaining_ms:resetRemaining,
+    snapshot_reset_remaining_ms:resetRemaining,
+    observed_at_ms:now-180000,
+    freshness,
+    conflict:false,
+    reason:freshness==='fresh'?'trusted':freshness,
+    selected_observation_id:'obs-1',
+    selected_client_id:'mac-studio',
+    source:'agy_ls_rpc',
+   },
+   cycles:[],
+   observations:Array.from({length:obsCount},(_,idx)=>({
+    id:`obs-${idx}`,
+    client_id:idx===0?'mac-studio':'win-desktop',
+    client_name:idx===0?'Mac Studio':'Win 台式机',
+    observed_at_ms:now-180000-idx*60000,
+    received_at_ms:now-170000-idx*60000,
+    used_percent:remaining==null?null:100-remaining,
+    resets_at_ms:now+3600000,
+    window_start_at_ms:now-7200000,
+    source:'agy_ls_rpc',
+    validity:'accepted',
+    history_origin:'confirmed',
+    disposition:idx===0?'selected':'superseded',
+    reason:null,
+    cycle_id:'cycle-1',
+    canonical_reset_at_ms:now+3600000,
+   })),
+   coverage:'observed_only',
+  });
+  const agyWindows=[
+   makeWindow('agy.gemini','primary',60,'fresh',3600000,2),
+   makeWindow('agy.gemini','secondary',82,'fresh',86400000,1),
+   makeWindow('agy.argon','primary',45,'stale',null,1),
+   makeWindow('agy.argon','secondary',70,'fresh',86400000,1),
+   makeWindow('agy.carbon','primary',20,'expired_unknown',null,1),
+   makeWindow('agy.carbon','secondary',55,'fresh',86400000,1),
+   makeWindow('agy.claude_gpt','primary',90,'fresh',3600000,1),
+   makeWindow('agy.claude_gpt','secondary',88,'fresh',86400000,1),
+  ];
+  const agyQuota={
+   evaluated_at_ms:now,
+   rule_version:'center-v1',
+   accounts:[agyAccount],
+   windows:agyWindows,
+   credits:[],
+   paid_credits:[{account_key:agyAccount.key,credit:{limitId:'codex',state:'known',balance:'99',hasCredits:true,unlimited:false,observedAtMs:now,checkedAtMs:now,freshness:'fresh',consumptionState:'source_unavailable',history:[]}}],
+   coverage:'observed_only',
+  };
+  const makePace=(winKey:string)=>{
+   const base=paceFixture().windows[0];
+   const w=agyWindows.find(item=>item.key===winKey)??agyWindows[0];
+   return {
+    evaluated_at_ms:now,
+    rule_version:'center-v1',
+    accounts:[agyAccount],
+    windows:[{...base,key:w.key,provider:'agy',account_key:agyAccount.key,limit_id:w.limit_id,window_kind:w.window_kind,window_minutes:w.window_minutes,current:w.current}],
+    coverage:'observed_only',
+   };
+  };
+  fetcher.mockImplementation(async path=>{
+   const u=new URL(String(path),'http://localhost');
+   if(u.pathname.endsWith('/devices/status'))return success([{id:'mac-studio',name:'Mac Studio',revoked_at_ms:null,last_received_at_ms:now,providers:[]}]);
+   if(u.pathname.endsWith('/pace'))return success(makePace(u.searchParams.get('window_key')??agyWindows[0].key));
+   return success(agyQuota);
+  });
+  mount();
+  await screen.findByText('Gemini · 5h 节奏评估');
+  const detail=document.querySelector('.quota-detail') as HTMLElement;
+  expect(within(detail).getByText('Google AI Ultra 20×')).toBeInTheDocument();
+  expect(within(detail).getByText('Gemini',{selector:'.agy-pool-header strong'})).toBeInTheDocument();
+  expect(within(detail).getByText('Gemini 4 Argon',{selector:'.agy-pool-header strong'})).toBeInTheDocument();
+  expect(within(detail).getByText('Gemini 4 Carbon',{selector:'.agy-pool-header strong'})).toBeInTheDocument();
+  expect(within(detail).getByText('Claude & GPT',{selector:'.agy-pool-header strong'})).toBeInTheDocument();
+  // Zero raw AGY pool or source keys leak into UI
+  expect(detail.textContent).not.toContain('agy.gemini');
+  expect(detail.textContent).not.toContain('agy.argon');
+  expect(detail.textContent).not.toContain('agy.carbon');
+  expect(detail.textContent).not.toContain('agy.claude_gpt');
+  expect(detail.textContent).not.toContain('agy_ls_rpc');
+  expect(within(detail).getAllByText('Antigravity 本机 LS RPC').length).toBeGreaterThan(0);
+  // Multi-device evidence preserved without summing
+  expect(within(detail).getByText(/剩余 60%/)).toBeInTheDocument();
+  expect(within(detail).getByText(/多机证据 2 台/)).toBeInTheDocument();
+  expect(within(detail).getAllByText(/采集设备 Mac Studio/).length).toBeGreaterThan(0);
+  // Stale last-known badges & expired -- boundary
+  expect(within(detail).getByText('last-known')).toBeInTheDocument();
+  expect(within(detail).getByText('陈旧')).toBeInTheDocument();
+  const carbonCard=within(detail).getByText('Gemini 4 Carbon',{selector:'.agy-pool-header strong'}).closest('.agy-pool-card') as HTMLElement;
+  expect(within(carbonCard).getByText('已过期')).toBeInTheDocument();
+  expect(within(carbonCard).getByText('--')).toBeInTheDocument();
+  expect(within(carbonCard).getByText(/上次剩余 20%/)).toBeInTheDocument();
+  // Codex-only Reset Credits & Paid Credits are hidden for AGY
+  expect(screen.queryByText(/Reset Credits/)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText('Credits 余额与消耗')).not.toBeInTheDocument();
+  // Switch pool on the pace chart
+  const user=userEvent.setup();
+  const poolSwitcher=within(detail).getByLabelText('切换配额池');
+  await user.click(within(poolSwitcher).getByText('Claude & GPT'));
+  await screen.findByText('Claude & GPT · 5h 节奏评估');
+  expect(fetcher.mock.calls.some(([p])=>new URL(String(p),'http://localhost').searchParams.get('window_key')==='win:agy.claude_gpt:primary')).toBe(true);
+  // Switch window to weekly (周)
+  const windowSwitcher=within(detail).getByLabelText('切换配额窗口');
+  await user.click(within(windowSwitcher).getByText('周'));
+  await screen.findByText('Claude & GPT · 周 节奏评估');
+  expect(fetcher.mock.calls.some(([p])=>new URL(String(p),'http://localhost').searchParams.get('window_key')==='win:agy.claude_gpt:secondary')).toBe(true);
+ });

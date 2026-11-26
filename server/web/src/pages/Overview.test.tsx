@@ -115,6 +115,23 @@ describe('overview facts',()=>{
     for(const title of ['平台 / 模型明细','采集来源','平台分布','模型分布'])expect(screen.getByText(title)).toBeInTheDocument();
     expect(screen.queryByText('工具与技能')).not.toBeInTheDocument();
   });
+  it('supports 5-way provider filtering for Antigravity and labels AGY cost as API reference estimate',async()=>{
+    const fixture=summaryFixture();
+    fixture.providers=[{key:'agy',name:'agy',totals:fixture.totals}];
+    fixture.models=[{key:'agy:gemini-4-carbon',name:'gemini-4-carbon',totals:fixture.totals}];
+    const agyUsage={...usageFrom(fixture),models:[{provider:'agy',model:'gemini-4-carbon',totals:fixture.totals}],model_days:[{provider:'agy',model:'gemini-4-carbon',date:fixture.trend[0].date,totals:fixture.totals}],cache_hit_rate:{basis_points:'7500',input_tokens:'1000',cached_input_tokens:'750',unit:'basis_points',basis:'range_cached_input',status:'complete',reason:'',source_client_id:null,conflict:false}};
+    fetcher.mockImplementation(async path=>String(path).includes('/devices/status')?success([]):String(path).includes('/source-usage')?success({range:fixture.range,items:[],scope:'collector_copies_may_overlap'}):success(String(path).includes('/usage')?agyUsage:fixture));
+    render(<MemoryRouter initialEntries={['/?provider=agy']}><QueryClientProvider client={createQueryClient()}><Overview /></QueryClientProvider></MemoryRouter>);
+    expect(await screen.findByText('近 365 天模型 API 公价估算')).toBeInTheDocument();
+    expect(screen.getByText('当前范围模型 API 公价估算')).toBeInTheDocument();
+    expect(screen.getByText(/按版本化公开 API 参考价估算/)).toBeInTheDocument();
+    expect(screen.getAllByText('Antigravity').length).toBeGreaterThan(0);
+    expect(await screen.findByText('75.0%')).toBeInTheDocument();
+    const user=userEvent.setup();
+    await user.click(screen.getByRole('combobox',{name:'Provider'}));
+    const options=[...document.querySelectorAll('.ant-select-item-option-content')].map(el=>el.textContent);
+    expect(options).toEqual(['全部平台','Codex','Cursor','Grok','DSH','Antigravity']);
+  });
 });
 
 describe('overview independent and deferred loading', () => {
